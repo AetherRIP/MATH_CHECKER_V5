@@ -18,7 +18,7 @@ can write to: the Desktop, Documents, or a USB stick.
 
   * Extract the WHOLE archive. Do not pull single files out of the ZIP.
   * Paths with spaces or accented characters are fine
-    ("C:\Users\Ana\Desktop\Math Checker (2026)" works).
+    ("C:\Users\You\Desktop\Math Checker (2026)" works).
   * On first run Windows may show "Windows protected your PC" (SmartScreen)
     because this application is not code-signed. Choose "More info" ->
     "Run anyway". Nothing in Windows security is disabled by doing this.

@@ -303,7 +303,7 @@ def check_package_tree(report: Report, package: Path) -> None:
     required = ["MathChecker.bat", "Stop.bat", "README.txt", "Data",
                 "Data/config.toml.example",
                 "main.py", "remote.py", "start_public.bat", "portable.flag",
-                "runtime", "frontend/dist/index.html", "tools/cloudflared.exe",
+                "runtime", "frontend/dist/index.html",
                 "backend/app/main.py", "backend/app/portability.py",
                 "backend/app/api/data_routes.py", "agent/agent.py"]
     missing = [rel for rel in required
@@ -311,6 +311,40 @@ def check_package_tree(report: Report, package: Path) -> None:
     report.check("packaged tree is complete", not missing,
                  "missing: " + ", ".join(missing) if missing else
                  f"{len(required)} required paths present")
+
+    # A runtime that has lost its compiled modules (*.pyd) still looks complete
+    # - the stdlib zip, site-packages and the tree above are all intact - but it
+    # cannot import socket/sqlite3/ssl on the recipient's PC, so the app cannot
+    # start. This is not hypothetical: a *.py[cod] .gitignore rule filtered every
+    # *.pyd out of the repository's copy of this runtime.
+    runtime_dir = package / "runtime"
+    if runtime_dir.is_dir():
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from build_release import check_runtime_extensions  # noqa: PLC0415
+            missing_modules = check_runtime_extensions(runtime_dir)
+        except Exception as exc:  # noqa: BLE001 — an unverifiable runtime is a fail
+            report.check("packaged runtime contains its compiled modules", False,
+                         f"could not inspect the runtime: {exc}")
+        else:
+            report.check("packaged runtime contains its compiled modules",
+                         not missing_modules,
+                         "missing: " + ", ".join(missing_modules) if missing_modules
+                         else "socket/sqlite3/ssl/PyMuPDF/Pillow extensions present")
+
+    # The tunnel helper is bundled only when the BUILD machine had cloudflared,
+    # and the pipeline deliberately treats its absence as a warning. Turning
+    # that same absence into a blocking FAIL here made this verifier report a
+    # broken package on any machine without cloudflared, which is worse than
+    # not checking at all. Presence is verified; absence is reported.
+    helper = package / "tools" / "cloudflared.exe"
+    if helper.exists():
+        report.check("bundled tunnel helper is a real executable",
+                     helper.stat().st_size > 1_000_000,
+                     f"tools/cloudflared.exe — {helper.stat().st_size // 1024} KB")
+    else:
+        report.note("  note: no tools/cloudflared.exe in this package — Public "
+                    "access will need cloudflared on the target PC.")
 
     bad: list[str] = []
     for path in package.rglob("*"):

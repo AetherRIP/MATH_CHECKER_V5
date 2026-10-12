@@ -85,6 +85,26 @@ def probe_port(port: int) -> str:
         sock.close()
         return "free"
 
+    # A failed bind does NOT by itself prove that something is listening. A
+    # socket left in TIME_WAIT by a connection that has just closed also makes a
+    # plain bind fail — and that is exactly the state of this app's port right
+    # after it was stopped, because the browser's connections to the UI close
+    # when it exits. Treating it as "taken" made Stop.bat report a failed stop
+    # after a SUCCESSFUL one, and made the next launch refuse to start with a
+    # bogus "PORT CONFLICT" for as long as the socket lingered (uvicorn binds
+    # with SO_REUSEADDR, so the app itself would have started fine).
+    #
+    # An active connect settles the question: with nothing bound to the port the
+    # OS answers with a refusal, whereas a real listener accepts the connection
+    # and can then be identified over HTTP below.
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=1.5):
+            pass
+    except ConnectionRefusedError:
+        return "free"
+    except OSError:
+        pass  # unexplained: keep probing rather than claim the port is free
+
     # Port taken — is the holder Math Correct?
     url = f"http://127.0.0.1:{port}/api/health"
     last_error = "no response"

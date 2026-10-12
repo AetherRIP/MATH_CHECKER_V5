@@ -31,6 +31,16 @@ def grade_for_percentage(percentage: float, boundaries: list[tuple[str, float]] 
 
     # Highest boundary the score meets wins; ties resolved by later entry.
     ordered = sorted(boundaries, key=lambda item: item[1])
+
+    # A score BELOW the lowest configured boundary has no configured grade. It
+    # must not silently inherit the lowest label in the table: a teacher who
+    # lists only the top grades (e.g. 7/8/9) would then hand a barely-attempted
+    # paper a 7. Fall back to the preserved legacy percentage bands, which are
+    # defined across the whole 0-100 range, so the direction of the error can
+    # only ever be "too low", never a gifted high grade.
+    if percentage < ordered[0][1]:
+        return legacy.percentage_band_grade(percentage)
+
     grade = ordered[0][0]
     for label, minimum in ordered:
         if percentage >= minimum:

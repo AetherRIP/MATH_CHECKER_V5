@@ -206,3 +206,28 @@ def test_jobs_stream_route_is_registered_before_job_detail(client):
     assert "/api/jobs/stream" in paths
     assert paths.index("/api/jobs/stream") < paths.index("/api/jobs/{job_id}")
 
+def test_openapi_operation_ids_are_unique(client):
+    """Regression: no two API operations may share an operation id.
+
+    A single ``api_route(..., methods=["GET", "POST"])`` registration produces
+    EXACTLY that: FastAPI derives one operation id per route from the route's
+    FIRST method only (``fastapi.routing.generate_unique_id``), so the GET and
+    POST operations of such a route were emitted with the same id - a
+    ``Duplicate Operation ID`` warning on every start-up and an ambiguous
+    ``/openapi.json`` for client generators. The Classroom sync/tracking
+    endpoints are therefore registered as two separate routes, and BOTH
+    methods must keep working (the browser's EventSource can only issue GETs,
+    while the UI also POSTs).
+    """
+    spec = client.get("/openapi.json").json()["paths"]
+    ids = [op["operationId"] for item in spec.values()
+           for method, op in item.items()
+           if method in ("get", "post", "put", "patch", "delete")]
+    duplicates = sorted({i for i in ids if ids.count(i) > 1})
+    assert duplicates == [], f"duplicate operation ids: {duplicates}"
+
+    for path in ("/api/classroom/sync",
+                 "/api/classroom/sync/start",
+                 "/api/classroom/courses/{course_id}/assignments/"
+                 "{coursework_id}/sync"):
+        assert set(spec[path]) >= {"get", "post"}, path

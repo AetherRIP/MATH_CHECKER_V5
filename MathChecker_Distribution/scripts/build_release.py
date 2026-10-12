@@ -35,6 +35,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -50,6 +51,7 @@ PORTABLE_DIR = DIST / "portable"
 INSTALLER_DIR = DIST / "installer"
 RELEASE_DIR = DIST / "release"
 DOCS_DIR = DIST / "documentation"
+PREVIOUS_DIR = DIST / "previous_builds"
 
 sys.path.insert(0, str(HERE))
 from release_allowlist import (  # noqa: E402
@@ -96,7 +98,54 @@ def sha256_of(path: Path) -> str:
 
 # ------------------------------------------------------------- 1. clean
 
+#: Folders this pipeline generates automatically, as opposed to the
+#: hand-labelled history folders (e.g. ``original_20261012``) which are a
+#: deliberate record and are never pruned.
+_GENERATED_ARCHIVE = re.compile(r"^\d{8}-\d{6}$")
+
+#: How many superseded packages to keep (the retention policy in this folder's
+#: README), on top of any hand-labelled history folder.
+_KEEP_ARCHIVES = 2
+
+
+def archive_previous_release() -> None:
+    """Keep the package this rebuild is about to replace.
+
+    ``clean_staging`` wipes ``release/``. Without this step the previous package
+    was simply destroyed, so the documented retention policy ("a build replaced
+    by a newer one moves to previous_builds/<label>/") did not actually happen
+    and an operator who wanted to roll back found nothing to roll back to.
+    """
+    if not RELEASE_DIR.is_dir():
+        return
+    artifacts = [p for p in RELEASE_DIR.iterdir() if p.is_file()]
+    if not artifacts:
+        return
+
+    label = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+    target = PREVIOUS_DIR / label
+    if target.exists():
+        # Two builds inside the same second: do not silently overwrite the
+        # archive that is already there.
+        log("1/10", f"previous release already archived as {label}")
+        return
+    target.mkdir(parents=True, exist_ok=True)
+    for item in artifacts:
+        shutil.copy2(item, target / item.name)
+    log("1/10", f"archived the previous release to previous_builds/{label} "
+                f"({len(artifacts)} file(s))")
+
+    archives = sorted((d for d in PREVIOUS_DIR.iterdir()
+                       if d.is_dir() and _GENERATED_ARCHIVE.match(d.name)),
+                      reverse=True)
+    for stale in archives[_KEEP_ARCHIVES:]:
+        shutil.rmtree(stale, ignore_errors=True)
+        log("1/10", f"pruned superseded archive {stale.name} "
+                    f"(policy: keep {_KEEP_ARCHIVES})")
+
+
 def clean_staging() -> None:
+    archive_previous_release()
     for target in (STAGING, PORTABLE_DIR, RELEASE_DIR):
         if target.exists():
             shutil.rmtree(target)
@@ -182,6 +231,17 @@ def stage_sources(with_runtime: str | None) -> list[str]:
         encoding="utf-8")
     copied.append("portable.flag")
 
+    # Shell launchers must be executable IN THE ARTIFACT. A checkout (or a zip
+    # round-trip) that lost the mode bit produced a package whose documented
+    # Linux/macOS start command (./start.sh) failed with "Permission denied" -
+    # the mode is part of the product, so it is set here rather than trusted.
+    for shell_script in STAGING.rglob("*.sh"):
+        try:
+            shell_script.chmod(shell_script.stat().st_mode | 0o755)
+        except OSError as exc:
+            log("3/10", f"WARNING: could not make {shell_script.name} "
+                        f"executable: {exc}")
+
     if with_runtime:
         runtime_src = Path(with_runtime).resolve()
         if not runtime_src.is_dir():
@@ -231,6 +291,14 @@ def bundle_cloudflared() -> str | None:
     if found:
         candidates.append(Path(found))
     candidates += [
+        # ``build/`` is the documented pipeline input ("bundled runtime +
+        # cloudflared"), but it was never searched: a build machine that kept
+        # the helper there produced a package WITHOUT Public access support
+        # while the file sat in the folder the README points at. Both names are
+        # checked so a Windows-built helper is found on any build machine.
+        DIST / "build" / exe,
+        DIST / "build" / "cloudflared.exe",
+        DIST / "build" / "cloudflared",
         Path(r"C:\Program Files (x86)\cloudflared\cloudflared.exe"),
         Path(r"C:\Program Files\cloudflared\cloudflared.exe"),
     ]
@@ -241,13 +309,27 @@ def bundle_cloudflared() -> str | None:
                      "Public access will need it installed on the target PC.")
         return None
 
+    # The packaged application is a WINDOWS package: it ships a Windows Python
+    # runtime and ``public_access.find_cloudflared`` looks for exactly
+    # ``tools/cloudflared.exe``. Naming the bundle after the BUILD machine's
+    # platform (``cloudflared``, no extension, on Linux) produced a package
+    # containing a 54 MB helper the app could never find - Public access stayed
+    # offline while the release log claimed the helper was bundled. A
+    # non-Windows binary is refused rather than copied: it cannot run on the
+    # target PC at all.
+    if not source.name.lower().endswith(".exe"):
+        log("3b/10", f"WARNING: {source} is not a Windows executable — not "
+                     f"bundling it. Public access will need cloudflared "
+                     f"installed on the target PC.")
+        return None
+
     dest_dir = STAGING / "tools"
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / exe
+    dest = dest_dir / "cloudflared.exe"
     shutil.copy2(source, dest)
-    log("3b/10", f"bundled tunnel helper: tools/{exe} "
+    log("3b/10", f"bundled tunnel helper: tools/cloudflared.exe "
                   f"({dest.stat().st_size // 1024} KB, from {source})")
-    return f"tools/{exe}"
+    return "tools/cloudflared.exe"
 
 
 # ---------------------------------------------------- 4/5. scan + dependencies
@@ -298,13 +380,230 @@ def _runtime_python(runtime_dir: Path) -> Path | None:
     return None
 
 
+#: Import name -> the distribution that provides it, for the packages whose
+#: import name is not the name in their metadata (used by the on-disk check
+#: below, which is how a bundled runtime is verified on a build machine that
+#: cannot execute it).
+MODULE_DISTRIBUTIONS = {
+    "multipart": "python-multipart",
+    "PIL": "pillow",
+    "google.genai": "google-genai",
+    "google.auth": "google-auth",
+    "google_auth_oauthlib": "google-auth-oauthlib",
+}
+
+#: Modules CPython itself provides. They live in the runtime's stdlib, never in
+#: site-packages, so a site-packages-only check must not report them missing.
+STDLIB_IMPORTS = frozenset({"sqlite3", "ssl"})
+
+
+def _normalise(name: str) -> str:
+    """PEP 503 normalisation: ``PyMuPDF`` and ``pymupdf`` are one project."""
+    return re.sub(r"[-_.]+", "-", name).strip().lower()
+
+
+def _runtime_site_packages(runtime_dir: Path) -> Path | None:
+    """Locate site-packages in a bundled runtime (Windows or POSIX layout)."""
+    for rel in ("Lib/site-packages", "site-packages"):
+        candidate = runtime_dir / rel
+        if candidate.is_dir():
+            return candidate
+    for candidate in sorted(runtime_dir.glob("lib/python3*/site-packages")):
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def _runtime_metadata(runtime_dir: Path) -> dict[str, str]:
+    """``{normalised distribution: version}`` from the runtime's dist-info.
+
+    Reads the runtime's own metadata instead of importing it, so the version
+    recorded in the release manifest is the one the RECIPIENT will run even when
+    the build machine is not the runtime's platform.
+    """
+    site = _runtime_site_packages(runtime_dir)
+    versions: dict[str, str] = {}
+    if not site:
+        return versions
+    for info in site.glob("*.dist-info"):
+        stem = info.name[: -len(".dist-info")]
+        name, _, version = stem.rpartition("-")
+        if name and version:
+            versions[_normalise(name)] = version
+    return versions
+
+
+def _runtime_zip_names(runtime_dir: Path) -> set[str]:
+    """Member names inside the runtime's stdlib zip, lowercased."""
+    names: set[str] = set()
+    for archive in sorted(runtime_dir.glob("python3*.zip")):
+        try:
+            with zipfile.ZipFile(archive) as zf:
+                names |= {member.lower() for member in zf.namelist()}
+        except (OSError, zipfile.BadZipFile):
+            continue
+    return names
+
+
+#: Compiled extension modules the shipped application cannot run without, as
+#: ``(folder inside site-packages, file-name stem)`` - an empty folder means the
+#: interpreter's own binaries (runtime root / DLLs / lib-dynload).
+#:
+#: These are the modules whose absence is invisible until a recipient launches
+#: the app: without ``_socket`` the server cannot listen, without ``_sqlite3``
+#: there is no database, without ``_ssl`` no Google/Gemini call, and PyMuPDF and
+#: Pillow cannot extract or draw anything. They are ``*.pyd`` on Windows, which
+#: a ``*.py[cod]`` .gitignore rule silently excludes - so the runtime in this
+#: repository spent a release with none of them (see .gitignore).
+RUNTIME_EXTENSION_MODULES: tuple[tuple[str, str], ...] = (
+    ("", "_socket"),
+    ("", "_ssl"),
+    ("", "_sqlite3"),
+    ("", "_ctypes"),
+    ("", "_hashlib"),
+    ("PIL", "_imaging"),
+    ("pymupdf", "_mupdf"),
+    ("pydantic_core", "_pydantic_core"),
+    ("cryptography/hazmat/bindings", "_rust"),
+)
+
+#: Extensions a compiled Python module can have on each platform.
+_BINARY_SUFFIXES = (".pyd", ".so", ".dll")
+
+
+def _runtime_binary_dirs(runtime_dir: Path) -> list[Path]:
+    """Where a runtime keeps its own compiled modules."""
+    dirs = [runtime_dir, runtime_dir / "DLLs"]
+    dirs += sorted(runtime_dir.glob("lib/python3*/lib-dynload"))
+    return [d for d in dirs if d.is_dir()]
+
+
+def _package_dirs(runtime_dir: Path, folder: str) -> list[Path]:
+    """``Lib/site-packages/<folder>`` (or the POSIX equivalent)."""
+    site = _runtime_site_packages(runtime_dir)
+    if not site:
+        return []
+    candidate = site / folder
+    return [candidate] if candidate.is_dir() else []
+
+
+def check_runtime_extensions(runtime_dir: Path) -> list[str]:
+    """Compiled modules missing from a bundled runtime (``[]`` when complete).
+
+    Structural, not import-based: it inspects the files on disk, so it works on
+    a build machine that cannot execute the runtime it packages.
+    """
+    missing: list[str] = []
+    for folder, stem in RUNTIME_EXTENSION_MODULES:
+        dirs = (_runtime_binary_dirs(runtime_dir) if not folder
+                else _package_dirs(runtime_dir, folder))
+        found = any(entry.is_file()
+                    and entry.stem.lower().startswith(stem.lower())
+                    and entry.suffix.lower() in _BINARY_SUFFIXES
+                    for directory in dirs for entry in directory.iterdir())
+        if not found:
+            where = f"Lib/site-packages/{folder}" if folder else "the runtime itself"
+            missing.append(f"{stem}* ({where})")
+    return missing
+
+
+def _present_in_runtime(runtime_dir: Path, module: str) -> bool:
+    """Is ``module`` on disk inside this runtime? (no interpreter needed)"""
+    site = _runtime_site_packages(runtime_dir)
+    entries = {entry.name.lower() for entry in site.iterdir()} if site else set()
+    stdlib = {entry.stem.lower() for entry in runtime_dir.glob("Lib/*")}
+    dlls = {entry.name.lower() for entry in runtime_dir.glob("DLLs/*")}
+
+    if module in STDLIB_IMPORTS:
+        lower = module.lower()
+        if f"{lower}.py" in stdlib or lower in stdlib:
+            return True
+        if any(name.startswith(f"_{lower}") and name.endswith(".pyd")
+               for name in dlls):
+            return True
+        # A Windows embeddable runtime keeps its stdlib inside python3*.zip, as
+        # bytecode only (ssl.pyc, sqlite3/__init__.pyc). The compiled backends
+        # those modules need are verified separately, by
+        # check_runtime_extensions().
+        archived = _runtime_zip_names(runtime_dir)
+        return f"{lower}.pyc" in archived or f"{lower}/__init__.pyc" in archived
+
+    if "." in module:
+        # A dotted name must resolve to its OWN package: a distribution can ship
+        # the top-level namespace without the submodule the application imports.
+        if site is not None and (site / module.replace(".", "/")).is_dir():
+            return True
+    else:
+        top = module.lower()
+        if top in entries or f"{top}.py" in entries:
+            return True
+
+    # Fall back to metadata, which names the project rather than the import.
+    distribution = MODULE_DISTRIBUTIONS.get(module)
+    if distribution and site is not None:
+        prefix = _normalise(distribution)
+        for entry in site.iterdir():
+            name = entry.name
+            if name.lower().endswith(".dist-info"):
+                stem = name[: -len(".dist-info")].rpartition("-")[0]
+                if _normalise(stem) == prefix:
+                    return True
+    return False
+
+
+def _static_runtime_report(runtime_dir: Path) -> tuple[list[str], dict[str, str]]:
+    """Verify a bundled runtime WITHOUT executing it.
+
+    Used when the bundled interpreter is for another platform. Returns the
+    imports that are not on disk plus the metadata-read versions.
+    """
+    missing = [name for name in RUNTIME_IMPORTS
+               if not _present_in_runtime(runtime_dir, name)]
+    return missing, _runtime_metadata(runtime_dir)
+
+
+def _run_in_runtime(python: Path, code: str) -> "subprocess.CompletedProcess | None":
+    """Run ``code`` with the bundled interpreter; None when it cannot run here.
+
+    This pipeline normally runs on Windows, where the bundled runtime is a
+    Windows build that executes directly. A build machine on another platform
+    cannot execute a foreign ``python.exe`` at all - the OS answers
+    ``OSError: Exec format error``. That is a fact about the build machine, not
+    a defect in the runtime, so callers fall back to checking the runtime's own
+    files instead of failing the build with a traceback.
+    """
+    try:
+        return subprocess.run([str(python), "-c", code],
+                              capture_output=True, text=True)
+    except OSError as exc:
+        log("5/10", f"NOTE: the bundled interpreter cannot be executed on this "
+                    f"build machine ({type(exc).__name__}) - verifying the "
+                    f"bundled packages on disk instead.")
+        return None
+
+
+
 def verify_bundled_runtime(runtime_dir: Path | None) -> None:
     """Fail the build when the bundled Python cannot import what it ships."""
     if not runtime_dir:
         return
-    python = _runtime_python(Path(runtime_dir).resolve())
+    runtime_path = Path(runtime_dir).resolve()
+    python = _runtime_python(runtime_path)
     if not python:
         fail(f"--with-runtime {runtime_dir} contains no python interpreter.")
+
+    # Checked FIRST and structurally: a runtime that has lost its compiled
+    # modules still contains the whole stdlib zip, so it looks complete to every
+    # version/size check - it only fails when a recipient launches the app.
+    missing_extensions = check_runtime_extensions(runtime_path)
+    if missing_extensions:
+        fail("the bundled runtime is missing compiled modules the application "
+             "cannot run without: " + ", ".join(missing_extensions) + ". "
+             "Rebuild it with scripts/build_runtime.py --force, and check that "
+             "nothing filters *.pyd out of the runtime (see .gitignore).")
+    log("5/10", f"bundled runtime compiled modules present "
+                f"({len(RUNTIME_EXTENSION_MODULES)} checked)")
+
     code = (
         "import importlib, sys\n"
         f"names = {list(RUNTIME_IMPORTS)!r}\n"
@@ -319,8 +618,18 @@ def verify_bundled_runtime(runtime_dir: Path | None) -> None:
         "    sys.exit(1)\n"
         "print('bundled runtime imports OK')\n"
     )
-    result = subprocess.run([str(python), "-c", code],
-                            capture_output=True, text=True)
+    result = _run_in_runtime(python, code)
+    if result is None:
+        # Foreign-platform runtime (see _run_in_runtime): verify it on disk.
+        missing, _versions = _static_runtime_report(runtime_path)
+        if missing:
+            fail("the bundled runtime is missing packages the application "
+                 "needs: " + ", ".join(missing) + ". Rebuild it with "
+                 "scripts/build_runtime.py --force, or ship without "
+                 "--with-runtime and tell recipients to install Python.")
+        log("5/10", f"bundled runtime verified on disk - all "
+                    f"{len(RUNTIME_IMPORTS)} required imports present")
+        return
     if result.returncode != 0:
         print(result.stdout)
         fail("the bundled runtime cannot import a package the application needs "
@@ -337,7 +646,8 @@ def validate_dependencies(runtime_dir: Path | None = None) -> list[dict]:
     # When a runtime ships, ITS versions are what the recipient runs - report
     # those. Otherwise fall back to this build machine's environment.
     if runtime_dir:
-        python = _runtime_python(Path(runtime_dir).resolve())
+        runtime_path = Path(runtime_dir).resolve()
+        python = _runtime_python(runtime_path)
         if python:
             code = (
                 "import importlib.metadata as md\n"
@@ -348,8 +658,22 @@ def validate_dependencies(runtime_dir: Path | None = None) -> list[dict]:
                 "    except Exception:\n"
                 "        print(f'{name}\\tnone')\n"
             )
-            result = subprocess.run([str(python), "-c", code],
-                                    capture_output=True, text=True)
+            result = _run_in_runtime(python, code)
+            if result is None:
+                # Foreign-platform runtime: read the versions it ships from its
+                # own metadata, so the manifest still records what a recipient
+                # runs rather than this build machine's environment.
+                versions = _runtime_metadata(runtime_path)
+                deps = [{"package": pkg,
+                         "installed": versions.get(_normalise(pkg))}
+                        for pkg in packages]
+                absent = [d["package"] for d in deps if d["installed"] is None]
+                if absent:
+                    fail("bundled runtime does not report these requirements: "
+                         + ", ".join(absent))
+                log("5/10", "dependency versions read from the bundled runtime's "
+                            "metadata (interpreter not executable here)")
+                return deps
             deps = []
             for line in result.stdout.splitlines():
                 if "\t" in line:

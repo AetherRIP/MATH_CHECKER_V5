@@ -11,6 +11,15 @@ client_secret_*.json
 # --- Python -----------------------------------------------------------------
 __pycache__/
 *.py[cod]
+# NOTE: `*.py[cod]` above ALSO matches every `*.pyd`. In the bundled Windows
+# runtime the .pyd files are not optional build debris - they ARE the
+# runtime: _socket.pyd, _sqlite3.pyd, _ssl.pyd, _ctypes.pyd, _hashlib.pyd,
+# pymupdf/_mupdf.pyd, PIL/_imaging*.pyd. Ignoring them left the packages
+# committed in this repository without any of them, so a portable folder
+# taken from git could not import socket/sqlite3/ssl and the app could not
+# start at all on a clean Windows PC. Keep this negation: without it the
+# distribution in git is not runnable.
+!MathChecker_Distribution/**/*.pyd
 *.egg-info/
 .venv/
 venv/

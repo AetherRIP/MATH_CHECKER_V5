@@ -20,7 +20,10 @@ APP_VERSION = "5.2.1"
 # Build identity (§24). Bumped by the release process — the release pipeline
 # only READS these, it never rewrites the master project. ``BUILD_DATE`` is
 # informational; ``BUILD_NUMBER`` is what a support conversation quotes.
-BUILD_NUMBER = "20261012"
+# Revision suffix: build 20261012 shipped first; "-2" is the same day with
+# the fixes from the 2026-10-12 audit (port-probe, job progress, runtime
+# packaging). A support conversation can tell the two apart by this.
+BUILD_NUMBER = "20261012-2"
 BUILD_DATE = "2026-10-12"
 
 # Bump ONLY when a change requires migrating stored data. ``db._migrate``

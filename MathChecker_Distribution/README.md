@@ -24,6 +24,39 @@ logs/                    output of past pipeline runs
 previous_builds/         superseded packages, kept under the policy below
 ```
 
+## Handing a build to someone else
+
+Hand out the artefact, never a working folder:
+
+* **`release/MathChecker_Portable.zip`** — unpack, run `MathChecker.bat` /
+  `start.sh`. This is the file to send to a teacher who has no Python.
+* **`release/MathChecker_Setup.exe`** — the Windows installer, *after* it has
+  been compiled (see below).
+
+Do not send `build/`, `release_staging/`, `portable/` or
+`previous_builds/original_*/`: they are pipeline working copies, they carry the
+build machine's own paths, and the archived `original_*` folder is a superseded
+build kept only for comparison. `release/` is the single current location — its
+`release_manifest.json` + `SHA256SUMS.txt` are what a recipient can check.
+
+**The bundled runtime must contain its compiled modules (`*.pyd`).**
+`build_release.py` refuses to package a runtime without `_socket`, `_sqlite3`,
+`_ssl`, `_ctypes`, `_hashlib`, PyMuPDF, Pillow, `pydantic_core` and
+`cryptography` extensions, and `verify_portable.py` re-checks the packaged copy.
+A runtime that has lost them still contains the whole stdlib zip, so it looks
+complete to every version or size check — but the app cannot import `socket`,
+`sqlite3` or `ssl` on the recipient's PC and will not start at all. This is not
+hypothetical: the `*.py[cod]` rule in the repository `.gitignore` also matches
+`*.pyd`, so the runtime committed here had none of them. Keep the
+`!MathChecker_Distribution/**/*.pyd` negation that re-includes them.
+
+**The Windows installer can only be compiled on Windows** (Inno Setup 6). On any
+other platform the pipeline writes `release/MathChecker.iss` with the current
+version/build and skips the `.exe` — run `build_release.bat` on a Windows
+machine to produce it. The installer is deliberately not shipped as "current"
+when it is out of date: an installer built from older source would hand a
+teacher the bugs that have been fixed since.
+
 `build/`, `release_staging/`, `portable/` and `release/` are **live pipeline
 directories** — `build_release.py` wipes and rewrites them, so never store
 anything you want to keep inside them.

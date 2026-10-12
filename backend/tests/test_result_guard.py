@@ -129,6 +129,23 @@ class TestGrading:
         assert grading.grade_for_percentage(80, bounds) == "7"
         assert grading.grade_for_percentage(96, bounds) == "9"
 
+    def test_table_without_a_zero_floor_cannot_gift_a_high_grade(self):
+        """Regression: a low score must never inherit the table's lowest label.
+
+        A teacher who lists ONLY the top bands (a realistic misconfiguration —
+        the Settings page accepts any table) previously handed a 20% paper a
+        "7", because a score below the lowest boundary simply kept the first
+        entry in the list. Such a score now falls back to the preserved legacy
+        percentage bands, so the error can only ever be too low, never a grade
+        the student did not earn.
+        """
+        top_only = [("7", 75), ("8", 85), ("9", 95)]
+        assert grading.grade_for_percentage(20, top_only) == "2"
+        assert grading.grade_for_percentage(0, top_only) == "1"
+        # At or above the lowest configured boundary the table still wins.
+        assert grading.grade_for_percentage(75, top_only) == "7"
+        assert grading.grade_for_percentage(96, top_only) == "9"
+
     def test_grade_for_totals(self):
         grade, pct = grading.grade_for_totals(67, 103)
         assert grade in "123456789"

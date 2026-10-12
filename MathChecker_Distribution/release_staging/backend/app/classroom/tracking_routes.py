@@ -162,8 +162,14 @@ def _assignment_work(course_id: str, coursework_id: str, report) -> None:
         report({"type": "error", "message": str(exc)})
 
 
-@router.api_route("/classroom/courses/{course_id}/assignments/{coursework_id}/sync",
-                  methods=["GET", "POST"])
+# Registered as two SEPARATE routes on purpose: EventSource can only issue
+# GETs while the UI's POST path must keep working. A single
+# ``api_route(methods=["GET", "POST"])`` cannot be used because FastAPI derives
+# ONE operation id per route from the route's FIRST method only
+# (``generate_unique_id``), so both operations would share an operation id — a
+# duplicate in /openapi.json and a warning on every start-up.
+@router.get("/classroom/courses/{course_id}/assignments/{coursework_id}/sync")
+@router.post("/classroom/courses/{course_id}/assignments/{coursework_id}/sync")
 async def sync_tracking(course_id: str, coursework_id: str):
     """Full-state tracking sync with REAL progress (SSE).
 
@@ -379,7 +385,9 @@ def _full_work(report) -> None:
         report({"type": "error", "stage": stage, "message": str(exc)})
 
 
-@router.api_route("/classroom/sync", methods=["GET", "POST"])
+# Two routes, not one multi-method route: see the note above ``sync_tracking``.
+@router.get("/classroom/sync")
+@router.post("/classroom/sync")
 async def full_sync():
     """Run the full sync, streaming its progress as SSE.
 
@@ -429,7 +437,9 @@ def _stream_run(run, *, attach: bool):
                                       "X-Accel-Buffering": "no"})
 
 
-@router.api_route("/classroom/sync/start", methods=["GET", "POST"])
+# Two routes, not one multi-method route: see the note above ``sync_tracking``.
+@router.get("/classroom/sync/start")
+@router.post("/classroom/sync/start")
 def sync_start(course_id: str | None = None, coursework_id: str | None = None):
     """Start a sync and return at once; watch it via ``/classroom/sync/progress``.
 

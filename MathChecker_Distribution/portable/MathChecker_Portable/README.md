@@ -93,9 +93,21 @@ backend/tests/          271 tests (engine, blueprint, keys, jobs, tracking, repo
                                retry/failover — all provider failures mocked, no quota)
 backend/scripts/        compare_legacy.py · repeatability.py (same PDF, N runs)
 frontend/               React glass UI (built dist served by the backend)
+agent/                  tiny-agent source (shipped, disabled in this version)
+scripts/                build_portable.py · install_autostart.py · two_env_e2e.py
 Friend code/            original Streamlit app — untouched reference
 data/                   git-ignored: app.db, secrets.toml, secrets/, blueprints/, logs/
+docs/                   reports, results, logs and evidence from the build work
+                        (never shipped) — start at docs/README.md
+dev_local/              dev-only scratch: report previews, harness data dirs
+                        (never shipped, delete freely) — see dev_local/README.md
+autostart/              machine-local autostart state written by the app
+MathChecker_Distribution/  the packaging workspace (see below)
 ```
+
+The full map — what is shipped, what is disposable, what must never be tidied
+away, and the cleanup policy — is in
+[docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md).
 
 ## Correction flow (real stages, never faked)
 
@@ -213,7 +225,13 @@ MathChecker_Distribution/
   documentation/             recipient guide + privacy notes + build guide
   release/                   MathChecker_Setup.exe · MathChecker_Portable.zip
                              · SHA256SUMS.txt · release_manifest.json
+  logs/                      output of past pipeline runs
+  previous_builds/           superseded packages (retention policy in README)
 ```
+
+Neither the master project nor the release system ever writes private material
+into a package. See `MathChecker_Distribution/README.md` for the folder layout
+and the previous-build retention policy.
 
 Pipeline: clean staging → production frontend build → **copy allowlisted
 files only** → secret + privacy scan (BLOCKS the build on any finding) →
@@ -231,6 +249,16 @@ user-data-focused rule set to `runtime/` (library files are legitimately named
 Building the installer needs Inno Setup 6 on the *build* machine only
 (`winget install JRSoftware.InnoSetup`); the pipeline finds it on `PATH`, in
 `Program Files`, or under `%LOCALAPPDATA%\Programs`.
+
+What is safe to share: `release/MathChecker_Portable.zip` (or the compiled
+`release/MathChecker_Setup.exe`), plus `SHA256SUMS.txt` and
+`release_manifest.json` for the recipient to verify. The pipeline directories
+themselves (`build/`, `release_staging/`, `portable/`) and
+`previous_builds/original_*/` are working copies of one machine, not packages.
+The build refuses to ship a bundled runtime that is missing its compiled
+modules (`*.pyd`) — a runtime like that looks complete but cannot import
+`socket`/`sqlite3`/`ssl`, so it would not start at all on a clean Windows PC.
+See `MathChecker_Distribution/README.md` for the details.
 
 Privacy is solved by **not distributing** private material, never by hiding it:
 `Friend code/`, `data/`, credentials, tokens, databases, PDFs, logs, `.git/`

@@ -250,6 +250,16 @@ Building the installer needs Inno Setup 6 on the *build* machine only
 (`winget install JRSoftware.InnoSetup`); the pipeline finds it on `PATH`, in
 `Program Files`, or under `%LOCALAPPDATA%\Programs`.
 
+What is safe to share: `release/MathChecker_Portable.zip` (or the compiled
+`release/MathChecker_Setup.exe`), plus `SHA256SUMS.txt` and
+`release_manifest.json` for the recipient to verify. The pipeline directories
+themselves (`build/`, `release_staging/`, `portable/`) and
+`previous_builds/original_*/` are working copies of one machine, not packages.
+The build refuses to ship a bundled runtime that is missing its compiled
+modules (`*.pyd`) — a runtime like that looks complete but cannot import
+`socket`/`sqlite3`/`ssl`, so it would not start at all on a clean Windows PC.
+See `MathChecker_Distribution/README.md` for the details.
+
 Privacy is solved by **not distributing** private material, never by hiding it:
 `Friend code/`, `data/`, credentials, tokens, databases, PDFs, logs, `.git/`
 and development caches are refused by both the allowlist and the independent

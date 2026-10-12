@@ -246,3 +246,48 @@ class TestQuestionLevelValidation:
             {"question_number": "2", "awarded_marks": 0, "max_marks": 3},
         ]}
         assert verify_result(result)["status"] == "VALID"
+
+class TestProgressReporting:
+    """The ``progress`` column must never contradict the stored status."""
+
+    def test_terminal_status_reports_a_real_fraction(self, fresh_state):
+        """Regression: a COMPLETED job must not report 0% progress.
+
+        A job run by the WorkerPool is moved to COMPLETED with raw SQL, which
+        never touches ``progress``, so the API reported 0 for a finished job
+        while three UI pages rendered that value as a percentage bar. The read
+        path derives it from this module's own ``STAGE_PROGRESS`` map instead.
+        """
+        assert jm._effective_progress(
+            {"status": "COMPLETED", "progress": 0.0})["progress"] == 1.0
+        assert jm._effective_progress(
+            {"status": "FAILED", "progress": 0})["progress"] == 1.0
+
+    def test_real_progress_is_never_overwritten(self, fresh_state):
+        row = {"status": "MARKING", "progress": 0.5}
+        assert jm._effective_progress(row)["progress"] == 0.5
+
+    def test_status_without_a_mapping_keeps_its_stored_value(self, fresh_state):
+        # STARTING/PROCESSING are the pool's in-flight states: no fraction is
+        # claimed for them rather than inventing one.
+        row = {"status": "STARTING", "progress": 0.0}
+        assert jm._effective_progress(row)["progress"] == 0.0
+
+    def test_manager_get_and_list_report_terminal_progress(self, fresh_state):
+        from app import db
+
+        manager = JobManager()
+        job = manager.enqueue(submission_id="s9", coursework_id="w9",
+                              course_id="c9", student_id="u9",
+                              student_name="Zoe")
+        # Exactly what the worker pool does when it finishes a job.
+        db.execute("UPDATE correction_jobs SET status = 'COMPLETED', "
+                   "progress = 0 WHERE id = ?", (job["id"],))
+
+        got = manager.get(job["id"])
+        assert got["status"] == "COMPLETED"
+        assert got["progress"] == 1.0
+
+        listed = manager.list(statuses=["COMPLETED"])
+        assert any(r["id"] == job["id"] and r["progress"] == 1.0
+                   for r in listed)

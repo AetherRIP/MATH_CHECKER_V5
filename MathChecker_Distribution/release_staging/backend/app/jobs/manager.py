@@ -58,6 +58,33 @@ STAGE_PROGRESS = {
 }
 
 
+def _effective_progress(row: dict | None) -> dict | None:
+    """Return ``row`` with ``progress`` filled in from its real status.
+
+    Only :meth:`JobManager._set_status` maintains the ``progress`` column. A job
+    run by the WorkerPool is moved through its states with raw SQL, so it would
+    otherwise report ``0`` for its entire life - including once it is COMPLETED,
+    which three UI pages render as a percentage bar and one prints as "0%".
+
+    ``STAGE_PROGRESS`` is this module's own documented status -> fraction map, so
+    a terminal status reports the fraction it genuinely reached. Nothing is
+    invented: a status with no entry in the map (STARTING/PROCESSING, the pool's
+    in-flight states) keeps whatever was stored, and a non-zero stored value is
+    never overwritten.
+    """
+    if not row:
+        return row
+    try:
+        stored = float(row.get("progress") or 0.0)
+    except (TypeError, ValueError):
+        stored = 0.0
+    if stored <= 0.0:
+        mapped = STAGE_PROGRESS.get(str(row.get("status") or "").strip().upper())
+        if mapped is not None:
+            row["progress"] = mapped
+    return row
+
+
 class DuplicateJobError(RuntimeError):
     def __init__(self, existing_id: str | None):
         super().__init__("A correction job for this submission is already active.")
@@ -165,9 +192,9 @@ class JobManager:
         return job
 
     def get(self, job_id: str) -> dict | None:
-        return db.row_to_dict(db.query_one(
+        return _effective_progress(db.row_to_dict(db.query_one(
             "SELECT * FROM correction_jobs WHERE id = ?", (job_id,)
-        ))
+        )))
 
     def list(self, statuses: list[str] | None = None, limit: int = 200) -> list[dict]:
         if statuses:
@@ -182,7 +209,7 @@ class JobManager:
                 "SELECT * FROM correction_jobs ORDER BY created_at DESC LIMIT ?",
                 (limit,),
             )
-        return [dict(r) for r in rows]
+        return [_effective_progress(dict(r)) for r in rows]
 
     def counts(self) -> dict:
         rows = db.query(

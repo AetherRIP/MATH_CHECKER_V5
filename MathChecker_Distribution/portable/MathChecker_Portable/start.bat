@@ -26,7 +26,7 @@ rem A virtual environment created on another operating system (for example
 rem Linux, where the interpreter lives in .venv\bin) cannot run on Windows.
 rem setup.bat replaces it with a native Windows venv; point the teacher there.
 rem NOTE: labels (not parenthesised blocks) are used here on purpose. An
-rem install folder may contain parentheses (e.g. "MATH V5 (DeepSeek)"), and
+rem install folder may contain parentheses (e.g. "Math Checker (2026)"), and
 rem cmd mis-parses a %~dp0 path containing "(" inside a ( ) block.
 if not defined PYEXE goto :skip_venv_note
 if not exist "%~dp0.venv" goto :skip_venv_note

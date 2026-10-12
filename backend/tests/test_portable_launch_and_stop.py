@@ -17,6 +17,7 @@ import importlib.util
 import json
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import threading
@@ -65,6 +66,11 @@ class _Stub:
         self.thread.start()
 
     def close(self) -> None:
+        # Idempotent: a test may emulate the kill (which closes the instance)
+        # and the fixture teardown closes it again.
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         self.server.shutdown()
         self.server.server_close()
 
@@ -95,6 +101,31 @@ def foreign_instance():
 
 def test_stop_reports_nothing_to_stop_when_the_port_is_free(main_entry, capsys):
     port = _free_port()
+    assert main_entry.stop_running_instance(port) == 0
+    assert "Nothing to stop" in capsys.readouterr().out
+
+
+def test_stop_reports_nothing_to_stop_for_a_port_left_in_time_wait(main_entry,
+                                                                   idle_instance,
+                                                                   capsys):
+    """Regression: a just-closed listener must not look like a running app.
+
+    Closing a listener leaves the connections that were made to it in
+    TIME_WAIT, and a plain ``bind`` fails while one lingers. The old probe read
+    that failure as "something holds the port but will not answer", so Stop.bat
+    reported a FAILED stop after a successful one, and the next launch refused
+    to start with a bogus PORT CONFLICT -- even though uvicorn binds with
+    SO_REUSEADDR and would have started normally.
+
+    Nothing is listening here, so the only correct answer is "free".
+    """
+    port = idle_instance.port
+    # A real probe first: it both proves identity and leaves the connection that
+    # puts the port in the state this regression is about.
+    assert main_entry.probe_port(port) == "ours"
+
+    idle_instance.close()          # the app is gone; nothing is listening
+    assert main_entry.probe_port(port) == "free"
     assert main_entry.stop_running_instance(port) == 0
     assert "Nothing to stop" in capsys.readouterr().out
 
@@ -136,10 +167,23 @@ def test_stop_names_the_instance_before_taking_it_down(main_entry, idle_instance
 
     # ``main.py`` imports subprocess/os inside the function, so patch the real
     # modules it will find rather than an attribute on the entry module.
+    if os.name != "nt" and shutil.which("lsof") is None:
+        # On POSIX the listening socket is mapped to a PID with ``lsof``; with
+        # no ``lsof`` the stop command correctly reports that it could not find
+        # the process ID, which is a different property (see
+        # test_port_pids_finds_the_process_listening_on_a_port).
+        pytest.skip("lsof is required to map a port to a PID on this platform")
+
     monkeypatch.setattr(subprocess, "run", fake_run)
     if os.name != "nt":  # stop_running_instance picks a signal on POSIX
-        monkeypatch.setattr(os, "kill",
-                            lambda pid, sig: calls.append(["kill", pid, sig]))
+        def fake_kill(pid, sig):
+            calls.append(["kill", pid, sig])
+            # The real SIGTERM brings the instance down; emulate that, otherwise
+            # the wait loop can never observe the port becoming free and would
+            # sit out its whole 20 second deadline on a healthy instance.
+            idle_instance.close()
+
+        monkeypatch.setattr(os, "kill", fake_kill)
 
     assert main_entry.stop_running_instance(idle_instance.port) == 0
     out = capsys.readouterr().out
@@ -148,6 +192,12 @@ def test_stop_names_the_instance_before_taking_it_down(main_entry, idle_instance
     if os.name == "nt":
         assert calls and calls[0][:2] == ["taskkill", "/PID"]
         assert calls[0][-2:] == ["/T", "/F"]     # the workers go with it
+    else:
+        # The PID really is the process holding the port, and the signal is a
+        # graceful SIGTERM (not SIGKILL): the app's own shutdown must run.
+        assert calls and calls[0][0] == "kill"
+        assert calls[0][1] == os.getpid()
+        assert calls[0][2] == signal.SIGTERM
 
 
 def test_stop_port_uses_the_recorded_instance_port(main_entry, idle_instance,

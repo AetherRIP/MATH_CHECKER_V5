@@ -14,6 +14,7 @@ local secret store so nothing is duplicated across multiple files.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import tomllib
@@ -515,6 +516,12 @@ class AppConfig:
         return not self.teacher.onboarded
 
 
+#: Module logger: used for the ONE diagnostic that must happen before the app's
+#: logging is configured. Entries still pass through ``logging_setup.redact``
+#: once logging is up, so a credential can never be written out.
+_log = logging.getLogger(__name__)
+
+
 def _read_toml(path: Path) -> dict:
     if not path.exists():
         return {}
@@ -522,8 +529,14 @@ def _read_toml(path: Path) -> dict:
         with open(path, "rb") as fh:
             return tomllib.load(fh)
     except (OSError, tomllib.TOMLDecodeError) as exc:
-        # Configuration that cannot be parsed must never take the app down
-        # silently — but it also must not print secret values.
+        # Unparsable configuration must never take the app down — and it must
+        # never print secret values — but it must not fail SILENTLY either. A
+        # damaged secrets.toml used to look exactly like "no Gemini keys
+        # configured", sending a teacher to re-enter keys that were already
+        # there. Only the error CLASS and message are logged, never the file
+        # contents, and the record is redacted like every other log entry.
+        _log.warning("%s could not be read (%s): %s — falling back to defaults",
+                     path.name, type(exc).__name__, exc)
         return {}
 
 
@@ -694,7 +707,7 @@ def get_config(reload: bool = False) -> AppConfig:
                         pass
                 if "max_retries" in worker:
                     try:
-                        cfg.worker.max_retries = max(0, int(worker["worker_max_retries"] if False else worker["max_retries"]))
+                        cfg.worker.max_retries = max(0, int(worker["max_retries"]))
                     except (TypeError, ValueError):
                         pass
             double_check = data.get("double_check", {})
