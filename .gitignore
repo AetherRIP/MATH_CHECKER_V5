@@ -1,0 +1,53 @@
+# --- V5: secrets and local data (never commit) -------------------------------
+data/
+data/secrets.toml
+data/secrets/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+client_secret_*.json
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Node / frontend ----------------------------------------------------------
+node_modules/
+frontend/dist/
+frontend/node_modules/
+*.local
+
+# --- Portable distribution build output --------------------------------------
+dist/
+portable.flag
+
+# --- Logs and temp ------------------------------------------------------------
+logs/
+*.log
+tmp/
+.DS_Store
+Thumbs.db
+
+# --- Dev-only scratch (never shipped, safe to delete) -------------------------
+dev_local/
+.live_verify/
+frontend/tsconfig.tsbuildinfo
+
+# Kept verification evidence stays visible even though dev logs are ignored above.
+!docs/logs/*.log
+!docs/logs/*.txt
+!MathChecker_Distribution/logs/*.log
+
+# Loose credential files (moved into data/secrets/)
+*.env
+API_KEYS.env
+!.env.example

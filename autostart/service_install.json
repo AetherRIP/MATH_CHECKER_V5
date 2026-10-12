@@ -1,0 +1,25 @@
+{
+  "tasks": {
+    "MathCorrectBackend": {
+      "created": true,
+      "launcher": "E:\\MATH V6.0 AUTOMATION\\MATH V5\\autostart\\mathcorrect_backend_autostart.bat"
+    },
+    "MathCorrectAgent": {
+      "created": true,
+      "launcher": "E:\\MATH V6.0 AUTOMATION\\MATH V5\\autostart\\mathcorrect_agent_autostart.bat"
+    }
+  },
+  "verify": {
+    "MathCorrectBackend": {
+      "query_ok": true,
+      "points_at_launcher": true
+    },
+    "MathCorrectAgent": {
+      "query_ok": true,
+      "points_at_launcher": true
+    }
+  },
+  "ok": true,
+  "elevated": true,
+  "marker": "E:\\MATH V6.0 AUTOMATION\\MATH V5\\autostart\\service_install.json"
+}

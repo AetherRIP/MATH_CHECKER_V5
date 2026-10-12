@@ -1,0 +1,28 @@
+data: {"type": "stage", "stage": "connect", "message": "Connecting\u2026"}
+
+data: {"type": "stage", "stage": "courses", "message": "Fetching courses\u2026"}
+
+data: {"type": "courses", "count": 2}
+
+data: {"type": "stage", "stage": "assignments", "message": "Fetching assignments \u2014 TESTING\u2026"}
+
+data: {"type": "assignments", "count": 3, "total": 3, "course": "TESTING"}
+
+data: {"type": "stage", "stage": "assignments", "message": "Fetching assignments \u2014 WBIS - O Level Mathematics - Mr. Abanoub Akram\u2026"}
+
+data: {"type": "assignments", "count": 15, "total": 18, "course": "WBIS - O Level Mathematics - Mr. Abanoub Akram"}
+
+data: {"type": "stage", "stage": "students", "message": "Fetching students \u2014 TESTING\u2026"}
+
+data: {"type": "students", "count": 2, "course": "TESTING"}
+
+data: {"type": "stage", "stage": "students", "message": "Fetching students \u2014 WBIS - O Level Mathematics - Mr. Abanoub Akram\u2026"}
+
+data: {"type": "students", "count": 78, "course": "WBIS - O Level Mathematics - Mr. Abanoub Akram"}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Chapter 1 Lesson 7 (1/18)\u2026"}
+
+data: {"type": "assignment", "index": 1, "total": 18, "title": "Chapter 1 Lesson 7", "submissions": 2}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Chapter 1 Lesson 5 (2/18)\u2026"}
+

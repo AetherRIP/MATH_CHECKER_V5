@@ -1,0 +1,287 @@
+{
+  "results": [
+    {
+      "id": "T0",
+      "desc": "Test backend reachable",
+      "env": "shared",
+      "expected": "HTTP 200",
+      "actual": "HTTP 200",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T1",
+      "desc": "Developer signs in with real credentials",
+      "env": "A",
+      "expected": "HTTP 200 + token",
+      "actual": "HTTP 200",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T1b",
+      "desc": "Backend reports the Developer role",
+      "env": "A",
+      "expected": "roles contains DEVELOPER",
+      "actual": "['DEVELOPER']",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T2",
+      "desc": "Developer creates teacher + 3 assistants",
+      "env": "A",
+      "expected": "all HTTP 200",
+      "actual": "200,200,200,200",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T18",
+      "desc": "Teammate assistant reads shared report",
+      "env": "A+B",
+      "expected": "B sees >=1",
+      "actual": "B sees 1",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T19",
+      "desc": "Unrelated-school assistant blocked",
+      "env": "C",
+      "expected": "C sees 0",
+      "actual": "C sees 0",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T20",
+      "desc": "Replayed sync item is not duplicated",
+      "env": "A",
+      "expected": "duplicate=true",
+      "actual": "True",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T21",
+      "desc": "Assistant denied a Developer/manager endpoint",
+      "env": "C",
+      "expected": "HTTP 403",
+      "actual": "HTTP 403",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T21b",
+      "desc": "Assistant denied the audit trail",
+      "env": "C",
+      "expected": "HTTP 403",
+      "actual": "HTTP 403",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T2b",
+      "desc": "Both installations register + heartbeat",
+      "env": "A+B",
+      "expected": "registered+heartbeat true",
+      "actual": "A=True/True B=True/True",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T2c",
+      "desc": "Each installation has a distinct device identity",
+      "env": "A+B",
+      "expected": "different ids",
+      "actual": "63986420 != 03f4df8f",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T5",
+      "desc": "Developer creates a DRAFT release",
+      "env": "A",
+      "expected": "HTTP 200 draft",
+      "actual": "HTTP 200 status=draft",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T6",
+      "desc": "Signed package body stored persistently",
+      "env": "A",
+      "expected": "sha256 matches",
+      "actual": true,
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T7",
+      "desc": "Release validates (structure + checksum + signature)",
+      "env": "A",
+      "expected": "ok=true",
+      "actual": "ok=True problems=[]",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T8a",
+      "desc": "Publish without confirmation is refused",
+      "env": "A",
+      "expected": "HTTP 400",
+      "actual": "HTTP 400 (confirmation_required)",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T8",
+      "desc": "Release published",
+      "env": "A",
+      "expected": "status=published",
+      "actual": "HTTP 200 status=published",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T9",
+      "desc": "Assistant discovers the published release",
+      "env": "B",
+      "expected": "5.1.0 offered",
+      "actual": "['5.1.0']",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T10",
+      "desc": "Downloaded package checksum + signature verify",
+      "env": "B",
+      "expected": "ok",
+      "actual": "ok",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T11",
+      "desc": "Update installs through the real updater",
+      "env": "B",
+      "expected": "UPDATED",
+      "actual": "UPDATED",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T11b",
+      "desc": "Installed file is the new version",
+      "env": "B",
+      "expected": "content replaced",
+      "actual": "True",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T11c",
+      "desc": "DATA directory preserved across the update",
+      "env": "B",
+      "expected": "reports survived",
+      "actual": "True",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T12",
+      "desc": "Developer dashboard reflects the real installation",
+      "env": "A",
+      "expected": "device present in install status",
+      "actual": "True",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T13",
+      "desc": "Corrupted package rejected",
+      "env": "B",
+      "expected": "rejected",
+      "actual": "False (checksum mismatch)",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T14",
+      "desc": "Invalid signature rejected",
+      "env": "B",
+      "expected": "rejected",
+      "actual": "False (invalid package signature)",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T15",
+      "desc": "Missing signature rejected",
+      "env": "B",
+      "expected": "rejected",
+      "actual": "False (package is not signed)",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T16",
+      "desc": "Client already on the latest version is not re-offered",
+      "env": "B",
+      "expected": "5.1.0 absent",
+      "actual": "[]",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T17",
+      "desc": "Withdrawn release is not offered",
+      "env": "B",
+      "expected": "5.1.0 absent",
+      "actual": "[]",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T22",
+      "desc": "Agent OFF performs no network work",
+      "env": "B",
+      "expected": "paused + 0 calls",
+      "actual": "paused=True calls=0",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T23",
+      "desc": "Update lifecycle produces audit events",
+      "env": "A",
+      "expected": "published + package_stored",
+      "actual": "['update.package_stored', 'update.published', 'update.requested', 'update.withdrawn']",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T24a",
+      "desc": "Valid linux-only release publishes",
+      "env": "A",
+      "expected": "status=published",
+      "actual": "HTTP 200 status=published",
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "T24",
+      "desc": "Linux-only release not offered to a Windows device",
+      "env": "B",
+      "expected": "not offered",
+      "actual": "0 offered",
+      "status": "PASS",
+      "note": ""
+    }
+  ],
+  "release": "upd-18b0c374316f",
+  "sha256": "2707a83b450a71c5e4bc6b37f83b8ab37a9ceaec9d1a6bc4d2f9b862d8ddcae2",
+  "device_a": "6398642081164e16a35c457053550873",
+  "device_b": "03f4df8f4a1b4b49bd856560bece06fc"
+}

@@ -1,0 +1,98 @@
+data: {"type": "stage", "stage": "connect", "message": "Connecting\u2026"}
+
+data: {"type": "stage", "stage": "courses", "message": "Fetching courses\u2026"}
+
+data: {"type": "courses", "count": 2}
+
+data: {"type": "stage", "stage": "assignments", "message": "Fetching assignments \u2014 TESTING\u2026"}
+
+data: {"type": "assignments", "count": 3, "total": 3, "course": "TESTING"}
+
+data: {"type": "stage", "stage": "assignments", "message": "Fetching assignments \u2014 WBIS - O Level Mathematics - Mr. Abanoub Akram\u2026"}
+
+data: {"type": "assignments", "count": 15, "total": 18, "course": "WBIS - O Level Mathematics - Mr. Abanoub Akram"}
+
+data: {"type": "stage", "stage": "students", "message": "Fetching students \u2014 TESTING\u2026"}
+
+data: {"type": "students", "count": 2, "course": "TESTING"}
+
+data: {"type": "stage", "stage": "students", "message": "Fetching students \u2014 WBIS - O Level Mathematics - Mr. Abanoub Akram\u2026"}
+
+data: {"type": "students", "count": 78, "course": "WBIS - O Level Mathematics - Mr. Abanoub Akram"}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Chapter 1 Lesson 7 (1/18)\u2026"}
+
+data: {"type": "assignment", "index": 1, "total": 18, "title": "Chapter 1 Lesson 7", "submissions": 2}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Chapter 1 Lesson 5 (2/18)\u2026"}
+
+data: {"type": "assignment", "index": 2, "total": 18, "title": "Chapter 1 Lesson 5", "submissions": 2}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Math Chapter 1 lesson 1 (3/18)\u2026"}
+
+data: {"type": "assignment", "index": 3, "total": 18, "title": "Math Chapter 1 lesson 1", "submissions": 2}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Ch1L12 - Power and Roots (4/18)\u2026"}
+
+data: {"type": "assignment", "index": 4, "total": 18, "title": "Ch1L12 - Power and Roots", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Quiz 3 and Answers (5/18)\u2026"}
+
+data: {"type": "assignment", "index": 5, "total": 18, "title": "Quiz 3 and Answers", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Ch1L11 - Units (6/18)\u2026"}
+
+data: {"type": "assignment", "index": 6, "total": 18, "title": "Ch1L11 - Units", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Ch1L10 - Map Scale (7/18)\u2026"}
+
+data: {"type": "assignment", "index": 7, "total": 18, "title": "Ch1L10 - Map Scale", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Ch1L9 - Ratio (8/18)\u2026"}
+
+data: {"type": "assignment", "index": 8, "total": 18, "title": "Ch1L9 - Ratio", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Ch1L8 - Standard Form (9/18)\u2026"}
+
+data: {"type": "assignment", "index": 9, "total": 18, "title": "Ch1L8 - Standard Form", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Ch1L7 - Limits of Accuracy.pdf (10/18)\u2026"}
+
+data: {"type": "assignment", "index": 10, "total": 18, "title": "Ch1L7 - Limits of Accuracy.pdf", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Ch1L6 - Rounding.pdf (11/18)\u2026"}
+
+data: {"type": "assignment", "index": 11, "total": 18, "title": "Ch1L6 - Rounding.pdf", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Quiz 2 and Answers (12/18)\u2026"}
+
+data: {"type": "assignment", "index": 12, "total": 18, "title": "Quiz 2 and Answers", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Ch1L3 - Recurring Decimals.pdf (13/18)\u2026"}
+
+data: {"type": "assignment", "index": 13, "total": 18, "title": "Ch1L3 - Recurring Decimals.pdf", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Quiz 1 and Answers (14/18)\u2026"}
+
+data: {"type": "assignment", "index": 14, "total": 18, "title": "Quiz 1 and Answers", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Ch1L5 - SI & CI.pdf (15/18)\u2026"}
+
+data: {"type": "assignment", "index": 15, "total": 18, "title": "Ch1L5 - SI & CI.pdf", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Ch1L4 - Percentages.pdf (16/18)\u2026"}
+
+data: {"type": "assignment", "index": 16, "total": 18, "title": "Ch1L4 - Percentages.pdf", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Ch1L2 - Fractions.pdf (17/18)\u2026"}
+
+data: {"type": "assignment", "index": 17, "total": 18, "title": "Ch1L2 - Fractions.pdf", "submissions": 78}
+
+data: {"type": "stage", "stage": "submissions", "message": "Fetching submissions \u2014 Ch1L1 - Factors and Multiples.pdf (18/18)\u2026"}
+
+data: {"type": "assignment", "index": 18, "total": 18, "title": "Ch1L1 - Factors and Multiples.pdf", "submissions": 78}
+
+data: {"type": "stage", "stage": "save", "message": "Updating database\u2026"}
+
+data: {"type": "done", "summary": {"courses": 2, "assignments": 18, "students": 80, "submissions": 1176, "errors": [], "unavailable": [], "partial": false, "synced_at": 1791255639.4790182, "elapsed_s": 36.36}}
+

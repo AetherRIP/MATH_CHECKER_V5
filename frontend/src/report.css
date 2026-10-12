@@ -1,0 +1,282 @@
+/* ============================================================ layering
+   One coherent stacking scale. Nothing invents a z-index of its own, so a
+   dropdown can never land under a sticky header and a tooltip can never
+   land on top of a modal.
+
+     base content .......... 0
+     sticky table headers .. 10
+     top bar ............... 50
+     nav scrim ............. 55
+     sidebar / drawer rail . 60
+     popovers / dropdowns .. 120
+     search panel .......... 125
+     modal / drawer ........ 140
+     tooltips .............. 150   (pointer-events: none)
+     toasts ................ 200                                            */
+
+:root {
+  --z-sticky: 10;
+  --z-topbar: 50;
+  --z-scrim: 55;
+  --z-sidebar: 60;
+  --z-popover: 120;
+  --z-search: 125;
+  --z-modal: 140;
+  --z-tooltip: 150;
+  --z-toast: 200;
+}
+
+.table th { z-index: var(--z-sticky); }
+.topbar { z-index: var(--z-topbar); }
+.scrim { z-index: var(--z-scrim); }
+.sidebar { z-index: var(--z-sidebar); }
+.dropdown-menu { z-index: var(--z-popover); }
+.search-panel { z-index: var(--z-search); }
+.modal-overlay, .drawer-overlay { z-index: var(--z-modal); }
+.tooltip-layer { z-index: var(--z-tooltip); }
+.toast-stack { z-index: var(--z-toast); }
+
+/* A collapsed rail must not clip the label it shows on hover. */
+.sidebar.collapsed { overflow: visible; }
+
+/* ------------------------------------------------------------- focus */
+
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.btn:focus-visible { outline-offset: 3px; }
+
+/* -------------------------------------------------------------- field */
+
+.field { display: block; margin-bottom: var(--s3); }
+.field > span,
+label.field > span {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s2); font-size: var(--fs-xs); color: var(--text-dim);
+  margin-bottom: 5px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.field > span .hint, .field span .hint {
+  font-weight: 500; text-transform: none; letter-spacing: 0;
+  color: var(--text-faint); margin-left: 0;
+}
+
+/* ---------------------------------------------------------- checkboxes */
+
+.check-row {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 7px 9px; border-radius: var(--radius-sm);
+  border: 1px solid transparent; cursor: pointer;
+  transition: background var(--speed), border-color var(--speed);
+}
+.check-row:hover { background: var(--surface-strong); }
+.check-row.checked { background: var(--accent-soft); border-color: var(--accent-line); }
+.check-row input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.check-row .check-box {
+  flex-shrink: 0; width: 16px; height: 16px; margin-top: 1px;
+  border: 1.5px solid var(--border-strong); border-radius: 4px;
+  background: var(--input-bg); color: transparent;
+  display: grid; place-items: center;
+  transition: background var(--speed), border-color var(--speed), color var(--speed);
+}
+.check-row.checked .check-box {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.check-row:focus-within .check-box { outline: 2px solid var(--accent); outline-offset: 2px; }
+.check-row .check-text { display: flex; flex-direction: column; min-width: 0; }
+.check-row .check-label { font-size: var(--fs-sm); font-weight: 600; }
+.check-row .check-hint {
+  font-size: var(--fs-xs); color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ==================================================== report workspace */
+
+.rp-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 350px) minmax(0, 1fr);
+  gap: var(--s4);
+  align-items: start;
+}
+@media (max-width: 1020px) { .rp-layout { grid-template-columns: 1fr; } }
+
+.rp-builder { position: sticky; top: 0; }
+@media (max-width: 1020px) { .rp-builder { position: static; } }
+.rp-card h3 { display: flex; align-items: center; gap: 8px; }
+.rp-card h3 .mk-icon { color: var(--accent); }
+
+.rp-assign-tools { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.rp-assign-tools .input { flex: 1; min-width: 0; }
+
+.rp-assign-list {
+  max-height: 230px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--input-bg); padding: 3px;
+}
+.rp-checks { display: grid; gap: 1px; }
+
+.rp-stale {
+  display: flex; align-items: center; gap: 6px;
+  margin: var(--s2) 0 0; font-size: var(--fs-xs); color: var(--warn);
+  font-weight: 600;
+}
+
+.rp-preview { min-width: 0; }
+.rp-preview-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s3);
+}
+
+.rp-paper {
+  background: var(--surface-solid);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1, 0 1px 3px rgba(0, 0, 0, 0.06));
+  padding: clamp(16px, 3vw, 34px);
+  transition: opacity var(--speed);
+}
+.rp-paper.busy { opacity: 0.55; pointer-events: none; }
+
+.rp-doc { max-width: 860px; margin: 0 auto; color: var(--text); }
+
+/* ------------------------------------------------------------ masthead */
+
+.rp-masthead { text-align: center; }
+.rp-mark {
+  width: 58px; height: 58px; margin: 0 auto 10px;
+  border-radius: 14px;
+  background: linear-gradient(150deg, var(--accent),
+    color-mix(in srgb, var(--accent) 55%, #1b3a6b));
+  color: #fff; font-weight: 800; font-size: 28px; line-height: 58px;
+  letter-spacing: -0.02em;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.rp-tagline {
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic; font-size: 17px; line-height: 1.4;
+  margin: 0 0 6px; color: var(--text);
+}
+.rp-center {
+  margin: 0; font-size: var(--fs-xs); letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--text-faint); font-weight: 650;
+}
+.rp-teacher { margin: 8px 0 0; font-weight: 750; font-size: var(--fs-md); }
+.rp-teacher span {
+  display: block; font-weight: 500; font-size: var(--fs-xs);
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-faint); margin-top: 2px;
+}
+.rp-rule {
+  width: 130px; height: 3px; margin: 16px auto 0;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  border-radius: 999px;
+}
+
+.rp-title-block { text-align: center; margin: 22px 0 6px; }
+.rp-eyebrow {
+  display: block; font-size: var(--fs-xs); font-weight: 750;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent);
+}
+.rp-title {
+  margin: 6px 0 4px; font-size: clamp(22px, 3vw, 30px);
+  font-weight: 800; letter-spacing: -0.02em; color: var(--text);
+}
+.rp-context { margin: 0; font-size: var(--fs-sm); color: var(--text-dim); }
+.rp-label {
+  display: inline-block; margin-top: 10px;
+  font-size: 10px; font-weight: 750; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--accent);
+  border: 1px solid var(--accent-line); background: var(--accent-soft);
+  padding: 3px 10px; border-radius: 999px;
+}
+
+/* ------------------------------------------------------------ sections */
+
+.rp-section {
+  margin-top: 26px; padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.rp-section-head { margin-bottom: 12px; }
+.rp-section-head h4 {
+  margin: 0; font-size: var(--fs-sm); font-weight: 750;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text);
+}
+.rp-section-head p {
+  margin: 3px 0 0; font-size: var(--fs-xs); color: var(--text-faint);
+  max-width: 72ch;
+}
+
+.rp-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--s3);
+}
+
+.rp-class { margin-top: var(--s4); }
+.rp-class-banner {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s2);
+  background: linear-gradient(90deg, var(--accent),
+    color-mix(in srgb, var(--accent) 72%, #1b3a6b));
+  color: #fff; padding: 7px 13px; border-radius: var(--radius-sm);
+  font-size: var(--fs-xs); font-weight: 750;
+  letter-spacing: 0.12em; text-transform: uppercase;
+}
+.rp-class-meta { font-weight: 600; opacity: 0.9; letter-spacing: 0.04em; }
+
+.rp-table-wrap { overflow-x: auto; margin-top: var(--s2); }
+.rp-table {
+  width: 100%; border-collapse: collapse;
+  font-size: var(--fs-sm); min-width: 460px;
+}
+.rp-table th {
+  text-align: left; font-size: 10px; letter-spacing: 0.07em;
+  text-transform: uppercase; font-weight: 750; color: #fff;
+  background: #1b3a6b; padding: 8px 10px; white-space: nowrap;
+}
+.rp-table td {
+  padding: 8px 10px; border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.rp-table tbody tr:nth-child(even) td { background: var(--surface); }
+.rp-table tbody tr:hover td { background: var(--surface-strong); }
+.rp-table .center { text-align: center; }
+.rp-table .strong { font-weight: 750; }
+.rp-table .rp-name { font-weight: 650; }
+.rp-table tr.tone-warn td { background: var(--warn-soft); }
+.rp-table tr.tone-err td { background: var(--err-soft); }
+.rp-table td.tone-warn { color: var(--warn); font-weight: 650; }
+.rp-table td.tone-err { color: var(--err); font-weight: 650; }
+.rp-code { font-weight: 750; color: var(--accent); }
+
+.rp-empty {
+  margin: 0; padding: 14px 16px; border-left: 3px solid var(--accent);
+  background: var(--surface); border-radius: var(--radius-sm);
+  font-size: var(--fs-sm); font-style: italic; color: var(--text-faint);
+}
+.rp-note {
+  margin: 8px 0 0; font-size: var(--fs-xs); color: var(--text-faint);
+  line-height: 1.5;
+}
+
+.rp-sign {
+  display: flex; justify-content: space-between; gap: var(--s5);
+  flex-wrap: wrap; margin-top: var(--s4);
+  padding-top: var(--s3); border-top: 1px dashed var(--border);
+}
+.rp-sign-left { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); }
+.rp-sign-left strong { font-size: var(--fs-md); }
+.rp-sign-left span { color: var(--text-faint); font-size: var(--fs-xs); }
+.rp-sign-right { display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
+.rp-sign-cap {
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-faint); font-weight: 700;
+}
+.rp-sign-line { height: 1px; background: var(--text-faint); opacity: 0.6; }
+
+@media (max-width: 620px) {
+  .rp-paper { padding: var(--s3); }
+  .rp-mark { width: 48px; height: 48px; line-height: 48px; font-size: 23px; }
+  .rp-sign { flex-direction: column; }
+}

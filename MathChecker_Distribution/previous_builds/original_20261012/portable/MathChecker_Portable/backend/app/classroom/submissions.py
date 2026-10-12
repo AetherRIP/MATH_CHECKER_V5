@@ -1,0 +1,549 @@
+"""Classroom submission TRACKING engine (spec §§3-§16).
+
+Two layers, kept strictly apart:
+
+RAW LAYER  — current_state holds the verbatim Classroom state string
+             (NEW / CREATED / TURNED_IN / RETURNED / RECLAIMED_BY_STUDENT /
+             STUDENT_EDITED_AFTER_TURN_IN). This is the source of truth and
+             is never rewritten. Roster students with no submission resource
+             get the marker state 'NOT_STARTED' (there is no Classroom truth
+             to store for them).
+
+VIEW LAYER — normalized_status() maps a raw state + flags onto the 13
+             user-facing statuses. It is a pure function of its inputs, so
+             it can evolve without touching stored data.
+
+Sync is IDEMPOTENT (keyed by the stable Classroom submission id) and
+FAILURE-SAFE: on any API failure the previously synced rows are KEPT (never
+deleted) and simply age into 'stale' via last_synced_at — the UI shows the
+last known truth plus a freshness indicator, which is exactly what a teacher
+needs at 11pm before grades are due.
+
+A submission resource existing says nothing about whether work was turned
+in — the state field is the only source of truth, and CREATED must never be
+shown as "submitted" (spec §3.1).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+from typing import Any
+
+from .. import db
+from .. import student_identity
+from ..logging_setup import log_event
+from . import client as gc
+
+log = logging.getLogger("classroom.submissions")
+
+# ---------------------------------------------------------------- view layer
+
+# All user-facing statuses (§3.2). NOT_STARTED covers roster students with
+# no submission resource; PROCESSING/CORRECTED/FAILED are overlaid from V5's
+# own job state; GRADED from Classroom's assigned grade.
+STATUSES = (
+    "NOT_STARTED", "CREATED", "SUBMITTED", "SUBMITTED_LATE", "RETURNED",
+    "RECLAIMED", "EDITED_AFTER_SUBMISSION", "MISSING", "PROCESSING",
+    "CORRECTED", "GRADED", "FAILED", "INVALID", "UNKNOWN",
+)
+
+STATUS_LABELS = {
+    "NOT_STARTED": "Not started",
+    "CREATED": "Opened, not submitted",
+    "SUBMITTED": "Submitted",
+    "SUBMITTED_LATE": "Submitted late",
+    "RETURNED": "Returned",
+    "RECLAIMED": "Reclaimed (unsubmitted)",
+    "EDITED_AFTER_SUBMISSION": "Edited after submission",
+    "MISSING": "No submission",
+    "PROCESSING": "Being corrected",
+    "CORRECTED": "Corrected",
+    "GRADED": "Graded",
+    "FAILED": "Correction failed",
+    "INVALID": "Invalid submission",
+    "UNKNOWN": "Unknown",
+}
+
+# Raw Classroom states that mean "the student has handed something in".
+# STUDENT_EDITED_AFTER_TURN_IN is deliberately NOT here: it gets the more
+# specific EDITED_AFTER_SUBMISSION status, and it also means any earlier
+# correction result may be stale.
+_TURNED_IN_STATES = {"TURNED_IN", "STUDENT_EDITED_AFTER_TURN_IN"}
+
+_STALE_AFTER_SECONDS = 30 * 60  # rows older than this display as stale
+
+
+def stale_after_seconds() -> int:
+    return _STALE_AFTER_SECONDS
+
+
+def normalized_status(row: dict[str, Any], job: dict | None = None,
+                      result: dict | None = None) -> str:
+    """Map a classroom_submissions row (+ V5's latest job/result) onto a status.
+
+    Pure function of the inputs — no DB access, so tests can call it with
+    synthetic dicts.
+
+    Overlay rules:
+      * PROCESSING / CORRECTED only apply while the work is still handed in
+        (raw TURNED_IN family). If a student reclaimed or re-edited, the
+        Classroom state wins — "Reclaimed" must never display as "Corrected".
+      * FAILED applies while work is still handed in: a failed correction on
+        a submitted piece of work is what the teacher must act on.
+      * GRADED wins whenever Classroom itself holds an assigned grade.
+      * data_quality ERROR (sync could not verify) degrades to UNKNOWN only
+        when nothing at all is known.
+    """
+    job = job or {}
+    result = result or {}
+    raw = row.get("current_state") or ""
+    late = bool(row.get("late"))
+    still_handed_in = raw in _TURNED_IN_STATES
+
+    if row.get("data_quality") == "ERROR" and not raw:
+        return "UNKNOWN"
+
+    if still_handed_in:
+        status = (job.get("status") or "").upper()
+        if status == "FAILED":
+            # A submission with no usable attachment is "Invalid submission",
+            # not merely a correction failure (spec §8 / §10).
+            if (job.get("error_code") or "").lower() == "invalid_submission":
+                return "INVALID"
+            return "FAILED"
+        if status in ("", "COMPLETED") or result:
+            # No in-flight job: a finished correction or an existing result
+            # means V5 has marked it. Classroom's own grade outranks that.
+            if row.get("assigned_grade") is not None:
+                return "GRADED"
+            if result or status == "COMPLETED":
+                return "CORRECTED"
+        if status:
+            return "PROCESSING"
+
+    if row.get("assigned_grade") is not None:
+        return "GRADED"
+
+    return _base_status(raw, late)
+
+
+def _base_status(raw: str, late: bool) -> str:
+    if raw == "TURNED_IN":
+        return "SUBMITTED_LATE" if late else "SUBMITTED"
+    if raw == "STUDENT_EDITED_AFTER_TURN_IN":
+        return "EDITED_AFTER_SUBMISSION"
+    if raw == "RECLAIMED_BY_STUDENT":
+        return "RECLAIMED"
+    if raw == "RETURNED":
+        return "RETURNED"
+    if raw in ("CREATED", "NEW"):
+        return "CREATED"  # assignment opened, nothing handed in yet
+    if raw == "NOT_STARTED":
+        return "NOT_STARTED"
+    if raw == "MISSING":
+        return "MISSING"
+    if not raw:
+        return "MISSING"
+    return "UNKNOWN"
+
+
+# ---------------------------------------------------------------- sync engine
+
+def fetch_tracking_inputs(course_id: str, coursework_id: str) -> dict:
+    """Fetch the raw inputs for a tracking sync: full roster + ALL submission
+    pages. Pure fetch, no DB writes — the SSE route streams progress between
+    these steps and then hands both to store_sync_result()."""
+    from .auth import get_access_token
+
+    token = get_access_token()
+
+    # 1) Roster first (§5): students without a submission resource must
+    #    still appear as NOT_STARTED, not silently vanish.
+    students = gc.list_course_students(token, course_id)
+    roster: dict[str, dict] = {}
+    for st in students:
+        profile = st.get("profile") or {}
+        uid = st.get("userId") or profile.get("id")
+        if uid:
+            roster[uid] = {
+                "user_id": uid,
+                "name": (profile.get("name") or {}).get("fullName"),
+                "email": profile.get("emailAddress"),
+            }
+
+    # 2) ALL submissions, following pagination to the end (§4).
+    subs: list[dict] = []
+    page_token: str | None = None
+    pages = 0
+    while True:
+        page, next_token = gc.list_student_submissions(
+            token, course_id, coursework_id, page_token)
+        subs.extend(page)
+        pages += 1
+        if not next_token:
+            break
+        page_token = next_token
+
+    return {"roster": roster, "submissions": subs, "pages": pages}
+
+
+def sync_submission_tracking(course_id: str, coursework_id: str) -> dict:
+    """Sync one assignment's submissions with full-state fidelity.
+
+    Idempotent: re-running with unchanged data updates only last_synced_at
+    and sync_version. Never deletes: submissions that disappear from the API
+    response keep their last known row and age into stale. Returns a summary
+    dict for the API progress stream.
+
+    An assignment DELETED in Classroom is never re-fetched: Google would
+    answer HTTP 400 forever. Its stored history is left untouched.
+    """
+    cw = db.query_one("SELECT sync_state FROM coursework WHERE id = ?",
+                      (coursework_id,))
+    if cw is not None and (cw["sync_state"] or "ACTIVE") == \
+            "DELETED_IN_CLASSROOM":
+        return {"course_id": course_id, "coursework_id": coursework_id,
+                "skipped": "deleted_in_classroom", "submissions": 0,
+                "roster": 0, "transitions": 0, "pages": 0,
+                "synced_at": time.time()}
+    fetched = fetch_tracking_inputs(course_id, coursework_id)
+    summary = store_sync_result(course_id, coursework_id,
+                                fetched["roster"], fetched["submissions"])
+    summary["pages"] = fetched["pages"]
+    return summary
+
+
+def store_sync_result(course_id: str, coursework_id: str,
+                      roster: dict[str, dict], subs: list[dict]) -> dict:
+    """Persist a fetched roster+submissions (idempotent, failure-safe).
+
+    Exposed separately so the SSE sync route can stream page progress and
+    still store through the exact same code path as plain sync_submission_tracking().
+    """
+    now_ts = time.time()
+    transitions = 0
+    with db.transaction() as conn:
+        for s in subs:
+            if not s.get("id"):
+                continue
+            transitions += _upsert_submission(conn, s, course_id, coursework_id,
+                                              roster, now_ts)
+
+        submission_user_ids = {s.get("userId") for s in subs if s.get("userId")}
+        for uid, info in roster.items():
+            if uid in submission_user_ids:
+                continue
+            # If a real row already exists for this student (their submission
+            # resource vanished from the API), keep it — never duplicate.
+            existing_real = conn.execute(
+                "SELECT 1 FROM classroom_submissions WHERE coursework_id = ? "
+                "AND student_id = ? AND submission_id NOT LIKE '%:missing'",
+                (coursework_id, uid),
+            ).fetchone()
+            if existing_real:
+                continue
+            conn.execute(
+                """
+                INSERT INTO classroom_submissions(
+                    submission_id, course_id, coursework_id, student_id,
+                    student_name, student_email, current_state, late,
+                    data_quality, last_synced_at, first_seen_at, sync_version)
+                VALUES(?,?,?,?,?,?, 'NOT_STARTED', 0, 'VERIFIED', ?, ?, 1)
+                ON CONFLICT(submission_id) DO UPDATE SET
+                    student_name=excluded.student_name,
+                    student_email=excluded.student_email,
+                    last_synced_at=excluded.last_synced_at,
+                    sync_version=classroom_submissions.sync_version + 1
+                """,
+                (f"{coursework_id}:{uid}:missing", course_id, coursework_id,
+                 uid, info.get("name"), info.get("email"), now_ts, now_ts),
+            )
+
+    _touch_coursework_sync(coursework_id, now_ts)
+
+    log_event("classroom.submissions", "tracking synced",
+              course_id=course_id, coursework_id=coursework_id,
+              submissions=len(subs), roster=len(roster), transitions=transitions)
+
+    return {
+        "course_id": course_id,
+        "coursework_id": coursework_id,
+        "submissions": len(subs),
+        "roster": len(roster),
+        "transitions": transitions,
+        "synced_at": now_ts,
+    }
+
+
+def _upsert_submission(conn, s: dict, course_id: str, coursework_id: str,
+                       roster: dict[str, dict], now_ts: float) -> int:
+    """Upsert ONE StudentSubmission; returns 1 if a state transition fired."""
+    sid = s["id"]
+    uid = s.get("userId")
+    info = roster.get(uid) or {}
+    raw_state = s.get("state") or ""
+    attachments = gc.extract_attachments(s)
+    history = gc.extract_state_history(s)
+
+    existing = conn.execute(
+        "SELECT current_state FROM classroom_submissions WHERE submission_id = ?",
+        (sid,),
+    ).fetchone()
+    prev_state = existing["current_state"] if existing else None
+    changed = prev_state is not None and prev_state != raw_state
+
+    conn.execute(
+        """
+        INSERT INTO classroom_submissions(
+            submission_id, course_id, coursework_id, student_id, student_name,
+            student_email, current_state, previous_state, state_changed_at,
+            late, creation_time, update_time, submission_history,
+            attachments_json, assigned_grade, draft_grade, max_points,
+            data_quality, sync_error, last_synced_at, first_seen_at, sync_version)
+        VALUES(?,?,?,?,?,?,?,?,?,
+               ?,?,?,?,?,?,?,?,?,
+               NULL, ?, ?, COALESCE(
+                   (SELECT sync_version + 1 FROM classroom_submissions
+                     WHERE submission_id = ?), 1))
+        ON CONFLICT(submission_id) DO UPDATE SET
+            student_name=excluded.student_name,
+            student_email=excluded.student_email,
+            current_state=excluded.current_state,
+            previous_state=COALESCE(excluded.previous_state,
+                                    classroom_submissions.previous_state),
+            state_changed_at=COALESCE(
+                CASE WHEN classroom_submissions.current_state != excluded.current_state
+                     THEN excluded.state_changed_at END,
+                classroom_submissions.state_changed_at),
+            late=excluded.late,
+            creation_time=excluded.creation_time,
+            update_time=excluded.update_time,
+            submission_history=excluded.submission_history,
+            attachments_json=excluded.attachments_json,
+            assigned_grade=excluded.assigned_grade,
+            draft_grade=excluded.draft_grade,
+            data_quality=excluded.data_quality,
+            sync_error=NULL,
+            last_synced_at=excluded.last_synced_at,
+            sync_version=classroom_submissions.sync_version + 1
+        """,
+        (
+            sid, course_id, coursework_id, uid, info.get("name"),
+            info.get("email"), raw_state,
+            prev_state if changed else None, now_ts if changed else None,
+            int(bool(s.get("late"))), s.get("creationTime"), s.get("updateTime"),
+            json.dumps(history), json.dumps(attachments),
+            s.get("assignedGrade"), s.get("draftGrade"), None,
+            _quality_for(raw_state, attachments), now_ts, now_ts, sid,
+        ),
+    )
+
+    if changed:
+        conn.execute(
+            "INSERT INTO classroom_state_events(submission_id, from_state,"
+            " to_state, detected_at) VALUES(?,?,?,?)",
+            (sid, prev_state, raw_state, now_ts),
+        )
+    return 1 if changed else 0
+
+
+def _quality_for(raw_state: str, attachments: list[dict]) -> str:
+    """Data-quality model (§14): PARTIAL = handed in but no attachment
+    metadata came back (we cannot yet prove WHAT was submitted); VERIFIED =
+    everything we expect was seen first-hand this sync."""
+    if raw_state in _TURNED_IN_STATES:
+        return "VERIFIED" if attachments else "PARTIAL"
+    return "VERIFIED"
+
+
+def _touch_coursework_sync(coursework_id: str, now_ts: float) -> None:
+    db.set_meta(f"classroom_tracking_sync:{coursework_id}", str(now_ts))
+
+
+def last_tracking_sync(coursework_id: str) -> float | None:
+    raw = db.get_meta(f"classroom_tracking_sync:{coursework_id}")
+    return float(raw) if raw else None
+
+
+# ---------------------------------------------------------------- read model
+
+def tracking_rows(course_id: str | None = None,
+                  coursework_id: str | None = None,
+                  now_ts: float | None = None) -> dict:
+    """Everything the tracking UI needs: normalized rows + overview + freshness."""
+    now_ts = time.time() if now_ts is None else now_ts
+    where, params = [], []
+    if course_id:
+        where.append("cs.course_id = ?")
+        params.append(course_id)
+    if coursework_id:
+        where.append("cs.coursework_id = ?")
+        params.append(coursework_id)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+
+    rows = db.query(
+        f"""
+        SELECT cs.*, w.title AS coursework_title,
+               w.max_points AS coursework_max_points,
+               w.due_date AS coursework_due_date
+        FROM classroom_submissions cs
+        LEFT JOIN coursework w ON w.id = cs.coursework_id
+        {clause}
+        ORDER BY COALESCE(cs.student_name, cs.student_id), cs.coursework_id
+        """,
+        params,
+    )
+
+    jobs_by_sub: dict[str, dict] = {}
+    results_by_sub: dict[str, dict] = {}
+    sub_ids = [r["submission_id"] for r in rows
+               if not r["submission_id"].endswith(":missing")]
+    if sub_ids:
+        marks = ",".join("?" * len(sub_ids))
+        for j in db.query(
+            f"SELECT id, submission_id, status, error, error_code, updated_at, result_id "
+            f"FROM correction_jobs WHERE submission_id IN ({marks})",
+            sub_ids,
+        ):
+            cur = jobs_by_sub.get(j["submission_id"])
+            if cur is None or (j["updated_at"] or 0) >= (cur["updated_at"] or 0):
+                jobs_by_sub[j["submission_id"]] = dict(j)
+        for res in db.query(
+            f"SELECT id, submission_id, earned, available, percentage, created_at "
+            f"FROM results WHERE submission_id IN ({marks}) "
+            f"ORDER BY created_at DESC",
+            sub_ids,
+        ):
+            results_by_sub.setdefault(res["submission_id"], dict(res))
+
+    out_rows: list[dict] = []
+    counts: dict[str, int] = {s: 0 for s in STATUSES}
+    sync_errors = 0
+    stale_rows = 0
+    last_sync: float | None = None
+
+    for r in rows:
+        row = dict(r)
+        sid = row["submission_id"]
+        job = jobs_by_sub.get(sid)
+        result = results_by_sub.get(sid)
+        quality = row.get("data_quality") or "UNKNOWN"
+        last_synced = row.get("last_synced_at")
+        is_stale = bool(last_synced and (now_ts - last_synced) > _STALE_AFTER_SECONDS)
+        status = normalized_status(row, job=job, result=result)
+        if row.get("sync_error"):
+            sync_errors += 1
+        if is_stale:
+            stale_rows += 1
+        if last_synced:
+            last_sync = max(last_sync or 0, last_synced)
+        counts[status] = counts.get(status, 0) + 1
+
+        # Canonical name: nickname, then Classroom name. The old code fell back
+        # to the internal student id, which is how a raw id reached a page.
+        _identity = student_identity.resolve(row.get("student_id"))
+        out_rows.append({
+            "submission_id": sid,
+            "course_id": row.get("course_id"),
+            "coursework_id": row.get("coursework_id"),
+            "coursework_title": row.get("coursework_title"),
+            "student_id": row.get("student_id"),
+            "student_name": row.get("student_name") or _identity["classroom_name"],
+            "display_name": _identity["display_name"],
+            "classroom_name": _identity["classroom_name"],
+            "nickname": _identity["nickname"],
+            "student_email": row.get("student_email"),
+            "raw_state": row.get("current_state"),
+            "previous_state": row.get("previous_state"),
+            "state_changed_at": row.get("state_changed_at"),
+            "status": status,
+            "status_label": STATUS_LABELS.get(status, status),
+            "late": bool(row.get("late")),
+            "creation_time": row.get("creation_time"),
+            "update_time": row.get("update_time"),
+            "attachments": db.loads(row.get("attachments_json"), []),
+            "assigned_grade": row.get("assigned_grade"),
+            "draft_grade": row.get("draft_grade"),
+            "max_points": row.get("max_points") or row.get("coursework_max_points"),
+            "due_date": row.get("coursework_due_date"),
+            "data_quality": quality,
+            "stale": is_stale,
+            "sync_error": row.get("sync_error"),
+            "last_synced_at": last_synced,
+            "first_seen_at": row.get("first_seen_at"),
+            "synthetic": sid.endswith(":missing"),
+            "job": {"id": job["id"], "status": job["status"],
+                    "error": job.get("error"),
+                    "error_code": job.get("error_code")} if job else None,
+            "result": {"id": result["id"], "earned": result["earned"],
+                       "available": result["available"],
+                       "percentage": result["percentage"]} if result else None,
+        })
+
+    return {
+        "rows": out_rows,
+        "overview": {
+            "counts": counts,
+            "total": len(out_rows),
+            "sync_errors": sync_errors,
+            "stale": stale_rows,
+            "last_sync": last_sync,
+        },
+    }
+
+
+def submission_detail(submission_id: str) -> dict | None:
+    """Full detail: row + state-event timeline + attachments + V5 history."""
+    row = db.query_one(
+        "SELECT cs.*, w.title AS coursework_title FROM classroom_submissions cs "
+        "LEFT JOIN coursework w ON w.id = cs.coursework_id "
+        "WHERE cs.submission_id = ?",
+        (submission_id,),
+    )
+    if not row:
+        return None
+    row = dict(row)
+    events = [dict(e) for e in db.query(
+        "SELECT from_state, to_state, detected_at FROM classroom_state_events "
+        "WHERE submission_id = ? ORDER BY detected_at, id", (submission_id,))]
+    return {
+        "submission": {**tracking_row_public(row),
+                       "submission_history": db.loads(row.get("submission_history"), [])},
+        "state_events": events,
+        "attachments": db.loads(row.get("attachments_json"), []),
+        "jobs": [dict(j) for j in db.query(
+            "SELECT id, status, created_at, finished_at, error, error_code "
+            "FROM correction_jobs "
+            "WHERE submission_id = ? ORDER BY created_at", (submission_id,))],
+        "results": [dict(res) for res in db.query(
+            "SELECT id, earned, available, percentage, created_at FROM results "
+            "WHERE submission_id = ? ORDER BY created_at", (submission_id,))],
+    }
+
+
+def tracking_row_public(row: dict) -> dict:
+    """Public projection of a classroom_submissions row (no internal noise)."""
+    return {
+        "submission_id": row.get("submission_id"),
+        "course_id": row.get("course_id"),
+        "coursework_id": row.get("coursework_id"),
+        "coursework_title": row.get("coursework_title"),
+        "student_id": row.get("student_id"),
+        "student_name": row.get("student_name"),
+        "current_state": row.get("current_state"),
+        "previous_state": row.get("previous_state"),
+        "state_changed_at": row.get("state_changed_at"),
+        "late": bool(row.get("late")),
+        "creation_time": row.get("creation_time"),
+        "update_time": row.get("update_time"),
+        "assigned_grade": row.get("assigned_grade"),
+        "draft_grade": row.get("draft_grade"),
+        "max_points": row.get("max_points"),
+        "data_quality": row.get("data_quality"),
+        "sync_error": row.get("sync_error"),
+        "last_synced_at": row.get("last_synced_at"),
+        "first_seen_at": row.get("first_seen_at"),
+        "sync_version": row.get("sync_version"),
+    }

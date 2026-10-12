@@ -1,0 +1,308 @@
+{
+  "port": 52406,
+  "data_dir": "E:\\MATH V6.0 AUTOMATION\\MATH V5\\.live_verify\\data",
+  "mocked": false,
+  "note": "Real application, real cloudflared tunnel, real HTTP. The remote client is a separate process on the same machine reaching the app through the Cloudflare edge, not a second physical machine.",
+  "results": [
+    {
+      "check": "application starts on an isolated data directory",
+      "status": "PASS",
+      "detail": "http://127.0.0.1:52406"
+    },
+    {
+      "check": "a local account can be created (first-run setup)",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "the local owner signs in (session + CSRF)",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "default is OFF",
+      "status": "PASS",
+      "detail": "multi_account=False source=default"
+    },
+    {
+      "check": "no restart is required to change it",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "the setting is a documented config key",
+      "status": "PASS",
+      "detail": "[accounts] multi_account / MULTI_ACCOUNT_ENABLED"
+    },
+    {
+      "check": "a Developer of the distributed layer can sign in",
+      "status": "PASS",
+      "detail": "HTTP 200 role=DEVELOPER"
+    },
+    {
+      "check": "multi-account mode can be switched ON",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "an account can be created while the layer is ON",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "a school can be created",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "a team can be created while the layer is ON",
+      "status": "PASS",
+      "detail": "HTTP 200 {'id': '69d124c21f134567b5bc78908eeb0c74', 'name': 'Live Verify Team', 'school_id': '5049280388d143718ee319d6ed6df644', 'active': 1, 'created_by': 'b6d06c5985434dba85aced743174e318', 'created_at': 1791760545.1156023, 'updated_at': 1791760545.1156023, 'member_count': 0}"
+    },
+    {
+      "check": "the switch can be turned OFF",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "GET /api/distributed/accounts is refused (403 multi_account_disabled)",
+      "status": "PASS",
+      "detail": "HTTP 403 multi_account_disabled"
+    },
+    {
+      "check": "POST /api/distributed/accounts is refused (403 multi_account_disabled)",
+      "status": "PASS",
+      "detail": "HTTP 403 multi_account_disabled"
+    },
+    {
+      "check": "POST /api/distributed/accounts/x/roles is refused (403 multi_account_disabled)",
+      "status": "PASS",
+      "detail": "HTTP 403 multi_account_disabled"
+    },
+    {
+      "check": "GET /api/distributed/teams is refused (403 multi_account_disabled)",
+      "status": "PASS",
+      "detail": "HTTP 403 multi_account_disabled"
+    },
+    {
+      "check": "POST /api/distributed/teams is refused (403 multi_account_disabled)",
+      "status": "PASS",
+      "detail": "HTTP 403 multi_account_disabled"
+    },
+    {
+      "check": "GET /api/distributed/devices is refused (403 multi_account_disabled)",
+      "status": "PASS",
+      "detail": "HTTP 403 multi_account_disabled"
+    },
+    {
+      "check": "GET /api/distributed/device/discovery is refused (403 multi_account_disabled)",
+      "status": "PASS",
+      "detail": "HTTP 403 multi_account_disabled"
+    },
+    {
+      "check": "the backend connection still answers (/api/distributed/ping)",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "device registration/heartbeats still work",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "settings still load and the 1\u20139 grade scale is intact",
+      "status": "PASS",
+      "detail": "HTTP 200 grades=['1', '2', '3', '4', '5', '6', '7', '8', '9']"
+    },
+    {
+      "check": "core data still serves (dashboard)",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "the switch can be turned ON again",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "the account created before the switch is still there",
+      "status": "PASS",
+      "detail": "HTTP 200 accounts=['assistant-one', 'developer', 'teacher']"
+    },
+    {
+      "check": "the team created before the switch is still there",
+      "status": "PASS",
+      "detail": "HTTP 200 teams=['Live Verify Team']"
+    },
+    {
+      "check": "with the layer ON an unauthenticated caller gets 401",
+      "status": "PASS",
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "the switch starts OFF and nothing is exposed",
+      "status": "PASS",
+      "detail": "status=disabled"
+    },
+    {
+      "check": "cloudflared is available and the switch can be used",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "local access works while it is OFF",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "the separately configured backend connection works while it is OFF",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "the endpoint is created and VERIFIED (not just started)",
+      "status": "PASS",
+      "detail": "HTTP 200 status=online reason=None"
+    },
+    {
+      "check": "public address",
+      "status": "INFO",
+      "detail": "https://discuss-cardiac-paradise-prediction.trycloudflare.com"
+    },
+    {
+      "check": "every check of the verification passed",
+      "status": "PASS",
+      "detail": "{\"health\": true, \"ui\": true, \"auth_status\": true, \"api_gated\": true}"
+    },
+    {
+      "check": "the address really serves this app (/api/health)",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "the app UI loads through the address",
+      "status": "PASS",
+      "detail": "HTTP 200 bytes=400"
+    },
+    {
+      "check": "public mode is reported by the auth status",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "an unauthenticated caller is REFUSED protected data",
+      "status": "PASS",
+      "detail": "HTTP 401 auth_required"
+    },
+    {
+      "check": "an unauthenticated caller cannot reach account administration",
+      "status": "PASS",
+      "detail": "HTTP 403 multi_account_disabled"
+    },
+    {
+      "check": "the interactive API docs stay hidden while public",
+      "status": "PASS",
+      "detail": "HTTP 404"
+    },
+    {
+      "check": "sign-in works through the address",
+      "status": "PASS",
+      "detail": "HTTP 204"
+    },
+    {
+      "check": "the signed-in remote client can read data",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "the remote client's backend connection works",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "a remote device can still heartbeat",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "killed the tunnel process on purpose",
+      "status": "INFO",
+      "detail": "pid=11600"
+    },
+    {
+      "check": "the app reports FAILED after the tunnel died",
+      "status": "PASS",
+      "detail": "status=failed"
+    },
+    {
+      "check": "no address is displayed as active while failed",
+      "status": "PASS",
+      "detail": "None"
+    },
+    {
+      "check": "an actionable reason is given",
+      "status": "PASS",
+      "detail": "External health check failed. Public endpoint did not answer /api/health."
+    },
+    {
+      "check": "the address is still REMEMBERED for the next time",
+      "status": "PASS",
+      "detail": "https://discuss-cardiac-paradise-prediction.trycloudflare.com"
+    },
+    {
+      "check": "the switch reports OFF",
+      "status": "PASS",
+      "detail": "status=disabled"
+    },
+    {
+      "check": "the saved address survives the switch being turned off",
+      "status": "PASS",
+      "detail": "https://discuss-cardiac-paradise-prediction.trycloudflare.com"
+    },
+    {
+      "check": "no tunnel process is left behind by the app",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "the old address no longer serves the app",
+      "status": "PASS",
+      "detail": "last HTTP 530 after 0s"
+    },
+    {
+      "check": "local access still works after switching it off",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "the backend connection still works after switching it off",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "the application restarts",
+      "status": "PASS",
+      "detail": 90
+    },
+    {
+      "check": "the Public Address preference is still OFF after the restart",
+      "status": "PASS",
+      "detail": "status=disabled"
+    },
+    {
+      "check": "multi-account mode is still OFF after the restart",
+      "status": "PASS",
+      "detail": "source=default"
+    },
+    {
+      "check": "local access works after the restart",
+      "status": "PASS",
+      "detail": "HTTP 200"
+    }
+  ],
+  "summary": {
+    "pass": 57,
+    "fail": 0,
+    "info": 2
+  }
+}
