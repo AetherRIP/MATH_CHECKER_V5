@@ -274,6 +274,21 @@ class CorrectionService:
                 raise WaitForApiRetry(_wait_estimate()) from exc
             raise
 
+    def _record_scheme_audit(self, conn, job: dict, result_id: str,
+                             result: dict, now_ts: float) -> None:
+        """Record any substantiated mark-scheme disagreement (engine side).
+
+        A side channel by design: a failure to *record* a discrepancy must
+        never fail a correction, so it is logged and swallowed here.
+        """
+        try:
+            from . import scheme_audit
+            scheme_audit.record_from_result(
+                conn, job=job, result_id=result_id, result=result,
+                now_ts=now_ts)
+        except Exception:  # noqa: BLE001 - never break a save over audit
+            log.exception("mark-scheme discrepancy recording failed")
+
     # -- classroom download -----------------------------------------------------
 
     def _download_classroom_files(self, job: dict, check_cancel) -> tuple[list[str], list[str]]:
@@ -491,6 +506,7 @@ class CorrectionService:
                     "UPDATE correction_jobs SET result_id = ?, updated_at = ? WHERE id = ?",
                     (result_id, now_ts, job["id"]),
                 )
+                self._record_scheme_audit(conn, job, result_id, result, now_ts)
                 return result_id
             if existing and decision.action == ACTION_KEEP_EXISTING:
                 result_id = existing["id"]
@@ -518,6 +534,7 @@ class CorrectionService:
                     "UPDATE correction_jobs SET result_id = ?, updated_at = ? WHERE id = ?",
                     (result_id, now_ts, job["id"]),
                 )
+                self._record_scheme_audit(conn, job, result_id, result, now_ts)
                 return result_id
             if existing:
                 result_id = existing["id"]
@@ -592,6 +609,9 @@ class CorrectionService:
                 "UPDATE correction_jobs SET result_id = ?, updated_at = ? WHERE id = ?",
                 (result_id, now_ts, job["id"]),
             )
+            self._record_scheme_audit(conn, job, result_id,
+                                      dc["final_result"] if dc["triggered"] else result,
+                                      now_ts)
         return result_id
 
 

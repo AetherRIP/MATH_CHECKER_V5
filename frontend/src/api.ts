@@ -1977,3 +1977,120 @@ export function dataImport(file: File, mode: "add_only" | "update_existing") {
   if (mode === "update_existing") form.append("confirm", "replace");
   return postForm<ImportReport>("/data/import", form);
 }
+
+// ---------------------------------------------------------------- mark-scheme audits
+// The mark scheme is a reference, not infallible truth. These surfaces let a
+// teacher inspect a suspected error and approve (or reject) a STAGED bulk
+// correction. Staging never changes a grade; only an explicit confirmation does.
+
+export type SchemeDiscrepancyState =
+  | "CONFIRMED_DISCREPANCY" | "POSSIBLE_DISCREPANCY" | "VALID_ALTERNATIVE"
+  | "UNCERTAIN" | "HUMAN_REVIEWED";
+
+export interface SchemeDiscrepancy {
+  id: string;
+  coursework_id: string | null;
+  course_id: string | null;
+  assignment_title: string | null;
+  question_number: string;
+  discrepancy_type: string;
+  state: SchemeDiscrepancyState;
+  scheme_answer: string | null;
+  verified_answer: string | null;
+  verified_reasoning: string | null;
+  suspicion: string | null;
+  confidence: number | null;
+  max_marks: number | null;
+  student_name: string | null;
+  awarded_marks: number | null;
+  justified_marks: number | null;
+  review_status: string;
+  review_required: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ProposalItem {
+  id: string;
+  result_id: string | null;
+  submission_id: string | null;
+  student_name: string | null;
+  original_earned: number | null;
+  proposed_earned: number | null;
+  delta_points: number | null;
+  question_awarded_before: number | null;
+  question_awarded_after: number | null;
+  status: string;
+  error?: string | null;
+}
+
+export interface SchemeProposal {
+  id: string;
+  coursework_id: string | null;
+  course_id: string | null;
+  discrepancy_id: string;
+  question_number: string;
+  scheme_answer: string | null;
+  verified_answer: string | null;
+  reason: string | null;
+  status: string;
+  created_at: number;
+  affected_count: number;
+  changed_count: number;
+  applied_count: number;
+  failed_count: number;
+  classroom_publish_state?: string | null;
+  items: ProposalItem[];
+}
+
+export function fetchSchemeSummary(courseworkId?: string) {
+  const q = courseworkId ? `?coursework_id=${encodeURIComponent(courseworkId)}` : "";
+  return api<{ open_discrepancies: number; confirmed: number; awaiting_approval: number;
+    items: SchemeDiscrepancy[] }>(`/scheme/summary${q}`);
+}
+
+export function fetchSchemeDiscrepancies(courseworkId?: string, reviewStatus?: string) {
+  const params = new URLSearchParams();
+  if (courseworkId) params.set("coursework_id", courseworkId);
+  if (reviewStatus) params.set("review_status", reviewStatus);
+  const q = params.toString() ? `?${params}` : "";
+  return api<{ items: SchemeDiscrepancy[]; total: number }>(`/scheme/discrepancies${q}`);
+}
+
+export function fetchSchemeDiscrepancy(id: string) {
+  return api<{ discrepancy: SchemeDiscrepancy;
+    review_history: { decision: string; decided_by: string | null; note: string | null;
+      ai_recommendation: string | null; created_at: number }[];
+    proposals: SchemeProposal[] }>(`/scheme/discrepancies/${encodeURIComponent(id)}`);
+}
+
+export function decideSchemeDiscrepancy(id: string, decision: string, note = "") {
+  return api<{ discrepancy: SchemeDiscrepancy }>(
+    `/scheme/discrepancies/${encodeURIComponent(id)}/decision`,
+    { method: "POST", body: JSON.stringify({ decision, note }) });
+}
+
+export function proposeSchemeCorrection(id: string) {
+  return api<SchemeProposal>(
+    `/scheme/discrepancies/${encodeURIComponent(id)}/propose`, { method: "POST" });
+}
+
+export function fetchSchemeProposal(id: string) {
+  return api<SchemeProposal>(`/scheme/proposals/${encodeURIComponent(id)}`);
+}
+
+// The ONLY call that changes previously graded marks. `confirm: true` is the
+// deliberate approval action.
+export function approveSchemeProposal(id: string, opts: { publish?: boolean;
+  affectedCount?: number; note?: string } = {}) {
+  return api<SchemeProposal>(`/scheme/proposals/${encodeURIComponent(id)}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ confirm: true, publish: !!opts.publish,
+      affected_count: opts.affectedCount, note: opts.note || "" }),
+  });
+}
+
+export function rejectSchemeProposal(id: string, note = "") {
+  return api<SchemeProposal>(`/scheme/proposals/${encodeURIComponent(id)}/reject`, {
+    method: "POST", body: JSON.stringify({ note }) });
+}

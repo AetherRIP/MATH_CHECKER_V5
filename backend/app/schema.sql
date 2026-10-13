@@ -668,3 +668,120 @@ CREATE INDEX IF NOT EXISTS idx_repair_items_cw ON repair_items(coursework_id);
 -- NOTE: column migrations (e.g. correction_jobs.worker_id) are applied
 -- conditionally by app.db._migrate() at startup, NOT here — ALTER TABLE has
 -- no IF NOT EXISTS in SQLite and would fail on fresh databases.
+
+-- ============================================================================
+-- Mark-scheme discrepancy detection + bulk correction approval (V5)
+--
+-- The mark scheme is an important reference, NOT an infallible source of
+-- mathematical truth. When the marking engine has a defensible mathematical
+-- reason to believe a supplied mark scheme is wrong or incomplete, the
+-- disagreement is recorded here. The ORIGINAL mark scheme is never modified,
+-- and no previously graded submission is changed without explicit human
+-- approval of a staged bulk-correction proposal.
+-- ============================================================================
+
+-- One row per detected disagreement (class + assignment + question + type).
+-- Re-detecting the same disagreement UPDATES the existing row instead of
+-- creating a duplicate notification. ``state`` is one of:
+--   CONFIRMED_DISCREPANCY | POSSIBLE_DISCREPANCY | VALID_ALTERNATIVE |
+--   UNCERTAIN | HUMAN_REVIEWED
+CREATE TABLE IF NOT EXISTS scheme_discrepancies (
+    id TEXT PRIMARY KEY,
+    coursework_id TEXT,
+    course_id TEXT,
+    assignment_title TEXT,
+    question_number TEXT NOT NULL,
+    discrepancy_type TEXT NOT NULL,
+    state TEXT NOT NULL,
+    scheme_answer TEXT,
+    verified_answer TEXT,
+    verified_reasoning TEXT,
+    evidence TEXT,
+    suspicion TEXT,
+    confidence REAL,
+    max_marks INTEGER,
+    student_result_id TEXT,
+    submission_id TEXT,
+    student_id TEXT,
+    student_name TEXT,
+    awarded_marks INTEGER,
+    justified_marks INTEGER,
+    review_recommended INTEGER NOT NULL DEFAULT 1,
+    review_required INTEGER NOT NULL DEFAULT 1,
+    review_status TEXT NOT NULL DEFAULT 'AWAITING_REVIEW',
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(coursework_id, question_number, discrepancy_type)
+);
+CREATE INDEX IF NOT EXISTS idx_scheme_disc_coursework
+    ON scheme_discrepancies(coursework_id);
+CREATE INDEX IF NOT EXISTS idx_scheme_disc_result
+    ON scheme_discrepancies(student_result_id);
+CREATE INDEX IF NOT EXISTS idx_scheme_disc_status
+    ON scheme_discrepancies(review_status);
+
+-- Append-only audit of human decisions on a discrepancy. Distinguishes the
+-- AI's recommendation (``ai_recommendation``) from the human's final decision.
+CREATE TABLE IF NOT EXISTS scheme_discrepancy_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    discrepancy_id TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    decided_by TEXT,
+    note TEXT,
+    ai_recommendation TEXT,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scheme_disc_reviews_disc
+    ON scheme_discrepancy_reviews(discrepancy_id);
+
+-- Staged BULK correction proposals. Creating a proposal NEVER changes a grade.
+-- ``status``: PROPOSED | APPROVED | APPLIED | PARTIAL | REJECTED.
+CREATE TABLE IF NOT EXISTS bulk_correction_proposals (
+    id TEXT PRIMARY KEY,
+    coursework_id TEXT,
+    course_id TEXT,
+    discrepancy_id TEXT,
+    question_number TEXT NOT NULL,
+    scheme_answer TEXT,
+    verified_answer TEXT,
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'PROPOSED',
+    created_by TEXT,
+    created_at REAL NOT NULL,
+    decided_by TEXT,
+    decided_at REAL,
+    applied_at REAL,
+    affected_count INTEGER NOT NULL DEFAULT 0,
+    changed_count INTEGER NOT NULL DEFAULT 0,
+    applied_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    classroom_publish_state TEXT,
+    note TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_bulk_prop_coursework
+    ON bulk_correction_proposals(coursework_id);
+CREATE INDEX IF NOT EXISTS idx_bulk_prop_status
+    ON bulk_correction_proposals(status);
+
+-- One row per affected submission in a proposal. Original marks are preserved
+-- here for auditing even after the results row is updated.
+CREATE TABLE IF NOT EXISTS bulk_correction_items (
+    id TEXT PRIMARY KEY,
+    proposal_id TEXT NOT NULL,
+    result_id TEXT,
+    submission_id TEXT,
+    student_id TEXT,
+    student_name TEXT,
+    original_earned INTEGER,
+    proposed_earned INTEGER,
+    delta_points INTEGER,
+    max_marks INTEGER,
+    question_awarded_before INTEGER,
+    question_awarded_after INTEGER,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    error TEXT,
+    applied_at REAL,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bulk_items_proposal
+    ON bulk_correction_items(proposal_id);

@@ -628,6 +628,12 @@ def attention():
             "route": "#/ai", "count": cfg_keys["total"],
         })
 
+    # -- suspected mark-scheme errors --------------------------------------
+    # Grouped and de-duplicated by the engine (one live record per assignment
+    # + question + type), so the same error can never notify twice.
+    from ..engine import scheme_audit as _scheme_audit
+    items.extend(_scheme_audit.notifications(limit=25))
+
     counts: dict[str, int] = {}
     for it in items:
         counts[it["type"]] = counts.get(it["type"], 0) + 1

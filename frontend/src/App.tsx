@@ -37,12 +37,13 @@ import PromptsPage from "./pages/PromptsPage";
 import SetupWizard from "./pages/SetupWizard";
 import DistributedPage from "./distributed/DistributedPage";
 import UpdatesPage from "./distributed/UpdatesPage";
+import SchemeReviewPage from "./pages/SchemeReviewPage";
 import { storedSession } from "./distributed/api";
 
 export type Route =
   | "dashboard" | "classes" | "assignments" | "students" | "reports" | "results" | "corrections" | "review" | "automation" | "largepdf" | "classroom" | "ai" | "settings" | "storage"
   | "privacy" | "diagnostics" | "prompts" | "distributed" | "audit" | "updates"
-  | "tasks" | "correct" | "usage"
+  | "tasks" | "correct" | "usage" | "scheme-review"
   // legacy aliases kept so old deep links (search, bookmarks) still resolve
   | "report" | "keys" | "workers" | "resultsPage";
 
@@ -84,6 +85,7 @@ const NAV_GROUPS: NavGroup[] = [
   { section: "Corrections", items: [
     { id: "results", icon: "chart", label: "Results" },
     { id: "review", icon: "review", label: "Review Queue" },
+    { id: "scheme-review", icon: "alert", label: "Mark-Scheme Review" },
     { id: "largepdf", icon: "grid", label: "Large AI Worker" },
     { id: "automation", icon: "activity", label: "Automatic Correction" },
   ] },
@@ -128,6 +130,7 @@ const ROUTE_TITLES: Partial<Record<Route, string>> = {
   results: "Results",
   corrections: "Queue a correction",
   review: "Review Queue",
+  "scheme-review": "Mark-Scheme Review",
   automation: "Automation",
   largepdf: "Large PDF Worker",
   classroom: "Google Classroom",
@@ -154,7 +157,7 @@ const ALIASES: Record<string, Route> = {
 
 const VALID_ROUTES = new Set<Route>([
   "dashboard", "classes", "assignments", "students", "reports",
-  "results", "corrections", "review", "automation", "largepdf", "classroom", "ai", "settings", "storage",
+  "results", "corrections", "review", "scheme-review", "automation", "largepdf", "classroom", "ai", "settings", "storage",
   "privacy", "diagnostics", "prompts", "distributed", "audit", "updates", "tasks", "correct", "usage",
   "report", "keys", "workers",
 ]);
@@ -541,6 +544,11 @@ function Shell() {
               {route === "automation" && <AutomationPage />}
               {route === "largepdf" && <LargePdfWorkerPage onNavigate={navigate} />}
               {route === "review" && <ReviewPage onNavigate={navigate} />}
+              {route === "scheme-review" && (
+                <SchemeReviewPage
+                  key={`sr:${nav.params[0] ?? ""}`}
+                  discrepancyId={nav.params[0]} />
+              )}
               {route === "classroom" && (
                 <ClassroomPage key={`c:${nav.params.join("/")}`}
                   deepLink={{ courseId: nav.params[0], workId: nav.params[1] }} />

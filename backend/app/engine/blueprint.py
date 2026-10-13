@@ -130,6 +130,11 @@ def prompt_block(blueprint: dict) -> str:
         "  awarded_marks 0.\n"
         "- Award marks ONLY against the criteria above and the mark scheme;\n"
         "  never against your own sense of what looks reasonable.\n"
+        "- Independently verify the answer. If the mark scheme's reference\n"
+        "  answer is demonstrably wrong or incomplete, award the marks the\n"
+        "  mathematics justifies and record the disagreement in scheme_check;\n"
+        "  never award zero merely because a correct answer differs from a\n"
+        "  broken reference answer. Preserve every existing M/A/B rule.\n"
         "- Use the mark_breakdown codes (M/A/B...) from the criteria as the\n"
         "  evidence for each awarded or withheld mark.\n"
     )
