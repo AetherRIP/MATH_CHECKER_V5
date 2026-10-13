@@ -213,7 +213,100 @@ export interface Settings {
   /** TESTING ONLY mode. While ``only`` is true every grade write, report
    *  upload, attachment change and return is refused before it is sent. */
   testing: { only: boolean; reason: string };
+  /** Server lifecycle: start on demand, stay up while in use, stop when idle. */
+  lifecycle: LifecycleConfig;
   version: string;
+}
+
+/** The server-lifecycle settings as the backend actually holds them.
+ *  ``enabled`` is the idle stop; ``supervisor`` is the small always-on relay
+ *  that starts the backend again, and it is a PROCESS — so it needs a restart,
+ *  unlike ``enabled`` which the monitor re-reads on its next tick. */
+export interface LifecycleConfig {
+  enabled: boolean;
+  supervisor: boolean;
+  heartbeat_seconds: number;
+  session_timeout_seconds: number;
+  idle_grace_seconds: number;
+  max_shutdown_wait_seconds: number;
+  last_chance_seconds: number;
+}
+
+/** One reason the app is not stopping yet (a real job or a real hold). */
+export interface LifecycleBlocker {
+  source: string;
+  detail: string;
+}
+
+/**
+ * The LIVE lifecycle state, measured by the backend — never a guess and never
+ * a value the page invented. ``state`` is the state machine it is really in:
+ *
+ *   serving            a browser session is beating
+ *   counting_down      nobody is active; ``countdown_seconds`` is running
+ *   waiting_for_work   the countdown expired but work is still in flight
+ *   held               a reason that never expires forbids stopping (a live
+ *                      public address, for example)
+ *   shutting_down      a clean stop has been requested (cancellable briefly)
+ *   always_on          the feature is switched off
+ *   sleeping           the relay is answering because the backend is stopped
+ *
+ * Two producers share this shape: the running backend (``source`` absent) and
+ * the relay behind a sleeping app (``source: "supervisor"``, ``backend:
+ * "stopped"``). Neither ever reports "running" for a backend that is not.
+ */
+export interface LifecycleStatus {
+  enabled: boolean;
+  supervisor: boolean;
+  backend: "running" | "stopped";
+  state: string;
+  active_sessions: number;
+  heartbeat_seconds: number;
+  session_timeout_seconds: number;
+  idle_grace_seconds: number;
+  max_shutdown_wait_seconds?: number;
+  last_chance_seconds?: number;
+  countdown_seconds: number | null;
+  last_heartbeat_age_seconds: number | null;
+  session_expires_in_seconds?: number | null;
+  blockers: LifecycleBlocker[];
+  deferrals?: number;
+  stops?: number;
+  cancels?: number;
+  uptime_seconds?: number;
+  public_port?: number;
+  backend_port?: number;
+  source?: "supervisor";
+  /** Present when this instance was started as the relay's own child. */
+  shutdown?: { attached: boolean; pending: boolean; reason?: string };
+}
+
+/** The real lifecycle state right now. Read-only: it never counts as a user. */
+export function lifecycleStatus(): Promise<LifecycleStatus> {
+  return api<LifecycleStatus>("/lifecycle/status");
+}
+
+/**
+ * "This tab is still here."
+ *
+ * A GET on purpose: it is tiny, idempotent, fires every 30s per open tab, and
+ * must survive being sent from a page that is being unloaded (``keepalive``).
+ * The answer carries the current state, so a tab that returns during the
+ * countdown can see that it just cancelled the stop.
+ */
+export function lifecycleHeartbeat(sid: string, hidden: boolean):
+    Promise<LifecycleStatus & { ok: boolean }> {
+  const query = `sid=${encodeURIComponent(sid)}&hidden=${hidden ? 1 : 0}`;
+  return api<LifecycleStatus & { ok: boolean }>(`/lifecycle/heartbeat?${query}`);
+}
+
+/**
+ * "This tab is closing." Sent with ``keepalive`` so the browser does not kill
+ * the request the instant the page goes away — which is what makes a closed
+ * tab noticed immediately instead of after the session timeout.
+ */
+export function lifecycleLeave(sid: string): void {
+  apiKeepalive(`/lifecycle/leave?sid=${encodeURIComponent(sid)}`);
 }
 
 export interface SetupCheck {
@@ -1125,6 +1218,25 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
  * never reached the route. The browser must set the multipart boundary itself,
  * which is why this cannot reuse ``api`` (it always sends JSON).
  */
+/**
+ * Fire-and-forget request that must outlive the page that sent it.
+ *
+ * ``fetch(..., {keepalive: true})`` is the only way to send something while the
+ * document is being torn down (``pagehide``/``unload``), so this deliberately
+ * avoids ``api()`` — the request needs no parsed answer and must not throw into
+ * a page that is going away.
+ */
+export function apiKeepalive(path: string): void {
+  try {
+    void fetch(`/api${path}`, {
+      method: "GET", keepalive: true, headers: requestHeaders("GET"),
+      cache: "no-store",
+    }).catch(() => { /* the page is going away; nothing to report */ });
+  } catch {
+    /* keepalive unavailable: the session simply times out instead */
+  }
+}
+
 export async function postForm<T>(path: string, form: FormData): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method: "POST", body: form, headers: requestHeaders("POST"),

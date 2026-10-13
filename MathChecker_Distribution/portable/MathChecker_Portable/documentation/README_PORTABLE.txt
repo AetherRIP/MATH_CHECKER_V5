@@ -35,11 +35,17 @@ Double-click  MathChecker.bat
     prints the address it serves (http://127.0.0.1:8642 by default).
   * Your browser opens the app automatically once it is ready. If it does not,
     open http://127.0.0.1:8642 yourself.
-  * First run creates the database and the initial accounts inside Data\.
+  * First run creates the database and opens the setup wizard. Nothing here
+    ships with a password, so there is none to look up: the copy opens straight
+    into the app on this computer. Make your own sign-in whenever you like in
+    Settings -> Access & accounts -> "Host account" (username, and a password of
+    at least 10 characters); from then on the app asks for it at every start,
+    and it is required before Public Address can be switched on.
   * The copy listens on THIS computer only. Nobody else can reach it until you
     switch on Public Address yourself (section 3).
   * To explore without touching real data, double-click the launcher with demo
-    mode:   MathChecker.bat --demo
+    mode:   MathChecker.bat --demo     (opens straight into the app, no
+    password - synthetic students only, Classroom disabled)
 
 
 3. CONFIGURATION (optional, and stored only on this computer)

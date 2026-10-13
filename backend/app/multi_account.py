@@ -160,6 +160,15 @@ def set_enabled(value: bool) -> bool:
     Kept deliberately small: one dataclass field, written through the normal
     ``save_config`` path so the setting survives restarts and upgrades and
     stays human-editable in ``config.toml``.
+
+    Turning it ON also creates the administration accounts when none exist. The
+    distributed layer authenticates with its OWN accounts (bearer tokens), so
+    without one the feature would be switched on and have no way in at all —
+    which is exactly why these accounts used to be created on every install.
+    Creating them here instead keeps the shipped single-account default free of
+    accounts (a fresh copy opens on "Create the first account" rather than a
+    password prompt) while an installation that asks for multi-account gets it
+    working immediately. Never a data operation: nothing is deleted either way.
     """
     from .config import get_config, save_config
     cfg = get_config()
@@ -167,6 +176,15 @@ def set_enabled(value: bool) -> bool:
     save_config(cfg)
     log.info("multi-account mode %s (persisted to [%s] %s)",
              "ENABLED" if value else "DISABLED", CONFIG_SECTION, CONFIG_KEY)
+    if value and enabled():
+        try:
+            from .distributed import bootstrap
+            result = bootstrap.bootstrap()
+            if result.get("credentials_path"):
+                log.info("multi-account administration credentials written to %s",
+                         result["credentials_path"])
+        except Exception as exc:  # noqa: BLE001 — the switch must still take effect
+            log.warning("multi-account bootstrap skipped: %s", exc)
     return enabled()
 
 

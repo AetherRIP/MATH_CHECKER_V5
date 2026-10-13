@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .config import DATA_DIR
+from .lifecycle import activity
 
 DB_PATH = DATA_DIR / "app.db"
 _SCHEMA = Path(__file__).parent / "schema.sql"
@@ -98,17 +99,26 @@ def close_all() -> None:
 
 @contextmanager
 def transaction() -> Iterator[sqlite3.Connection]:
-    """Serialized write transaction (SQLite = one writer at a time)."""
+    """Serialized write transaction (SQLite = one writer at a time).
+
+    Registered as a critical operation for the server's lifecycle: a write
+    transaction is the one database state that must not be interrupted, so an
+    idle shutdown waits while one is open (see ``app.lifecycle.activity``).
+    Single-statement ``execute`` calls are deliberately NOT counted: SQLite
+    applies one statement atomically, so it can never be left half-done, and
+    counting them would mean a shutdown could always find "something" running.
+    """
     with _gate:
         conn = get_connection()
         with _conn_lock:
             conn.execute("BEGIN IMMEDIATE")
-            try:
-                yield conn
-                conn.execute("COMMIT")
-            except Exception:
-                conn.execute("ROLLBACK")
-                raise
+            with activity.critical("db_write"):
+                try:
+                    yield conn
+                    conn.execute("COMMIT")
+                except Exception:
+                    conn.execute("ROLLBACK")
+                    raise
 
 
 def query(sql: str, params: tuple | list = ()) -> list[sqlite3.Row]:

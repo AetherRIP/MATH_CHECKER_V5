@@ -377,3 +377,239 @@ class TestDeadGrantReachesTheTeacher:
         sign-in hides the one instruction that fixes it."""
         api_ts = (ROOT / "frontend" / "src" / "api.ts").read_text(encoding="utf-8")
         assert 'parsed.code !== "classroom_reconnect_required"' in api_ts
+
+
+# ---------------------- 5. assigning homework must never answer opaquely
+
+ASSIGN_URL = "/api/classroom/courses/{course}/assignments/create"
+TOTAL_URL = "/api/classroom/assignments/{coursework}/classroom-total"
+OPAQUE = "Something went wrong processing this request"
+
+
+class _ConnectedClassroom:
+    """Just enough of the auth state for the connection gate to pass."""
+
+    connected = True
+    client_configured = True
+    problem = None
+    email = "teacher@school.org"
+
+
+@pytest.fixture
+def assign_client(fresh_state, monkeypatch):
+    """The REAL app, with the Classroom CONNECTION faked and nothing else.
+
+    ``requests.request`` is deliberately left alone: each test stubs the HTTP
+    layer itself, so the real ``classroom_request`` guard and the real error
+    translation are what run.
+    """
+    from fastapi.testclient import TestClient
+
+    import app.api.routes_all as routes_mod
+    from app.api import product_routes
+    from app.classroom import auth as auth_mod
+    from app.config import get_config, save_config
+    from app.main import app
+
+    cfg = get_config()
+    cfg.mock_mode = False
+    cfg.classroom.enabled = True
+    cfg.teacher.onboarded = True
+    save_config(cfg)
+
+    monkeypatch.setattr(routes_mod, "auth_state", lambda: _ConnectedClassroom())
+    monkeypatch.setattr(product_routes, "auth_state",
+                        lambda: _ConnectedClassroom())
+    monkeypatch.setattr(auth_mod, "get_access_token", lambda *a, **k: "fake-token")
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def _fail_requests_with(exc: Exception):
+    def boom(*args, **kwargs):
+        raise exc
+    return boom
+
+
+def _seed_assignment(coursework_id: str = "cw-assign", course_id: str = "c1"):
+    db.execute(
+        "INSERT OR REPLACE INTO courses(id, name, section, fetched_at) "
+        "VALUES(?,?,?,?)", (course_id, "Mathematics", "O Level", 1.0))
+    db.execute(
+        "INSERT OR REPLACE INTO coursework(id, course_id, title, max_points, "
+        "state, allowlisted, fetched_at) VALUES(?,?,?,?,?,?,?)",
+        (coursework_id, course_id, "Algebra HW", 20.0, "PUBLISHED", 1, 1.0))
+
+
+class TestAssigningHomeworkIsNeverAnOpaque500:
+    """Production 2026-10-12 09:12:50: a teacher assigning homework got
+
+        "Something went wrong processing this request. The error has been
+         logged for the developer diagnostics page."
+
+    TWO different events produced that one sentence, and neither named a fix.
+    The testing-only guard's deliberate refusal is one (it has its own 403
+    gate), but the assign endpoint translated only ``ClassroomApiError`` and
+    ``ValueError`` — so a Google that could not be reached at all (a DNS
+    failure, a timeout, a reset connection, a revoked grant) fell straight
+    through to the global 500. These drive the REAL route and pin what the
+    teacher is told.
+    """
+
+    def test_a_google_that_cannot_be_reached_names_the_connection(
+            self, assign_client, monkeypatch):
+        import requests
+
+        from app.classroom import client as gc
+
+        monkeypatch.setattr(gc.requests, "request", _fail_requests_with(
+            requests.exceptions.ConnectionError(
+                "Failed to resolve classroom.googleapis.com")))
+        response = assign_client.post(ASSIGN_URL.format(course="c1"),
+                                      json={"title": "Algebra HW"})
+        assert response.status_code == 502, response.text
+        body = response.json()
+        assert body["code"] == "classroom_error"
+        assert "Could not reach Google Classroom" in body["message"]
+        assert OPAQUE not in body["message"]
+
+    def test_a_timeout_does_not_become_the_opaque_500(self, assign_client,
+                                                      monkeypatch):
+        import requests
+
+        from app.classroom import client as gc
+
+        monkeypatch.setattr(gc.requests, "request", _fail_requests_with(
+            requests.exceptions.Timeout("read timed out")))
+        response = assign_client.post(ASSIGN_URL.format(course="c1"),
+                                      json={"title": "Algebra HW"})
+        assert response.status_code == 502, response.text
+        body = response.json()
+        assert body["code"] == "classroom_error"
+        assert "Could not reach Google Classroom" in body["message"]
+
+    def test_a_revoked_grant_says_reconnect(self, assign_client, monkeypatch):
+        """The one instruction that actually fixes it must reach the teacher."""
+        from app.classroom import auth as auth_mod
+
+        monkeypatch.setattr(auth_mod, "get_access_token", _fail_requests_with(
+            RuntimeError("Google authorization expired or was revoked. "
+                         "Reconnect Google Classroom from the Classroom page.")))
+        response = assign_client.post(ASSIGN_URL.format(course="c1"),
+                                      json={"title": "Algebra HW"})
+        assert response.status_code == 401, response.text
+        body = response.json()
+        assert body["code"] == "classroom_reconnect_required"
+        assert "Reconnect Google Classroom" in body["message"]
+        assert OPAQUE not in body["message"]
+
+    def test_the_testing_only_gate_keeps_its_own_403(
+            self, assign_client, monkeypatch):
+        """The guard is a deliberate LOCAL gate, not a Google failure, and it
+        answers with the wording that names the fix (turn it off in Settings)."""
+        from app.config import get_config
+
+        get_config().testing.only = True
+        response = assign_client.post(ASSIGN_URL.format(course="c1"),
+                                      json={"title": "Algebra HW"})
+        assert response.status_code == 403, response.text
+        body = response.json()
+        assert body["code"] == "testing_only_blocked"
+        assert "TESTING ONLY" in body["message"]
+        assert "Settings" in body["message"]
+        assert OPAQUE not in body["message"]
+
+    def test_a_google_refusal_keeps_its_own_explanation(
+            self, assign_client, monkeypatch):
+        from app.classroom import client as gc
+
+        class _Denied:
+            status_code = 403
+            content = b'{"error":{"code":403,"message":"insufficient permission"}}'
+            text = content.decode()
+
+            @staticmethod
+            def json():
+                return {"error": {"code": 403}}
+
+        monkeypatch.setattr(gc.requests, "request", lambda *a, **k: _Denied())
+        response = assign_client.post(ASSIGN_URL.format(course="c1"),
+                                      json={"title": "Algebra HW"})
+        assert response.status_code == 502, response.text
+        body = response.json()
+        assert body["code"] == "classroom_api_error"
+        assert "Google denied" in body["message"]
+
+    def test_a_bad_title_is_still_a_400_not_a_google_call(self, assign_client,
+                                                          monkeypatch):
+        """Validation must win: no request may leave the machine for it."""
+        from app.classroom import client as gc
+
+        sent = []
+        monkeypatch.setattr(gc.requests, "request",
+                            lambda *a, **k: sent.append(a))
+        response = assign_client.post(ASSIGN_URL.format(course="c1"),
+                                      json={"title": "   "})
+        assert response.status_code == 400, response.text
+        assert response.json()["code"] == "missing_title"
+        assert sent == []
+
+    def test_the_real_cause_is_still_logged_for_the_diagnostics_page(
+            self, assign_client, monkeypatch, caplog):
+        """Translating the error must not destroy the evidence: the diagnostics
+        page still needs the exception type and message."""
+        import logging
+
+        import requests
+
+        from app.classroom import client as gc
+
+        monkeypatch.setattr(gc.requests, "request", _fail_requests_with(
+            requests.exceptions.ConnectionError("no route to host")))
+        with caplog.at_level(logging.ERROR):
+            assign_client.post(ASSIGN_URL.format(course="c1"),
+                               json={"title": "Algebra HW"})
+        record = next(r for r in caplog.records
+                      if r.message == "create Classroom assignment failed")
+        context = getattr(record, "context", {})
+        assert context.get("exc_type") == "ConnectionError"
+        assert "no route to host" in context.get("error", "")
+        assert context.get("course_id") == "c1"
+
+    def test_changing_the_classroom_total_has_the_same_guarantee(
+            self, assign_client, monkeypatch):
+        """The same hole lived on the total-points write, which shares the
+        assignment screen: it must not answer with the opaque 500 either."""
+        import requests
+
+        from app.classroom import client as gc
+
+        _seed_assignment()
+        monkeypatch.setattr(gc.requests, "request", _fail_requests_with(
+            requests.exceptions.ConnectionError("connection refused")))
+        response = assign_client.post(TOTAL_URL.format(coursework="cw-assign"),
+                                      json={"max_points": 10})
+        assert response.status_code == 502, response.text
+        body = response.json()
+        assert body["code"] == "classroom_error"
+        assert OPAQUE not in body["message"]
+
+    def test_renaming_an_assignment_has_the_same_guarantee(
+            self, assign_client, monkeypatch):
+        """And on the rename write, which the same testing-only guard also
+        blocks (a PATCH to Classroom)."""
+        import requests
+
+        from app.classroom import client as gc
+
+        _seed_assignment()
+        monkeypatch.setattr(gc.requests, "request", _fail_requests_with(
+            requests.exceptions.ConnectionError("connection refused")))
+        response = assign_client.post(
+            "/api/automation/assignments/cw-assign/name",
+            json={"display_name": "Algebra HW (renamed)"})
+        assert response.status_code == 502, response.text
+        body = response.json()
+        assert body["code"] == "classroom_error"
+        assert OPAQUE not in body["message"]

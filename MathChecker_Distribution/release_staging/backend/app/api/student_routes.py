@@ -689,14 +689,17 @@ def _render_student_report_pdf(data: dict, stamp: str):
     a_table = Table(a_rows, repeatRows=1, colWidths=[62 * mm, 34 * mm, 14 * mm, 28 * mm, 28 * mm, 20 * mm, 26 * mm])
     a_table.setStyle(_report_table_style())
 
-    r_head = ["Date", "Score", "Model", "Status"]
+    # NOTE: the AI model that marked each correction is intentionally NOT
+    # listed here. This report may be handed to a student, so it must not
+    # reveal which model corrected the work; ``marking_model`` remains in the
+    # database and internal diagnostics for debugging and provider management.
+    r_head = ["Date", "Score", "Status"]
     r_rows = [r_head]
     for res in corr.get("recent", []):
         r_rows.append([
             _fmt_report_ts(res.get("created_at")),
             f"{res.get('earned')}/{res.get('available')} ({res.get('percentage', 0):g}%)"
             if res.get('available') else "—",
-            str(res.get("marking_model") or "—"),
             str(res.get("status") or "done"),
         ])
     r_table = Table(r_rows, repeatRows=1)

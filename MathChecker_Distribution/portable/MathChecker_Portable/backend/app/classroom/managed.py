@@ -546,19 +546,24 @@ def _execute(token: str, course_id: str, coursework_id: str, submission_id: str,
                     "payload": {"grade": grade}}
         if op_type == "assign_grade":
             # Write the FINAL (assigned) grade WITHOUT returning, so the return
-            # is a separate, independently verifiable step. This is what lets
-            # the automation post a real grade and then confirm the return
-            # rather than conflating the two.
+            # is a separate, independently verifiable step. Google's grade
+            # guide is explicit that ``assignedGrade`` must NOT be set without
+            # ``draftGrade`` ("Don't set the assignedGrade without setting the
+            # draftGrade"), and the ``return`` method does NOT copy the draft
+            # into the assigned grade - so BOTH fields are written here. Writing
+            # only ``assignedGrade`` is the unreliable write that could leave a
+            # "successful" correction with no grade actually in Classroom.
             gc.classroom_request("PATCH", base, token,
-                                 params={"updateMask": "assignedGrade"},
-                                 json={"assignedGrade": grade})
+                                 params={"updateMask": "draftGrade,assignedGrade"},
+                                 json={"draftGrade": grade,
+                                       "assignedGrade": grade})
             return {"status": STATUS_PUBLISHED, "http": 200,
                     "message": f"Final grade {grade:g} assigned to the submission.",
                     "payload": {"grade": grade}}
-        # final grade: set assignedGrade, then return so the student can see it.
+        # final grade: set both grade fields, then return so the student sees it.
         gc.classroom_request("PATCH", base, token,
-                             params={"updateMask": "assignedGrade"},
-                             json={"assignedGrade": grade})
+                             params={"updateMask": "draftGrade,assignedGrade"},
+                             json={"draftGrade": grade, "assignedGrade": grade})
         gc.classroom_request("POST", f"{base}:return", token, json={})
         return {"status": STATUS_PUBLISHED, "http": 200,
                 "message": f"Final grade {grade:g} published and returned.",
@@ -656,6 +661,34 @@ def recent_publish_ops(coursework_id: str, limit: int = 200) -> list[dict]:
 
 #: The grade write-backs that actually put a mark in Classroom.
 GRADE_OPS = ("draft_grade", "final_grade", "assign_grade", "return")
+
+
+def grade_write_evidence(coursework_id: str | None,
+                         submission_id: str | None) -> str:
+    """What our own audit log says about the LAST grade write for a submission.
+
+    * ``"published"`` - a grade write was accepted by Google, so repeating it
+      is a duplicate request.
+    * ``"unknown"``   - a grade write was attempted but never confirmed (a
+      crash mid-request or a timeout): Google MAY still have applied it, so the
+      remote state must be read before anything is submitted again.
+    * ``"none"``      - no grade write of ours has been attempted yet, so a
+      write always proceeds (and a teacher's own grade can never be mistaken
+      for ours).
+    """
+    if not coursework_id or not submission_id:
+        return "none"
+    row = db.query_one(
+        f"""
+        SELECT status FROM classroom_publish_ops
+         WHERE coursework_id = ? AND submission_id = ?
+           AND op_type IN ({','.join('?' * len(GRADE_OPS))})
+         ORDER BY created_at DESC LIMIT 1
+        """,
+        (coursework_id, submission_id, *GRADE_OPS))
+    if row is None:
+        return "none"
+    return "published" if row["status"] == STATUS_PUBLISHED else "unknown"
 
 
 def grade_return_state(coursework_id: str | None,

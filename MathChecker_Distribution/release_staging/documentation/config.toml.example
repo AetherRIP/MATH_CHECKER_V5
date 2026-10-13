@@ -209,3 +209,28 @@ multi_account = false
 [testing]
 # Puts the app into its guarded testing mode. Leave false.
 only = false
+
+
+[lifecycle]
+# Start on demand and stop when nobody is using the app.
+# ``enabled`` is the STOP half: the backend stops itself once no browser
+# session has been seen for the grace period and nothing is running.
+# ``supervisor`` is the START half: a tiny relay owns the public port and
+# starts the backend on the first connection, so a stopped app is one page
+# load away. Turning it off restores one always-on process on the port.
+enabled = true
+supervisor = true
+# Seconds between browser heartbeats.
+heartbeat_seconds = 30
+# A session with no heartbeat for this long is treated as gone.
+session_timeout_seconds = 90
+# Grace period after the last session before an idle shutdown is considered.
+idle_grace_seconds = 120
+# Longest a shutdown will wait for running work (a correction, a long
+# document, an open database write) before it gives up and keeps running.
+max_shutdown_wait_seconds = 900
+# Final cancellation window before the process actually exits.
+last_chance_seconds = 5
+# Private port the backend listens on behind the relay. 0 lets the operating
+# system choose a free one, which is what almost every install wants.
+backend_port = 0

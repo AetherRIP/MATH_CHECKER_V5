@@ -38,6 +38,7 @@ import hashlib
 import json
 import logging
 import re
+import threading
 import time
 import unicodedata
 from typing import Any
@@ -49,6 +50,30 @@ from . import report_cleanup as _cleanup
 
 
 log = logging.getLogger("classroom.report_attachment")
+
+
+# ------------------------------------------------------------- concurrency
+#: Serializes report attachment for ONE Classroom submission (spec §1/§2). Two
+#: workers attaching a re-correction to the same submission must not both read
+#: "no Math Correct report yet" and then each ADD a file - that is how a
+#: submission ends up with two reports. The lock is process-wide, which is the
+#: right scope here: attachment runs in the API / scheduler process, while the
+#: correction engine's subprocesses only mark and never touch Classroom. It is
+#: combined with the atomic ``canonical_reports`` upsert (a single winner) so a
+#: duplicate is impossible even if two attachment paths ever overlap.
+_submission_locks: dict[str, "threading.Lock"] = {}
+_submission_locks_guard = threading.Lock()
+
+
+def _submission_lock(coursework_id: str | None, submission_id: str | None):
+    """The lock that guards attachment for one Classroom submission."""
+    key = f"{coursework_id or ''}/{submission_id or ''}"
+    with _submission_locks_guard:
+        lock = _submission_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _submission_locks[key] = lock
+        return lock
 
 # Statuses stored in report_attachments.status. These are DELIBERATELY distinct
 # so a Drive housekeeping problem never reads as "the correction failed" (§20).
@@ -75,6 +100,10 @@ STATUS_SKIPPED = "SKIPPED"
 #: is NOT retried, because re-running it changes nothing until a human turns
 #: the flag off.
 STATUS_TESTING_BLOCKED = "TESTING_ONLY_BLOCKED"
+#: The prior Math Correct report could not be replaced, so a SECOND report was
+#: deliberately NOT added. The failure is reported honestly and is retryable;
+#: it is never reported as a successful attachment (spec §1/§2/§6).
+STATUS_RECONCILE_FAILED = "RECONCILE_FAILED"
 
 #: Every status that means "the report is NOT on the submission", i.e. the
 #: teacher can retry. Deliberately a tuple so no caller can quietly test for a
@@ -87,6 +116,7 @@ FAILED_STATUSES = (
     STATUS_OWNERSHIP_ERROR,
     STATUS_PDF_INVALID,
     STATUS_DRIVE_VERIFY_FAILED,
+    STATUS_RECONCILE_FAILED,
 )
 
 #: A confirmed attachment. The report IS on the submission in all of these;
@@ -102,6 +132,7 @@ ERROR_PDF = "PDF_VALIDATION_ERROR"
 ERROR_DRIVE_VERIFY = "DRIVE_VERIFY_ERROR"
 ERROR_CLEANUP = "REPORT_CLEANUP_PENDING"
 ERROR_TESTING_ONLY = "TESTING_ONLY_BLOCKED"
+ERROR_RECONCILE = "REPORT_RECONCILE_FAILED"
 
 # Characters that are illegal in filenames on at least one target platform.
 _ILLEGAL = r'[\x00-\x1f<>:"/\\|?*]'
@@ -453,26 +484,34 @@ def _mark_canonical(course_id: str, coursework_id: str, submission_id: str,
 
 def _canonical_for_submission(course_id: str, coursework_id: str,
                               submission_id: str,
-                              *, token: str | None = None) -> tuple[str | None, list[dict]]:
-    """Return (canonical_result_id, superseded_files) for one submission.
+                              *, token: str | None = None
+                              ) -> tuple[str | None, str | None, list[dict]]:
+    """Return (canonical_result_id, canonical_drive_file_id, superseded_files).
+
+    The canonical record is keyed by the SUBMISSION, so it is still the
+    authority when the result's OWN row lost its ``drive_file_id`` (the legacy
+    rows that read VERIFIED/CLEANED with no id). That is what lets
+    :func:`attach_report` ADOPT the Math Correct file already on the submission
+    instead of uploading a SECOND one, which produced the duplicate reports.
 
     ``superseded_files`` is the list of Math Correct Drive files currently on
     the submission that belong to a result OTHER than the canonical one (if
-    any). Used by :func:`attach_report` before it decides whether to add a new
-    file or replace the existing canonical file in place.
-
-    When ``token`` is supplied and a canonical Drive file id is recorded, the
-    superseded files are discovered by re-reading the submission's attachments
-    and filtering for our own Math Correct files whose ``mathcorrectResultId``
-    is NOT the canonical result id.
+    any). Discovered by re-reading the submission's attachments and filtering
+    for our own Math Correct files whose ``mathcorrectResultId`` differs.
     """
     row = query_one(
         "SELECT canonical_result_id, drive_file_id FROM canonical_reports "
         "WHERE course_id = ? AND coursework_id = ? AND submission_id = ?",
         (course_id, coursework_id, submission_id))
     canonical_result_id = row["canonical_result_id"] if row else None
+    canonical_file_id = row["drive_file_id"] if row else None
+    # Discover our OWN Math Correct files on the submission. This runs even when
+    # there is no canonical row at all, because the file can outlive the record
+    # (a replaced/deleted result row cascades the record away while Classroom
+    # still references the file). ``exclude_result_id`` only skips the canonical
+    # file, so the rest of the list is exactly the OTHER Math Correct files.
     superseded: list[dict] = []
-    if token and canonical_result_id and row and row["drive_file_id"]:
+    if token:
         try:
             current = gc.get_student_submission(
                 token, course_id, coursework_id, submission_id)
@@ -482,144 +521,132 @@ def _canonical_for_submission(course_id: str, coursework_id: str,
             existing_ids = _attachment_ids(current)
             superseded = _our_report_files_on_submission(
                 token, existing_ids, exclude_result_id=canonical_result_id)
-    return canonical_result_id, superseded
+    return canonical_result_id, canonical_file_id, superseded
 
 
 def _reconcile_superseded_report(token: str, course_id: str, coursework_id: str,
                                   submission_id: str, *, result_id: str,
-                                  canonical_result_id: str, account_email: str | None,
+                                  prior_file_id: str,
+                                  prior_result_id: str | None = None,
+                                  account_email: str | None,
                                   detail: str, render_fn) -> dict:
-    """Bring the submission's current Math Correct attachment up to date.
+    """Bring the submission's ONE Math Correct attachment up to date.
 
-    The submission currently points at the PRIOR canonical file (belonging to
-    ``canonical_result_id``). We replace that file's bytes with the NEW report
-    for ``result_id`` and then update :func:`_mark_canonical` so this result
-    becomes the new canonical.
+    ``prior_file_id`` is the Math Correct Drive file that is ALREADY attached to
+    this submission (found from the submission-keyed ``canonical_reports`` record or by
+    discovering our own file on the submission). Classroom's
+    ModifyAttachmentsRequest has NO ``removeAttachments`` field, so the ONLY
+    supported way to avoid a second Math Correct report is to UPDATE that same
+    Drive file IN PLACE with the new report's bytes and leave the submission
+    pointing at it. This is what makes a re-correction REPLACE the previous
+    report instead of stacking "Report.pdf", "Report (1).pdf", ... on it.
 
-    Returns ``{drive_file_id, report_filename, previous_drive_file_id}`` for
-    the file now on the submission. If the prior file cannot be reused (not
-    owned by us any more), a fresh file is created and returned.
+    Returns ``{drive_file_id, report_filename, previous_drive_file_id,
+    replaced}`` for the file the submission now carries.
+
+    RAISES on any failure. The caller must NOT fall back to creating a second
+    Math Correct file: that would be the exact duplicate this exists to prevent.
+    The prior report is left intact whenever the replacement is not proven, so a
+    failed replacement is always safe to retry.
     """
     from . import report_cleanup as _cleanup
 
-    row = query_one(
-        "SELECT canonical_result_id, drive_file_id FROM canonical_reports "
-        "WHERE course_id = ? AND coursework_id = ? AND submission_id = ?",
-        (course_id, coursework_id, submission_id))
-    if row is None:
+    if not prior_file_id:
         raise RuntimeError(
-            "canonical_reports has no row for this submission (should have "
-            "been created by _mark_canonical before _reconcile_superseded_report)")
+            "no existing Math Correct report file was identified for this "
+            "submission, so it cannot be replaced in place")
 
-    prior_result_id = row["canonical_result_id"]
-    prior_file_id = row["drive_file_id"]
-    # canonical_reports currently stores only canonical_result_id + drive_file_id;
-    # previous_filename/previous_drive_file_id are stored on report_attachments.
-    previous_filename = None
-    previous_drive_file_id = None
-
-    # Confirm the prior file is still on the submission and still ours."]
-    prior_file_id = row["drive_file_id"]
-    if not row or not row["drive_file_id"]:
-        raise RuntimeError(
-            "canonical_reports said a canonical report exists for this "
-            "submission but no Drive file id was recorded")
-
-    prior_file_id = row["drive_file_id"]
-    prior_result_id = row["canonical_result_id"]
-    # canonical_reports currently stores only canonical_result_id + drive_file_id;
-    # previous_filename/previous_drive_file_id are stored on report_attachments.
-    previous_filename = None
-    previous_drive_file_id = None
-
-    # Confirm the prior file is still on the submission and still ours.
-    current = gc.get_student_submission(token, course_id, coursework_id,
-                                        submission_id)
-    existing_ids = _attachment_ids(current)
-    if prior_file_id not in existing_ids:
-        # The prior file is no longer on the submission (unlikely, but
-        # defensive): fall back to a fresh upload path below.
-        prior_file_id = None
-
-    # Should the prior uploaded file be re-attached (re-conducted report
-    # replacing the first report for the SAME submission), or does this need a
-    # fresh upload (revised/report-corrected report for a DIFFERENT submission)?
-    # This is reconciled inside _reconcile_superseded_report().
-    if superseded_report is not None:
-        return _reconcile_superseded_report(
-            token, course_id, coursework_id, submission_id,
-            result_id, superseded_report["canonical_result_id"],
-            superseded_report["drive_file_id"],
-            superseded_report["superseded_results"], account_email,
-            detail, render_fn)
-
+    # Render + validate BEFORE touching Drive (same guard as attach_report).
     content = render_fn()
-    report_hash = _report_fingerprint(
-        {"id": result_id, "coursework_id": coursework_id,
-         "submission_id": submission_id, "student_id": None,
-         "student_name": None}, detail=detail)
-    # Validate BEFORE touching Drive (same guard as attach_report).
     validation = _validate_pdf(content)
     if not validation.get("ok"):
         raise RuntimeError(
             f"the replacement report is not a valid PDF "
             f"({validation.get('reason')})")
 
-    # Reuse the prior file if we still own it (in-place update = one file).
-    if prior_file_id:
+    # Is the prior canonical file still attached to the submission?
+    current = gc.get_student_submission(token, course_id, coursework_id,
+                                        submission_id)
+    existing_ids = _attachment_ids(current)
+    still_attached = bool(prior_file_id and prior_file_id in existing_ids)
+
+    replaced = False
+    previous_drive_file_id = None
+    if still_attached:
+        # The file is on the submission -> it must be updated IN PLACE, never
+        # replaced by a second file, and only if we still own it.
         ownership = gc.verify_drive_ownership(
             token, prior_file_id, account_email=account_email)
-        if ownership["ok"]:
-            gc.replace_drive_file_content(token, prior_file_id, content)
-            drive_check = _verify_drive_upload(token, prior_file_id, content)
-            if not drive_check.get("ok"):
-                raise RuntimeError(
-                    f"the replaced Drive file did not verify "
-                    f"({drive_check.get('reason')})")
-            new_file_id = prior_file_id
-            previous_drive_file_id = (
-                row["previous_drive_file_id"] or prior_file_id)
-            log_event("classroom.report", "canonical report replaced in place",
-                      result_id=result_id, drive_file_id=new_file_id,
-                      prior_canonical_result_id=prior_result_id)
-        else:
-            # We no longer own the prior file; create a fresh one (acceptable).
-            prior_file_id = None
-
-    if prior_file_id is None:
+        if not ownership.get("ok"):
+            # We cannot update a file we do not own, and Google offers no API to
+            # detach it. Adding a second Math Correct report here would create
+            # exactly the duplicate this exists to prevent, so refuse and report
+            # the API/ownership limitation honestly. The existing report is
+            # left untouched.
+            raise RuntimeError(
+                f"{ERROR_OWNERSHIP}: the current Math Correct report "
+                f"({prior_file_id}) is not owned by "
+                f"{account_email or 'the connected account'} "
+                f"(owner(s)={ownership.get('owners') or ['unknown']}), so it "
+                f"cannot be replaced. Google Classroom offers no API to remove "
+                f"an attachment, so nothing was added and the existing report "
+                f"was left untouched.")
+        gc.replace_drive_file_content(token, prior_file_id, content)
+        check = _verify_drive_upload(token, prior_file_id, content)
+        if not check.get("ok"):
+            # The bytes were already overwritten, so the previous report cannot
+            # be restored; surface it as a failure so the caller retries (the
+            # same bytes are re-sent on the next attempt).
+            raise RuntimeError(
+                f"the replaced Drive file did not verify "
+                f"({check.get('reason')})")
+        new_file_id = prior_file_id
+        replaced = True
+    else:
+        # The prior canonical file is no longer on the submission (or was never
+        # recorded), so attaching a fresh file cannot create a duplicate.
         temp_token = _cleanup.new_temp_token()
         uploaded = gc.upload_report_to_drive(
-            token,
-            previous_filename or build_report_filename(
-                None, None),
-            content,
+            token, build_report_filename(None, None), content,
             app_properties=_cleanup.stamp_properties(result_id, temp_token))
         new_file_id = uploaded["id"]
-        previous_drive_file_id = (
-            row["previous_drive_file_id"] or prior_file_id)
+        previous_drive_file_id = prior_file_id
         owners = gc.drive_file_owners(uploaded) or []
         _cleanup.record_upload(
-            result_id,
-            drive_file_id=new_file_id,
+            result_id, drive_file_id=new_file_id,
             owner_email=owners[0] if owners else account_email,
             temp_token=temp_token,
             previous_drive_file_id=previous_drive_file_id,
             content_bytes=content)
-        # Attach the fresh file to the submission (our prior file was gone
-        # or not owned, so we must ADD it).
         try:
             gc.modify_submission_attachments(
                 token, course_id, coursework_id, submission_id,
                 add_drive_file_ids=[new_file_id])
         except gc.ClassroomApiError as exc:
             raise RuntimeError(
-                f"Classroom refused to attach the reconciled report "
-                f"({exc.status}): {exc.detail[:200]}") from exc
+                f"Classroom refused to attach the replacement report "
+                f"({exc.status}): {(exc.detail or '')[:200]}") from exc
 
+    # Prove the submission now carries the new file (never trust a 200).
+    check = verify_attached(token, course_id, coursework_id, submission_id,
+                            new_file_id)
+    if not check["verified"]:
+        raise RuntimeError(
+            "Classroom did not report the replacement report on the submission "
+            "after the update")
+
+    # This result is now the canonical report for the submission, so a later
+    # re-correction replaces THIS file in place.
+    _mark_canonical(course_id, coursework_id, submission_id, result_id,
+                    drive_file_id=new_file_id)
+    log_event("classroom.report", "canonical report reconciled",
+              result_id=result_id, drive_file_id=new_file_id,
+              prior_result_id=prior_result_id, replaced_in_place=replaced)
     return {
         "drive_file_id": new_file_id,
-        "report_filename": previous_filename,
+        "report_filename": None,
         "previous_drive_file_id": previous_drive_file_id,
+        "replaced": replaced,
     }
 
 
@@ -733,6 +760,22 @@ def attach_report(token: str, result: dict, *, course_id: str,
     the existing file is reused / updated in place and no new file is created.
     A file Classroom references is never deleted here.
     """
+    # ONE worker at a time per Classroom submission (see ``_submission_lock``):
+    # the whole attachment is serialized so two workers cannot each decide "no
+    # Math Correct report yet" and then both ADD a file.
+    with _submission_lock(result.get("coursework_id"),
+                          result.get("submission_id")):
+        return _attach_report_locked(
+            token, result, course_id=course_id,
+            assignment_title=assignment_title, detail=detail,
+            share_with_student=share_with_student, account_email=account_email)
+
+
+def _attach_report_locked(token: str, result: dict, *, course_id: str,
+                          assignment_title: str | None = None,
+                          detail: str = "standard",
+                          share_with_student: bool = True,
+                          account_email: str | None = None) -> AttachmentOutcome:
     result_id = result["id"]
     coursework_id = result.get("coursework_id")
     submission_id = result.get("submission_id")
@@ -763,50 +806,6 @@ def attach_report(token: str, result: dict, *, course_id: str,
     filename = build_report_filename(
         result.get("display_name") or result.get("student_name"),
         assignment_title)
-
-    # ---- canonical-report reconciliation (§1/§2/§6) ----------------
-    # Before generating anything, reconcile the submission so it carries exactly
-    # one Math Correct report: the canonical one for THIS result. A superseded
-    # Math Correct report from a prior correction version is replaced in place
-    # on Drive (update its bytes + keep its id), so no second Math Correct file
-    # is added to the submission. A file Classroom references is never deleted.
-    canonical_result_id, superseded_files = _canonical_for_submission(
-        course_id, coursework_id, submission_id, token=token)
-    if canonical_result_id and canonical_result_id != result_id:
-        # Another result is currently canonical for this submission. That prior
-        # correction's report file is the one currently on the submission; bring
-        # it current by patching its bytes to this report (same submission,
-        # newer valid report). Do NOT create a second Math Correct file.
-        log.info("reconciling canonical report for result %s: prior canonical "
-                 "result %s owns the submission attachment", result_id,
-                 canonical_result_id)
-        try:
-            reconciled = _reconcile_superseded_report(
-                token, course_id, coursework_id, submission_id,
-                result_id=result_id, canonical_result_id=canonical_result_id,
-                account_email=account_email,
-                detail=detail,
-                render_fn=(lambda r=result, d=detail:
-                           render_report_pdf(r, detail=d)))
-            if reconciled.get("drive_file_id"):
-                drive_file_id = reconciled["drive_file_id"]
-                state["drive_file_id"] = drive_file_id
-                state["report_filename"] = (
-                    reconciled.get("report_filename") or filename)
-                state["previous_drive_file_id"] = (
-                    reconciled.get("previous_drive_file_id"))
-                state["status"] = STATUS_UPLOADED
-                # The reconciled file replaces the prior one. Remove the prior
-                # result's file id from ``superseded_ids`` so the attach step
-                # does not try to ADD it again (the canonical path already
-                # patched the existing file in place).
-                superseded_ids.discard(reconciled["drive_file_id"])
-                existing_ids.discard(reconciled["drive_file_id"])
-        except Exception as exc:  # noqa: BLE001
-            log.warning("canonical report reconciliation failed for result %s: %s",
-                        result_id, exc)
-            # Fall through to the normal upload path rather than failing the
-            # whole attachment — creating a fresh file is acceptable here.
 
     # ---- pre-flight read; also the authoritative student identity ---------
     try:
@@ -868,6 +867,106 @@ def attach_report(token: str, result: dict, *, course_id: str,
             STATUS_BLOCKED, message=state["error"], result_id=result_id,
             report_filename=filename)
 
+    # ---- canonical-report reconciliation (§1/§2/§6) ------------------------
+    # ONE Math Correct report per submission. The canonical record is keyed by
+    # the SUBMISSION, so whenever a Math Correct file is ALREADY on the
+    # submission but is not the file this result's own row points at, that file
+    # IS the report: its bytes are updated IN PLACE for this correction instead
+    # of uploading a second file. Classroom's ModifyAttachmentsRequest only
+    # supports ADDING (there is no removeAttachments), so this is the only
+    # supported way to keep exactly one report attached.
+    #
+    # The two cases this covers are:
+    #   * a re-correction owned by a different result (the canonical file is
+    #     updated in place), and
+    #   * THIS result's row having LOST its drive_file_id (legacy CLEANED rows,
+    #     a repaired/deleted attachment row, a restart mid-flight) while the
+    #     report file is still attached - the exact case that used to upload a
+    #     SECOND Math Correct file and produce a duplicate.
+    canonical_result_id, canonical_file_id, superseded_files = (
+        _canonical_for_submission(course_id, coursework_id, submission_id,
+                                  token=token))
+    existing_ids = _attachment_ids(current)
+    state_file_id = state.get("drive_file_id")
+    # The Math Correct file already on the submission, discovered ONLY through
+    # our own appProperties (never a student's or a teacher's file). Prefer the
+    # submission-keyed canonical record, then fall back to whatever Math Correct
+    # file we can identify on the submission itself - which is what protects the
+    # case where the canonical record no longer exists (a replaced result row)
+    # but our report file is still attached.
+    prior_file_id = (canonical_file_id if canonical_file_id in existing_ids
+                     else None)
+    if not prior_file_id:
+        on_submission = [f for f in superseded_files
+                         if f["drive_file_id"] in existing_ids]
+        if on_submission:
+            prior_file_id = on_submission[0]["drive_file_id"]
+            canonical_result_id = on_submission[0].get("result_id") or None
+    if prior_file_id and prior_file_id != state_file_id:
+        log.info("reconciling the Math Correct report on submission %s for "
+                 "result %s: the submission already carries %s",
+                 submission_id, result_id, prior_file_id)
+        # Make sure the state row exists before the reconciliation writes to it.
+        if not state.get("status"):
+            state["status"] = STATUS_PENDING
+        _save(state)
+        try:
+            reconciled = _reconcile_superseded_report(
+                token, course_id, coursework_id, submission_id,
+                result_id=result_id, prior_file_id=prior_file_id,
+                prior_result_id=(canonical_result_id
+                                 if canonical_result_id != result_id else None),
+                account_email=account_email,
+                detail=detail,
+                render_fn=(lambda r=result, d=detail:
+                           render_report_pdf(r, detail=d)))
+        except Exception as exc:  # noqa: BLE001
+            # Do NOT fall through to the normal upload path: that ADDs a second
+            # Math Correct file and is EXACTLY the duplicate this exists to
+            # prevent. The prior report (and its Drive file) is left intact, so
+            # the operation stays retryable and is reported honestly.
+            state["status"] = STATUS_RECONCILE_FAILED
+            state["error"] = (
+                f"{ERROR_RECONCILE}: the existing Math Correct report could "
+                f"not be replaced, so a second report was NOT added. {exc}")
+            _save(state)
+            log_event("classroom.report",
+                      "canonical report reconciliation failed",
+                      level=logging.WARNING, result_id=result_id,
+                      prior_canonical_result_id=canonical_result_id,
+                      error=str(exc)[:200])
+            return AttachmentOutcome(
+                STATUS_RECONCILE_FAILED, message=state["error"],
+                result_id=result_id,
+                report_filename=state.get("report_filename"))
+        # The submission now carries exactly one Math Correct report: the one
+        # for THIS result. Persist it and record the verified attachment.
+        drive_file_id = reconciled["drive_file_id"]
+        state["drive_file_id"] = drive_file_id
+        state["previous_drive_file_id"] = reconciled.get("previous_drive_file_id")
+        if reconciled.get("report_filename"):
+            state["report_filename"] = reconciled["report_filename"]
+        state["status"] = STATUS_VERIFIED
+        state["error"] = None
+        _save(state)
+        # The file is referenced by Classroom -> RETAINED (never deleted).
+        _cleanup.record_retained(result_id)
+        # Share the (possibly new) file with THIS student only, best effort.
+        if share_with_student and student_id:
+            try:
+                profile = gc.get_user_profile(token, student_id) or {}
+                email = profile.get("emailAddress")
+                if email:
+                    gc.share_drive_file(token, drive_file_id, email)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("could not share the reconciled report: %s", exc)
+        return AttachmentOutcome(
+            STATUS_VERIFIED,
+            message=("Correction report replaced the previous Math Correct "
+                     "report on the student's submission and verified; the "
+                     "Drive file is kept so the student can open it."),
+            result_id=result_id, drive_file_id=drive_file_id,
+            report_filename=state.get("report_filename"), reconciled=True)
     # ---- already attached? (idempotency / no duplicate reports) ----------
     drive_file_id = state.get("drive_file_id")
     existing_ids = _attachment_ids(current)

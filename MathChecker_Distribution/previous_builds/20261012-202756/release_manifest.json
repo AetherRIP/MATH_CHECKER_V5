@@ -1,8 +1,8 @@
 {
   "application": "Math Checker",
   "version": "5.2.1",
-  "build_number": "20261012",
-  "build_timestamp": "2026-10-12T10:10:48Z",
+  "build_number": "20261012-2",
+  "build_timestamp": "2026-10-12T20:20:08Z",
   "python_version": "3.14.7",
   "platform": "win32",
   "self_contained": true,
@@ -68,18 +68,18 @@
       "installed": "50.0.2"
     }
   ],
-  "file_count": 3820,
-  "staged_allowlist_entries": 140,
+  "file_count": 3828,
+  "staged_allowlist_entries": 148,
   "artifacts": [
     {
       "name": "MathChecker_Portable.zip",
-      "bytes": 76249318,
-      "sha256": "a36b87438eeed54cabaf285b63c1f3ddfc682ce3f29cac881be8fff4b5c396b4"
+      "bytes": 76291918,
+      "sha256": "26cdc124db0e0592fee3c4c3a392846a4ff0b0bbd60cedd88374e1538efbc3f9"
     },
     {
       "name": "MathChecker_Setup.exe",
-      "bytes": 53333706,
-      "sha256": "d6270946c095fb9eeb19a6eeeb79025c92720be044257a64cb303ca95c8cc543"
+      "bytes": 53362038,
+      "sha256": "d7e304726c752676a61cf2c5a524ac3dca1bc72388c27c29cea9ea8774908025"
     }
   ]
 }

@@ -12,6 +12,7 @@ import { AttentionCtx, AttentionPanel } from "./attention";
 import { ThemeProvider, useTheme } from "./theme";
 import SearchBox from "./SearchBox";
 import { TooltipLayer } from "./TooltipLayer";
+import { ServerLifecycleBanner } from "./lifecycle";
 import DashboardPage from "./pages/DashboardPage";
 import ClassesPage from "./pages/ClassesPage";
 import AssignmentsPage from "./pages/AssignmentsPage";
@@ -191,6 +192,16 @@ function Shell() {
   const [setupChecked, setSetupChecked] = useState(false);
   // Public-mode session: null = still checking, never a silent allow.
   const [auth, setAuth] = useState<AuthStatus | null>(null);
+  // Bumped when the backend comes back after being away (an idle stop that was
+  // followed by a page load, or a restart). The loaders below re-run at once
+  // instead of waiting out their interval against a server that has changed.
+  const [serverEpoch, setServerEpoch] = useState(0);
+
+  useEffect(() => {
+    const onBack = () => setServerEpoch((n) => n + 1);
+    window.addEventListener("mc5:server-back", onBack);
+    return () => window.removeEventListener("mc5:server-back", onBack);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,7 +219,7 @@ function Shell() {
       clearInterval(t);
       window.removeEventListener("mc5:auth-required", onRequired);
     };
-  }, []);
+  }, [serverEpoch]);
 
   const route = nav.route;
 
@@ -229,7 +240,7 @@ function Shell() {
     load();
     const t = setInterval(load, 25_000);
     return () => clearInterval(t);
-  }, [route]);
+  }, [route, serverEpoch]);
 
   const loadAttention = useCallback(() => {
     api<AttentionFeed>("/attention").then(setAttention).catch(() => {});
@@ -562,6 +573,11 @@ export default function App() {
     <ThemeProvider>
       <ToastProvider>
         <Shell />
+        {/* One heartbeat for the whole app, above the sign-in gate: the login
+            screen is a browser session too, so the app must stay up while a
+            teacher is sitting on it. The banner is the only thing it renders,
+            and only when the backend is genuinely unreachable. */}
+        <ServerLifecycleBanner />
         <TooltipLayer />
       </ToastProvider>
     </ThemeProvider>

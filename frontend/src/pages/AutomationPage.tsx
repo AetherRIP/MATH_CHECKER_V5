@@ -372,6 +372,35 @@ export default function AutomationPage() {
         )}
       </div>
 
+      {/* Grade return is its OWN state (§19): a correction, a generated report
+          and an uploaded report are NOT a returned grade. This card reports the
+          real backend setting, never a local toggle. */}
+      <div className="card" style={{ padding: "10px 14px" }}>
+        <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span className="small" style={{ fontWeight: 650 }}>Grade return</span>
+          {status?.review_mode ? (
+            <Badge tone="warn" icon="review">Held for your approval</Badge>
+          ) : status?.submit_grade === false ? (
+            <Badge tone="mute" icon="x">Off</Badge>
+          ) : status?.return_work === false ? (
+            <Badge tone="warn" icon="alert">Grade only — not returned</Badge>
+          ) : (
+            <Badge tone="ok" icon="check-circle">
+              Grade posted and work returned
+            </Badge>
+          )}
+          <span className="faint small">
+            {status?.review_mode
+              ? "Every grade is saved as a draft; press Approve on a correction to publish the grade and return the work."
+              : status?.submit_grade === false
+                ? "Corrections and reports are produced, but no grade is written to Google Classroom."
+                : status?.return_work === false
+                  ? "The grade is written to the correct submission, but the work is not returned automatically."
+                  : "Each corrected submission has its grade written to Classroom and the work returned; both are read back from Classroom to verify."}
+          </span>
+        </div>
+      </div>
+
       <div className="grid grid-4">
         <Stat label="Automatic Correction"
           value={status?.enabled

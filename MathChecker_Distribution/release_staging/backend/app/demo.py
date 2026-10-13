@@ -34,9 +34,21 @@ def activate(base_data_dir: str) -> str:
 
     MUST be called BEFORE ``app.config`` is imported (DATA_DIR is read at
     import time). Returns the demo data directory.
+
+    IDEMPOTENT. The on-demand supervisor starts the backend as a child process
+    that INHERITS demo mode (``MC5_DEMO=1``) and the already-demo ``MC5_DATA_DIR``
+    (``<base>/demo``) and then runs this function again. Appending ``"demo"`` a
+    second time moved the app to ``<base>/demo/demo`` while the launcher,
+    ``--stop`` and a teacher looking in the folder all use ``<base>/demo`` - the
+    demo database (and mock mode) were effectively invisible. Reusing the demo
+    directory we are already in keeps the two processes on the same data.
     """
     from pathlib import Path
-    demo_dir = Path(base_data_dir) / "demo"
+    base = Path(base_data_dir)
+    if is_demo() and base.name == "demo":
+        os.environ["MC5_DATA_DIR"] = str(base)
+        return str(base)
+    demo_dir = base / "demo"
     os.environ["MC5_DATA_DIR"] = str(demo_dir)
     os.environ[DEMO_ENV] = "1"
     return str(demo_dir)

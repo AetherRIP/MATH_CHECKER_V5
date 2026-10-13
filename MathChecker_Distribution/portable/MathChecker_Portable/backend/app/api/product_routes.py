@@ -8,6 +8,7 @@ real Google response — nothing here reports success without confirmation.
 
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from pathlib import Path
@@ -16,6 +17,7 @@ from fastapi import APIRouter
 
 from .. import db
 from .. import student_identity
+from .. import testing_guard
 from ..api.routes_all import _require_classroom, _classroom_error, _data_dir
 from ..classroom import client as gc
 from ..classroom import managed as managed_mod
@@ -313,10 +315,33 @@ def create_managed_assignment(course_id: str, payload: dict):
             materials=materials,
             account_email=account_email(),
         )
+    except AppError:
+        raise
+    except testing_guard.PublicationBlocked:
+        # A deliberate LOCAL gate, not a Google failure: it is answered by the
+        # app's own 403 handler (main.publication_blocked_handler) with the
+        # guard's wording and its own code, so it must not be re-wrapped here.
+        raise
     except gc.ClassroomApiError as exc:
         raise _classroom_error(exc)
     except ValueError as exc:
         raise AppError(str(exc), status=400, code="bad_request")
+    except Exception as exc:  # noqa: BLE001 - reported, never hidden
+        # Assignment creation used to translate ONLY ClassroomApiError and
+        # ValueError. Every other failure - Google unreachable (a DNS failure, a
+        # timeout, a reset connection), a dead or revoked OAuth grant, an
+        # unexpected internal error - escaped to the global handler, whose whole
+        # answer is "Something went wrong processing this request. The error has
+        # been logged for the developer diagnostics page." That sentence was the
+        # ONLY thing a teacher saw when assigning homework failed, and it named
+        # neither the cause nor the fix. _classroom_error keeps the gates
+        # distinct and actionable (403 testing-only, 401 "Reconnect Google
+        # Classroom...", 502 with the real reason); the cause is still logged
+        # for the developer diagnostics page.
+        log_event("classroom", "create Classroom assignment failed",
+                  level=logging.ERROR, error=str(exc)[:500],
+                  exc_type=type(exc).__name__, course_id=course_id)
+        raise _classroom_error(exc) from exc
     return {"created": True, "coursework": created,
             "management": managed_mod.managed_info(created.get("id"))}
 
@@ -371,10 +396,22 @@ def update_classroom_total(coursework_id: str, payload: dict):
     try:
         result = managed_mod.update_coursework_max_points(
             coursework_id, course_id, max_points)
+    except AppError:
+        raise
+    except testing_guard.PublicationBlocked:
+        raise  # the testing-only gate's own 403 handler answers this one
     except gc.ClassroomApiError as exc:
         raise _classroom_error(exc)
     except ValueError as exc:
         raise AppError(str(exc), status=400, code="bad_max_points")
+    except Exception as exc:  # noqa: BLE001 - reported, never hidden
+        # Same hole as assignment creation: a Classroom write that failed for
+        # any reason other than a Google error response reached the teacher as
+        # the opaque "Something went wrong processing this request" 500.
+        log_event("classroom", "update Classroom total failed",
+                  level=logging.ERROR, error=str(exc)[:500],
+                  exc_type=type(exc).__name__, coursework_id=coursework_id)
+        raise _classroom_error(exc) from exc
     # Return the refreshed detail so the UI can render the confirmed value.
     return {**result, "assignment": _assignment_rows(coursework_id=coursework_id)[0]}
 

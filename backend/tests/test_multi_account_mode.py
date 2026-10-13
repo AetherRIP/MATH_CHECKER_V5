@@ -106,6 +106,99 @@ def test_capabilities_payload(fresh_state, monkeypatch):
     assert caps["restart_required"] is False
 
 
+# ------------------------------------------------- the bootstrap accounts
+def test_a_single_account_install_has_no_accounts_at_all(fresh_state, monkeypatch):
+    """The shipped default must stay account-free, and the tables still exist.
+
+    ``auth_gate._has_any_account()`` counts ANY account, so the old
+    unconditional bootstrap made a brand-new copy report itself as already
+    configured: the sign-in screen demanded a password that existed only in a
+    file nobody was told about, and the first-run "Create the first account"
+    path was unreachable. This is the regression guard for that.
+    """
+    from app.auth_gate import _has_any_account
+    from app.distributed import bootstrap
+
+    monkeypatch.delenv("MULTI_ACCOUNT_ENABLED", raising=False)
+    result = bootstrap.bootstrap()
+    assert result["accounts"] == "skipped"
+    assert result["bootstrap_needed"] is False
+    assert accounts.account_count() == 0
+    assert _has_any_account() is False
+    assert not (fresh_state / "distributed_bootstrap.txt").exists()
+    # The tables themselves are still ensured: the single-account essentials
+    # (device registration, presence, sync, reports, updates) use them.
+    assert db.query_one("SELECT COUNT(*) AS n FROM accounts")["n"] == 0
+
+
+def test_a_fresh_install_offers_account_setup_not_a_password_prompt(
+        client, fresh_state, monkeypatch):
+    """What the browser's sign-in screen reads on a new installation."""
+    from app.distributed import bootstrap
+
+    monkeypatch.delenv("MULTI_ACCOUNT_ENABLED", raising=False)
+    bootstrap.bootstrap()
+    body = client.get("/api/auth/status").json()
+    # ``configured: False`` is exactly what makes SignIn.tsx render the
+    # "Create the first account for this installation" form instead of a
+    # sign-in form nobody can satisfy.
+    assert body["configured"] is False
+    assert body["authenticated"] is False
+
+
+def test_turning_the_switch_on_creates_the_administration_accounts(
+        fresh_state, monkeypatch):
+    """Multi-Account Mode must be usable the moment it is switched on.
+
+    The distributed layer authenticates with its OWN accounts (bearer tokens),
+    so with none present the feature would be enabled and unreachable.
+    """
+    import json
+
+    monkeypatch.delenv("MULTI_ACCOUNT_ENABLED", raising=False)
+    from app.distributed import bootstrap
+    assert bootstrap.bootstrap()["accounts"] == "skipped"
+
+    assert multi_account.set_enabled(True) is True
+    creds_path = fresh_state / "distributed_bootstrap.txt"
+    assert creds_path.exists()
+    creds = json.loads(creds_path.read_text(encoding="utf-8"))
+    developer = accounts.authenticate(creds["developer"]["username"],
+                                      creds["developer"]["password"])
+    assert developer is not None
+    assert developer["role"] == "DEVELOPER"
+    assert accounts.authenticate(creds["teacher"]["username"],
+                                 creds["teacher"]["password"]) is not None
+
+    # Switching off and on again never creates a second set of accounts.
+    created = accounts.account_count()
+    multi_account.set_enabled(False)
+    multi_account.set_enabled(True)
+    assert accounts.account_count() == created
+
+
+def test_an_already_provisioned_install_is_never_re_provisioned(
+        fresh_state, monkeypatch):
+    """An install that already has its administration account keeps it.
+
+    This is the upgrade path: an installation provisioned by an earlier build
+    (or by the switch itself) must not gain a second developer account, must
+    not overwrite the stored one, and must not drop a new credentials file over
+    the one that still describes the live account.
+    """
+    from app.distributed import bootstrap
+
+    monkeypatch.delenv("MULTI_ACCOUNT_ENABLED", raising=False)
+    existing = accounts.create_account(
+        username="head-teacher", display_name="Head Teacher",
+        password="sup3rsafe", role="DEVELOPER", permissions=["*"])
+    result = bootstrap.bootstrap(create_accounts=True)
+    assert result["accounts"] == "present"
+    assert accounts.account_count() == 1
+    assert not (fresh_state / "distributed_bootstrap.txt").exists()
+    assert accounts.authenticate("head-teacher", "sup3rsafe")["id"] == existing["id"]
+
+
 # ------------------------------------------------------- the disabled rules
 BLOCKED = [
     ("GET", "/api/distributed/accounts"),

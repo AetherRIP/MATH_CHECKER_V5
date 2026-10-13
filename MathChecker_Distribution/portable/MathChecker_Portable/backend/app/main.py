@@ -54,10 +54,16 @@ async def lifespan(app: FastAPI):
     setup_logging(level=logging.DEBUG if get_config().debug else logging.INFO)
     ensure_dirs()
     init_db()
-    # Distributed layer bootstrap: additive CREATE TABLE IF NOT EXISTS + the
-    # one-time DEVELOPER/TEACHER bootstrap credentials on a fresh database.
+    # Distributed layer bootstrap: additive CREATE TABLE IF NOT EXISTS on every
+    # start. The one-time DEVELOPER/TEACHER accounts are created ONLY in
+    # Multi-Account Mode: a fresh single-account install must have NO accounts,
+    # so its sign-in screen offers "Create the first account" instead of
+    # demanding a password nobody has been told (see distributed.bootstrap).
     try:
-        distributed_bootstrap.bootstrap()
+        result = distributed_bootstrap.bootstrap()
+        if result.get("accounts") == "created":
+            log_event("app", "multi-account admin accounts created",
+                      credentials=result.get("credentials_path"))
     except Exception as exc:  # noqa: BLE001 — must never block app startup
         log_event("app", "distributed bootstrap skipped",
                   level=logging.WARNING, error=str(exc))
@@ -163,10 +169,34 @@ async def lifespan(app: FastAPI):
     except Exception:  # noqa: BLE001 — never block startup on a log line
         pass
 
+    # Server lifecycle (app.lifecycle): the backend decides when NOBODY is
+    # using the website any more and then asks its own process to stop cleanly
+    # (workers drained, tunnel stopped, temp workspaces cleaned). Started LAST
+    # so the idle timer only ever runs against a fully initialised app: no
+    # countdown can begin while boot recovery or the worker pool is still
+    # coming up. Starting it can never fail the boot — an idle-stop that is not
+    # running keeps the app up, which is the safe direction.
+    try:
+        from .lifecycle.monitor import LifecycleMonitorHolder
+        lifecycle = LifecycleMonitorHolder.instance()
+        lifecycle.start()
+        app.state.lifecycle = lifecycle
+    except Exception as exc:  # noqa: BLE001 — never block startup on it
+        log_event("app", "lifecycle monitor not started",
+                  level=logging.WARNING, error=str(exc))
+
     log_event("app", "Math Checker V5 started",
               version=app.version, workers=len(pool._workers),
               automation=scheduler.running())
     yield
+    # The idle monitor goes first: once the app is shutting down there is
+    # nothing left for it to decide.
+    try:
+        monitor = getattr(app.state, "lifecycle", None)
+        if monitor is not None:
+            await monitor.stop()
+    except Exception:  # noqa: BLE001
+        pass
     # Stop our own tunnel on the way out (no orphan cloudflared, no advertised
     # address from a process that has gone); the saved preference is kept so
     # the next launch restores it.
@@ -367,6 +397,13 @@ access_routes.register(app)
 from .api import data_routes  # noqa: E402
 
 data_routes.register(app)
+
+# Server lifecycle: heartbeat, goodbye and the real idle/stop state the
+# launcher and the Settings page read. Registered before the SPA fallback so
+# /api/lifecycle/* is never swallowed by the catch-all route.
+from .lifecycle import routes as lifecycle_routes  # noqa: E402
+
+lifecycle_routes.register(app)
 
 
 # SPA fallback ------------------------------------------------------------------

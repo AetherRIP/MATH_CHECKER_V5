@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import {
-  accessState, api, authStatus, recheckPublicAddress, setHostAccount,
-  setMultiAccount, setPublicAddress, timeAgo,
-  type AccessState, type AuthStatus, type MultiAccountCapabilities,
-  type PublicAddressState, type RemoteAccessStatus, type Settings,
+  accessState, api, authStatus, lifecycleStatus, recheckPublicAddress,
+  setHostAccount, setMultiAccount, setPublicAddress, timeAgo,
+  type AccessState, type AuthStatus, type LifecycleConfig, type LifecycleStatus,
+  type MultiAccountCapabilities, type PublicAddressState,
+  type RemoteAccessStatus, type Settings,
 } from "../api";
 import { Badge, Button, Icon, PageHeader, Section, useToast } from "../components";
 import { SyncClassroomButton } from "../SyncClassroom";
@@ -667,6 +668,199 @@ function MultiAccountCard({ caps, isOwner, onChange, unavailable }: {
   );
 }
 
+/**
+ * What the backend is REALLY doing right now, in one sentence.
+ *
+ * ``state`` comes from the running process's own state machine (see
+ * app/lifecycle/monitor.py). Nothing here is inferred from how long the page
+ * has been open, and a sleeping app says so plainly: the relay answers that
+ * payload, and it reports ``backend: "stopped"``.
+ */
+const LIFECYCLE_LABEL: Record<string, string> = {
+  serving: "In use — staying up",
+  counting_down: "Nobody is using the app — countdown running",
+  waiting_for_work: "Idle, finishing work before stopping",
+  held: "Staying up — a reason forbids stopping",
+  shutting_down: "Stopping now",
+  always_on: "Always on (idle stop is switched off)",
+  sleeping: "Stopped (starts again when the site is opened)",
+  stopped: "Stopped",
+};
+
+function NumberField({ label, value, min, max, hint, suffix, onCommit }: {
+  label: string; value: number; min: number; max: number;
+  hint: string; suffix: string; onCommit: (next: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <div className="row" style={{ gap: 8, alignItems: "center" }}>
+        <input type="number" min={min} max={max} value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            const parsed = Number(draft);
+            if (!Number.isFinite(parsed)) { setDraft(String(value)); return; }
+            const clamped = Math.max(min, Math.min(max, Math.round(parsed)));
+            setDraft(String(clamped));
+            if (clamped !== value) onCommit(clamped);
+          }}
+          style={{ maxWidth: 120 }} />
+        <span className="faint small">{suffix}</span>
+      </div>
+      <span className="faint small">{hint}</span>
+    </label>
+  );
+}
+
+/**
+ * Server lifecycle card.
+ *
+ * Two switches and three numbers, plus the state the app is in at this moment.
+ * The state block polls ``/lifecycle/status`` every 5s and only while Settings
+ * is open, so it costs nothing when the page is closed — and a status request
+ * never counts as a user, so watching this card cannot keep an idle app awake.
+ */
+function ServerLifecycleCard({ config, missing, onUpdate }: {
+  config: LifecycleConfig | null;
+  missing: boolean;
+  onUpdate: (payload: Partial<Settings>) => Promise<void>;
+}) {
+  const [live, setLive] = useState<LifecycleStatus | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+
+  useEffect(() => {
+    const load = () => lifecycleStatus()
+      .then((s) => { setLive(s); setUnavailable(false); })
+      .catch(() => setUnavailable(true));
+    load();
+    const id = setInterval(load, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (missing || !config) {
+    return (
+      <Section title="Server lifecycle" icon="activity"
+        hint="unavailable in this running copy">
+        <div className="notice warn small" style={{ marginBottom: 0 }}>
+          <Icon name="info" size={15} />
+          <span>
+            This Math Checker process was started before on-demand start and
+            idle stop existed, so it cannot report or change them. Restart
+            Math Checker (Stop.bat, or Ctrl+C in its window, then start.bat);
+            nothing here was lost and no reconfiguration is needed.
+          </span>
+        </div>
+      </Section>
+    );
+  }
+
+  const patch = (next: Partial<LifecycleConfig>) =>
+    onUpdate({ lifecycle: { ...config, ...next } });
+
+  const state = live?.state ?? "connecting";
+  const blockers = live?.blockers ?? [];
+
+  return (
+    <Section title="Server lifecycle" icon="activity"
+      hint={config.enabled
+        ? (config.supervisor ? "on demand + idle stop" : "idle stop only")
+        : "always on"}>
+      <div className="row between" style={{ padding: "2px 0 8px" }}>
+        <span className="row" style={{ gap: 7, alignItems: "center" }}>
+          <Icon name={unavailable ? "x" : state === "serving" ? "check-circle" : "clock"}
+            size={15} />
+          <span>
+            {unavailable
+              ? "This process cannot report its lifecycle state."
+              : LIFECYCLE_LABEL[state] ?? state}
+          </span>
+        </span>
+        <span className="faint small">
+          {live
+            ? `${live.active_sessions} browser session${live.active_sessions === 1 ? "" : "s"} active`
+            : "checking…"}
+        </span>
+      </div>
+      {live?.countdown_seconds != null && (
+        <p className="small" style={{ marginTop: 0 }}>
+          Stopping in <strong>{Math.round(live.countdown_seconds)}s</strong>
+          {" "}unless somebody opens the app again — a reload cancels it and
+          keeps the app running.
+        </p>
+      )}
+      {blockers.length > 0 && (
+        <ul className="small faint" style={{ marginTop: 0 }}>
+          {blockers.map((b) => (
+            <li key={b.source}>{b.detail}</li>
+          ))}
+        </ul>
+      )}
+
+      <label className="switch">
+        <input type="checkbox" checked={config.enabled}
+          onChange={(e) => void patch({ enabled: e.target.checked })} />
+        <span className="track" />
+        <span className="muted">
+          Stop the app when nobody is using it (after the countdown below)
+        </span>
+      </label>
+      <p className="faint small">
+        A correction, a report being written, a long document still being
+        marked or an open database write always finishes first — the stop waits
+        for real work, and it never survives beyond the maximum wait you set.
+        Queued jobs, results and settings are untouched: the next start resumes
+        them.
+      </p>
+
+      <label className="switch">
+        <input type="checkbox" checked={config.supervisor}
+          onChange={(e) => void patch({ supervisor: e.target.checked })} />
+        <span className="track" />
+        <span className="muted">
+          Start it again automatically when the site is opened
+        </span>
+      </label>
+      <p className="faint small">
+        A small always-on relay holds the app's address and starts the backend
+        the moment a page asks for it. It is tiny (no engine, no database), and
+        it is what makes reopening the site after a stop work. <strong>Changing
+        this switch needs a restart of Math Checker.</strong> With it off, a
+        stopped app stays stopped until somebody starts it — and a published
+        Public Address keeps the app up either way, because a visitor from the
+        internet cannot start a program on this computer.
+      </p>
+
+      <div className="grid grid-2" style={{ gap: 12, marginTop: 4 }}>
+        <NumberField label="Heartbeat interval" value={config.heartbeat_seconds}
+          min={5} max={3600} suffix="seconds"
+          hint="How often each open tab says it is still there."
+          onCommit={(n) => void patch({ heartbeat_seconds: n })} />
+        <NumberField label="Session timeout" value={config.session_timeout_seconds}
+          min={15} max={7200} suffix="seconds"
+          hint="A tab that misses this many seconds of heartbeats counts as gone (kept at least twice the heartbeat)."
+          onCommit={(n) => void patch({ session_timeout_seconds: n })} />
+        <NumberField label="Idle countdown" value={config.idle_grace_seconds}
+          min={0} max={86400} suffix="seconds"
+          hint="How long the app keeps running after the last browser session ends."
+          onCommit={(n) => void patch({ idle_grace_seconds: n })} />
+        <NumberField label="Maximum wait for running work"
+          value={config.max_shutdown_wait_seconds} min={0} max={604800}
+          suffix="seconds"
+          hint="The limit on how long a stop may wait for jobs to reach a safe point."
+          onCommit={(n) => void patch({ max_shutdown_wait_seconds: n })} />
+      </div>
+      <p className="faint small" style={{ marginBottom: 0 }}>
+        Stored in this installation's config as <code>[lifecycle]</code>. The
+        first three apply within a few seconds; the automatic start needs a
+        restart. Measured now: {live?.stops ?? 0} idle stop(s) and{" "}
+        {live?.cancels ?? 0} cancelled by somebody coming back.
+      </p>
+    </Section>
+  );
+}
+
 /* ================================================================== page */
 
 export default function SettingsPage() {
@@ -712,7 +906,7 @@ export default function SettingsPage() {
    * about what it means instead of reporting a bland "Settings saved".
    */
   async function setTestingOnly(only: boolean) {
-    if (!settings) return;
+    if (!settings?.testing) return;
     await update({ testing: { ...settings.testing, only } });
     toast(only ? "warn" : "info", only
       ? "Testing only mode is ON — nothing will be sent to Google Classroom or Drive"
@@ -728,6 +922,23 @@ export default function SettingsPage() {
       </>
     );
   }
+
+  /**
+   * The publication gate's state must never be GUESSED, and it must never be
+   * read blind.
+   *
+   * A running copy that predates this field cannot answer for it. Reading
+   * ``settings.testing.only`` off such a payload threw during render and took
+   * the WHOLE Settings page down with it — every card, not just this one — so
+   * the teacher saw a blank page instead of a switch. An absent block is now a
+   * named state, exactly like the Public Address and Multi-Account cards
+   * below: the card reports that this process cannot answer, and says how to
+   * get the control back.
+   */
+  const testing = settings.testing ?? null;
+  // Same rule as ``testing`` above: an older running copy cannot answer for
+  // this block, and an absent one is a named state rather than a crash.
+  const lifecycle = settings.lifecycle ?? null;
 
   return (
     <>
@@ -853,36 +1064,56 @@ export default function SettingsPage() {
       </div>
 
       <Section title="Testing only mode" icon="lock"
-        hint={settings.testing.only ? "ON — nothing is published" : "off"}>
-        <label className="switch">
-          <input type="checkbox" checked={settings.testing.only}
-            onChange={(e) => void setTestingOnly(e.target.checked)} />
-          <span className="track" />
-          <span className="muted">Block every grade write, report upload and return</span>
-        </label>
-        {settings.testing.only ? (
-          <div className="notice warn" style={{ marginTop: 8 }}>
+        hint={testing
+          ? (testing.only ? "ON — nothing is published" : "off")
+          : "unavailable in this running copy"}>
+        {!testing ? (
+          <div className="notice warn small" style={{ marginBottom: 0 }}>
+            <Icon name="info" size={15} />
             <span>
-              <strong>TESTING ONLY · results stay on this machine.</strong>{" "}
-              No grade is written, no report is uploaded or attached and no work
-              is returned to Google Classroom or Drive — an approval that needs
-              to publish fails and says so, and nothing is sent. Reading courses,
-              submissions and mark schemes still works, so marking can still be
-              validated against real work. Switch this off to publish again.
+              This Math Checker process was started before this control existed,
+              so it cannot report or change Testing only mode — an older copy is
+              still running. Close it (Stop.bat, or Ctrl+C in its window) and
+              start Math Checker again; no reinstall and no re-configuration is
+              needed, and nothing here was lost.
             </span>
           </div>
         ) : (
-          <p className="faint small" style={{ marginBottom: 0 }}>
-            Off — approving a report can write the draft grade, upload the report
-            and return the work to Google Classroom.
-          </p>
+          <>
+            <label className="switch">
+              <input type="checkbox" checked={testing.only}
+                onChange={(e) => void setTestingOnly(e.target.checked)} />
+              <span className="track" />
+              <span className="muted">Block every grade write, report upload and return</span>
+            </label>
+            {testing.only ? (
+              <div className="notice warn" style={{ marginTop: 8 }}>
+                <span>
+                  <strong>TESTING ONLY · results stay on this machine.</strong>{" "}
+                  No grade is written, no report is uploaded or attached and no work
+                  is returned to Google Classroom or Drive — an approval that needs
+                  to publish fails and says so, and nothing is sent. Reading courses,
+                  submissions and mark schemes still works, so marking can still be
+                  validated against real work. Switch this off to publish again.
+                </span>
+              </div>
+            ) : (
+              <p className="faint small" style={{ marginBottom: 0 }}>
+                Off — approving a report can write the draft grade, upload the report
+                and return the work to Google Classroom.
+              </p>
+            )}
+            <p className="faint small" style={{ marginBottom: 0, marginTop: 8 }}>
+              This is the same gate the corrector, the automation worker and every
+              Google Classroom/Drive call consult, so a retry or a scheduled job
+              cannot bypass it.
+            </p>
+          </>
         )}
-        <p className="faint small" style={{ marginBottom: 0, marginTop: 8 }}>
-          This is the same gate the corrector, the automation worker and every
-          Google Classroom/Drive call consult, so a retry or a scheduled job
-          cannot bypass it.
-        </p>
       </Section>
+
+      <ServerLifecycleCard config={lifecycle} missing={!lifecycle}
+        onUpdate={update} />
 
       {/* ------------------------------------------------------- ai provider */}
       <div className="nav-section">AI provider</div>

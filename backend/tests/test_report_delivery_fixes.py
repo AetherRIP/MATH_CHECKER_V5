@@ -306,6 +306,91 @@ def test_testing_only_block_is_its_own_non_retryable_attention_state():
     assert (final["next_attempt_at"] or 0) - __import__("time").time() > 3600
 
 
+@pytest.mark.parametrize("parked_in", [
+    # The review-mode hold, and the state job 35f84682 was actually parked in
+    # after the pre-fix run mis-blamed Drive — the two states Approve can be
+    # clicked from with the report still owed.
+    (states.ATTENTION_REQUIRED, "review_mode_await_teacher"),
+    (states.REPORT_UPLOAD_FAILED, "report_upload_failed"),
+])
+def test_approving_under_testing_only_is_never_reported_as_a_drive_failure(
+        monkeypatch, parked_in):
+    """The AUTOMATION PAGE's Approve button, on a real job, with the guard on.
+
+    Production parked job 35f84682 as ``REPORT_UPLOAD_FAILED`` whose message was
+    "Google Drive upload failed: TESTING ONLY: 'upload report to Drive' was
+    blocked …", retried it three times and showed the teacher
+
+        Approval failed: Google Drive upload failed: TESTING ONLY: …
+
+    which blames Drive for a deliberate local gate and sends them to fix the
+    wrong thing. ``advance()`` was given an honest state; Approve runs the SAME
+    report path through the REAL attach function, so it must say the same
+    honest thing and must not touch Google at all.
+    """
+    from app.automation.runner import StepFailure, runner as runner_factory
+    from app.classroom import client as gc
+    from app.config import get_config
+
+    _seed_student()
+    _seed_coursework()
+    _seed_tracking()
+    _seed_result()
+    job = _make_job()
+    status, error_code = parked_in
+    store.set_status(job["id"], status,
+                     detail="waiting on the report stage",
+                     error_code=error_code,
+                     result_id="r1", grade="8", marks_obtained=38,
+                     maximum_marks=47, percentage=80.85)
+
+    # A token exists, so the write is genuinely attempted. Reads ARE allowed
+    # while testing only mode is on (the testing run still has to see the real
+    # submission), so a GET answers normally; every mutating call is recorded
+    # and must never happen.
+    sent: list[tuple[str, str]] = []
+
+    # ``associatedWithDeveloper`` is what lets this app touch the submission at
+    # all (``submission_can_be_modified``), so the flow reaches the write — and
+    # therefore reaches the guard — exactly as it did in production.
+    submission = {"id": "s1", "userId": "u1", "state": "TURNED_IN",
+                  "associatedWithDeveloper": True}
+
+    class _ReadOnlyResponse:
+        status_code = 200
+        content = b"{}"
+
+        @staticmethod
+        def json():
+            return dict(submission)
+
+    def _record(method, url, *a, **k):
+        sent.append((method, url))
+        return _ReadOnlyResponse()
+
+    monkeypatch.setattr(gc.requests, "request", _record)
+    monkeypatch.setattr("app.classroom.auth.get_access_token",
+                        lambda *a, **k: "tok")
+    monkeypatch.setattr(get_config().testing, "only", True)
+
+    with pytest.raises(StepFailure) as excinfo:
+        runner_factory().approve(job["id"])
+
+    message = str(excinfo.value)
+    # The exact wording the teacher must never be shown again.
+    assert "upload failed" not in message.lower(), message
+    assert "Testing only" in message
+    assert "Settings" in message
+    assert excinfo.value.code == "testing_only_blocked"
+    # Nothing MUTATING left the machine: no Drive upload, no grade write, no
+    # attachment change. Only the permitted read of the submission happened.
+    mutating = [(m, u) for m, u in sent if str(m).upper() not in
+                ("GET", "HEAD", "OPTIONS")]
+    assert mutating == [], mutating
+    assert not any("upload" in u for _, u in sent)
+    assert not any("drive" in u for _, u in sent)
+
+
 def test_a_testing_only_hold_can_be_retried_at_the_report_stage():
     """Turning the flag off and retrying resumes at the report stage — the
     AI correction and the grade are never recomputed."""

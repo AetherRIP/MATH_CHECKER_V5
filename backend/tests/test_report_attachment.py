@@ -114,12 +114,16 @@ def google(monkeypatch):
     """Fake every Google call and record the exact payloads."""
     calls = {"upload": [], "update": [], "attach": [], "share": [], "read": []}
     state = {"attachments": [], "can_modify": True, "upload_id": "drive-1",
-             "upload_fail": False, "attach_fail": None, "ignore": False}
+             "upload_fail": False, "attach_fail": None, "ignore": False,
+             # Only files WE uploaded carry this app's appProperties, so a file
+             # the student or teacher added is genuinely foreign.
+             "files": {}}
 
     def _upload(token, filename, content, **kw):
         calls["upload"].append({"filename": filename, "bytes": len(content)})
         if state["upload_fail"]:
             raise gc.ClassroomApiError(500, "drive exploded")
+        state["files"][state["upload_id"]] = dict(kw.get("app_properties") or {})
         return {"id": state["upload_id"], "name": filename,
                 "owners": [{"emailAddress": ACCOUNT}]}
 
@@ -161,8 +165,7 @@ def google(monkeypatch):
                             "size": str(len(PDF_BYTES)),
                             "name": "report.pdf",
                             "owners": [{"emailAddress": ACCOUNT}],
-                            "appProperties": {"mathcorrectTemp": "true",
-                                              "mathcorrectResultId": "r1"}})
+                            "appProperties": state["files"].get(fid, {})})
     # The uploaded file can be downloaded back byte-for-byte, which is what the
     # pre-attach Drive verification checks.
     monkeypatch.setattr(

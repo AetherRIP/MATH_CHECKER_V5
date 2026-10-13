@@ -204,3 +204,67 @@ def test_demo_blocks_real_classroom(monkeypatch):
     # and passes cleanly when demo is off
     os.environ.pop(demo.DEMO_ENV, None)
     demo.guard_classroom()
+
+
+def test_demo_mode_opens_without_a_sign_in(monkeypatch):
+    """Demo Mode is the no-setup showcase, so it must not demand an account.
+
+    It runs on this computer only, in its own data directory, with synthetic
+    students and Google Classroom hard-disabled - there is nothing behind the
+    gate to protect, and asking for a password there defeats the whole point of
+    the Start-menu shortcut. An explicit request for a local sign-in is still
+    honoured, and public access still always requires one.
+    """
+    from app import auth_gate as ag
+    from app import demo
+
+    monkeypatch.delenv("MC5_LOGIN_REQUIRED", raising=False)
+    monkeypatch.delenv("MC5_PUBLIC", raising=False)
+    monkeypatch.setenv(demo.DEMO_ENV, "1")
+    assert ag.login_required_enabled() is False
+    assert ag.gate_enabled() is False
+
+    # An explicit MC5_LOGIN_REQUIRED=1 is an instruction, not a default.
+    monkeypatch.setenv("MC5_LOGIN_REQUIRED", "1")
+    assert ag.login_required_enabled() is True
+    assert ag.gate_enabled() is True
+
+    # Public access keeps the gate up whatever mode is running.
+    monkeypatch.delenv("MC5_LOGIN_REQUIRED", raising=False)
+    monkeypatch.setenv("MC5_PUBLIC", "1")
+    assert ag.gate_enabled() is True
+
+
+def test_demo_activation_is_idempotent_for_the_supervised_backend(monkeypatch):
+    """The on-demand relay starts the backend as a child process that inherits
+    demo mode AND the already-demo data directory, then runs ``activate`` again.
+
+    Appending ``"demo"`` a second time moved the app to ``<base>/demo/demo``
+    while the launcher, ``--stop`` and the packaged verifier all use
+    ``<base>/demo`` - so the demo database, its credentials and the mock engine
+    were not the ones the running app used.
+    """
+    import os
+
+    from app import demo
+
+    # ``activate`` writes these two environment variables itself, so restore
+    # them explicitly: leaving MC5_DEMO=1 behind would put every test that runs
+    # afterwards into demo mode (Classroom disabled), which is a whole-suite
+    # failure caused by one test's leftovers.
+    monkeypatch.delenv(demo.DEMO_ENV, raising=False)
+    monkeypatch.delenv("MC5_DATA_DIR", raising=False)
+    try:
+        first = demo.activate("/tmp/mc5-demo-base").replace("\\", "/")
+        assert first.endswith("/tmp/mc5-demo-base/demo")
+        assert demo.is_demo()
+
+        # What the supervisor's child sees: demo already active, data dir
+        # already the demo directory. Activating must not nest a second
+        # "demo" level.
+        again = demo.activate(os.environ["MC5_DATA_DIR"]).replace("\\", "/")
+        assert again == first
+        assert "/demo/demo" not in again
+    finally:
+        os.environ.pop(demo.DEMO_ENV, None)
+        os.environ.pop("MC5_DATA_DIR", None)

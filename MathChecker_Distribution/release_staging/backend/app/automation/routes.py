@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import time
 
 from fastapi import APIRouter, Request
 
-from .. import auth_gate, db
+from .. import auth_gate, db, testing_guard
 from ..config import AUTOMATION_INTERVALS, get_config, save_config
 from ..errors import AppError
 from ..logging_setup import log_event
@@ -495,12 +496,26 @@ def rename_assignment(coursework_id: str, payload: dict):
     try:
         return naming.rename_coursework(coursework_id, course_id,
                                         str(display_name))
+    except AppError:
+        raise
+    except testing_guard.PublicationBlocked:
+        raise  # the testing-only gate's own 403 handler answers this one
     except ValueError as exc:
         raise AppError(str(exc), status=400, code="empty_name")
     except gc.ClassroomApiError as exc:
         raise AppError(
             f"Google refused the rename ({exc.status}). {exc.detail or ''}"[:400],
             status=502, code="rename_failed")
+    except Exception as exc:  # noqa: BLE001 - reported, never hidden
+        # Same hole as assignment creation: a rename that failed for a reason
+        # OTHER than a Google error response (Google unreachable, a revoked
+        # grant) used to escape to the global 500 and read as "Something went
+        # wrong processing this request".
+        log_event("automation", "rename Classroom assignment failed",
+                  level=logging.ERROR, error=str(exc)[:500],
+                  exc_type=type(exc).__name__, coursework_id=coursework_id)
+        from ..api.routes_all import _classroom_error
+        raise _classroom_error(exc) from exc
 
 
 @router.get("/grade-boundaries/{coursework_id}")

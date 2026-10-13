@@ -364,11 +364,43 @@ def write_instance_record(port: int) -> Path | None:
     return path
 
 
+def serve(port: int, host: str, *, supervised: bool = False) -> int:
+    """Run the web server, wired to the server-lifecycle stop hook.
+
+    The process is NOT killed from the outside when nobody is using it: the
+    backend asks its own uvicorn server to exit, which is the only clean way
+    there is. Uvicorn then finishes in-flight requests and runs the
+    application's lifespan shutdown — worker pool drained, tunnel stopped, temp
+    workspaces cleaned — so an idle stop is a normal shutdown, not a crash.
+    The cancel hook takes that request back when a teacher arrives inside the
+    last-chance window.
+    """
+    import uvicorn
+
+    from app.lifecycle import control
+
+    config = uvicorn.Config("app.main:app", host=host, port=port,
+                            log_level="info")
+    server = uvicorn.Server(config)
+    control.attach(lambda: setattr(server, "should_exit", True),
+                   lambda: setattr(server, "should_exit", False))
+    if supervised:
+        # The relay in front of us prints the banner and owns instance.json;
+        # saying it twice would only confuse whoever reads the console.
+        print(f"  Backend serving http://{host}:{port} "
+              "(supervised — starts and stops on demand)", flush=True)
+    try:
+        server.run()
+    except KeyboardInterrupt:  # pragma: no cover — a person pressed Ctrl+C
+        pass
+    finally:
+        control.attach(None, None)
+    return 0
+
+
 def main() -> int:
     import os
     import threading
-
-    import uvicorn
 
     # `--stop` (Stop.bat) must run before anything else touches the data
     # directory, demo mode or the port: it only reports on and stops the
@@ -403,17 +435,30 @@ def main() -> int:
     if demo:
         cfg.mock_mode = True
 
+    # --- server lifecycle modes (backend/app/lifecycle) -----------------------
+    #   (no flag)        the normal launch: the on-demand relay when
+    #                    [lifecycle] supervisor = true, the plain server when
+    #                    it is off. The teacher's command never changes.
+    #   --supervise      the relay explicitly, in the foreground.
+    #   --serve  PORT    the backend ONLY, on a private port. The relay uses
+    #                    this to start the app; a person never needs to.
+    argv = sys.argv[1:]
+    serve_only = "--serve" in argv
+    supervise_only = "--supervise" in argv
+    rest = [a for a in argv if a not in ("--serve", "--supervise")]
+    under_supervisor = os.environ.get("MC5_SUPERVISED") == "1"
+
     # Port/access precedence: CLI arg > config > default. The bind address
     # comes from ONE place (app.remote_access.resolve_host): local-only is the
     # safe default, LAN mode is an explicit opt-in, and public mode
     # (MC5_PUBLIC=1, set by remote.py) always binds 0.0.0.0 so the tunnel and
     # LAN tests can both reach the server (§8).
     port = cfg.network.port
-    if len(sys.argv) > 1:
+    if rest:
         # A teacher who mistypes the port must get a sentence, not a traceback
         # followed by a window that waits for a key press (the launcher pauses
         # on any non-zero exit).
-        raw_port = sys.argv[1]
+        raw_port = rest[0]
         try:
             port = int(raw_port)
         except ValueError:
@@ -430,6 +475,32 @@ def main() -> int:
             print(f"  Port {port} is outside the valid range 1-65535.")
             print("=" * 56)
             return 2
+
+    if serve_only:
+        # The backend behind the relay. It listens on loopback only: the relay
+        # owns the address people actually use, so LAN and public traffic keep
+        # arriving at the one entry point that can also start the app again.
+        # The port a user should be told about stays MC5_PORT (set by the
+        # relay); this private one is only how the relay reaches us.
+        if not os.environ.get("MC5_PORT"):
+            os.environ["MC5_PORT"] = str(port)
+        # The same startup summary an unsupervised launch prints: the teacher's
+        # console is the only place these warnings appear, and supervision must
+        # not swallow them.
+        warnings = preflight()
+        print("=" * 56, flush=True)
+        print(f"{APP_NAME} v{APP_VERSION} (build {BUILD_NUMBER})", flush=True)
+        print("=" * 56, flush=True)
+        for warning in warnings:
+            print(f"  ! {warning}", flush=True)
+        if not warnings:
+            print("  Configuration OK.", flush=True)
+        try:
+            print(startup_key_summary(), flush=True)
+        except Exception as exc:  # noqa: BLE001 — never block startup on it
+            print(f"  (key summary unavailable: {exc})", flush=True)
+        return serve(port, "127.0.0.1", supervised=under_supervisor)
+
     # One authoritative record of the ACTUAL port for this process, so the
     # auth/status and remote-status endpoints never report a stale config port.
     os.environ["MC5_PORT"] = str(port)
@@ -470,6 +541,29 @@ def main() -> int:
     host = resolve_host(cfg.network.access_mode)
     lan = host == "0.0.0.0"
 
+    # --- on-demand startup ----------------------------------------------------
+    # The relay owns the public port and starts/stops the backend behind it, so
+    # a stopped app is one page load away instead of something the teacher has
+    # to find and double-click. This is the default whenever
+    # [lifecycle] supervisor = true, and it never nests: a backend started BY
+    # the relay never starts a relay of its own.
+    if not under_supervisor and (supervise_only or cfg.lifecycle.supervisor):
+        from app.lifecycle.supervisor import run_supervisor
+
+        if not cfg.lifecycle.supervisor and supervise_only:
+            print("  Note: [lifecycle] supervisor is off in Settings — running "
+                  "it anyway because --supervise was asked for.", flush=True)
+        return run_supervisor(
+            port,
+            listen_host=host,
+            backend_port=cfg.lifecycle.backend_port,
+            project_root=BACKEND.parent,
+            # A boot/autostart launch (session 0) must never open a window or a
+            # browser, exactly as before.
+            open_browser=(os.environ.get("MC5_AUTOSTART") != "1"
+                          and os.environ.get("MC5_NO_BROWSER") != "1"),
+        )
+
     warnings = preflight()
     print("=" * 56)
     print(f"{APP_NAME} v{APP_VERSION} (build {BUILD_NUMBER})")
@@ -507,7 +601,7 @@ def main() -> int:
     except Exception:  # noqa: BLE001 — never block startup on a convenience
         pass
     try:
-        uvicorn.run("app.main:app", host=host, port=port, log_level="info")
+        serve(port, host)
     finally:
         if record is not None:
             try:

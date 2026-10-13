@@ -523,6 +523,13 @@ class WorkflowRunner:
             raise StepFailure(outcome.message, transient=True,
                               state=states.REPORT_UPLOAD_FAILED,
                               code="report_upload_not_verified")
+        if status == ra.STATUS_RECONCILE_FAILED:
+            # The prior Math Correct report could not be replaced, so NO second
+            # report was added. Retryable: the next attempt re-renders and
+            # retries the in-place replacement, still without duplicating.
+            raise StepFailure(outcome.message, transient=True,
+                              state=states.REPORT_UPLOAD_FAILED,
+                              code="report_reconcile_failed")
         if status == ra.STATUS_OWNERSHIP_ERROR:
             # Permanent for that file: the retry re-creates it under the
             # current identity, so it is a real (non-transient) attach failure.
@@ -577,9 +584,19 @@ class WorkflowRunner:
         # job must not sit in Classroom as an unpublished draft. The teacher can
         # still choose draft-only mode explicitly (see ``_cfg().draft_only``).
         op = "draft_grade" if getattr(cfg, "draft_only", False) else "assign_grade"
-        self._grade_op(job, op, grade)
-        store.set_status(job["id"], states.GRADE_DRAFTED,
-                         detail=f"Final grade {grade} posted to Classroom")
+        if self._grade_already_present(job, grade):
+            # Google ALREADY holds this grade (e.g. a previous write whose
+            # response timed out). Do NOT submit it again — a retry must read
+            # the remote state first (§34) — go straight to verification.
+            log.info("grade %s is already present in Classroom for job %s; "
+                     "skipping a duplicate write", grade, job["id"])
+            store.log_job("info", "grade_already_present",
+                          f"Grade {grade} is already in Classroom; not re-sent",
+                          job_id=job["id"])
+        else:
+            self._grade_op(job, op, grade)
+            store.set_status(job["id"], states.GRADE_DRAFTED,
+                             detail=f"Final grade {grade} posted to Classroom")
         # Verify by reading the submission back — a 200 is NOT proof (§34/§35).
         self._verify_grade(job, grade)
         store.set_status(job["id"], states.GRADE_VERIFIED,
@@ -632,15 +649,6 @@ class WorkflowRunner:
                        "— publish/return will only happen with explicit "
                        "teacher action",
                 error_code="review_mode_await_teacher")
-            return False
-        if getattr(cfg, "draft_only", False):
-            # Explicit draft-only mode: the grade is saved but the teacher
-            # decides when to return. This is the ONLY path that legitimately
-            # leaves a successful correction unreturned.
-            store.set_status(
-                job["id"], states.ATTENTION_REQUIRED,
-                detail="Draft grade saved (draft-only mode) — return manually "
-                       "when ready")
             return False
         if getattr(cfg, "draft_only", False):
             # Explicit draft-only mode: the grade is saved but the teacher
@@ -768,7 +776,13 @@ class WorkflowRunner:
         # a crash right after a draft write. An approved job must never be
         # recorded as complete with nothing published.
         if needs_publication or stage == states.GRADE_DRAFTED:
-            self._grade_op(job, "assign_grade", grade)
+            if self._grade_already_present(job, grade):
+                # The approval is a retry-safe operation: never re-submit a
+                # grade Classroom already holds (§34).
+                log.info("grade %s already present in Classroom for job %s; "
+                         "not re-sending", grade, job["id"])
+            else:
+                self._grade_op(job, "assign_grade", grade)
             self._verify_grade(job, grade)
             store.set_status(job["id"], states.GRADE_VERIFIED,
                              detail=f"Approved by teacher: grade {grade} published")
@@ -951,17 +965,55 @@ class WorkflowRunner:
             raise classify_exception(exc, states.GRADE_VERIFICATION_FAILED)
         draft = submission.get("draftGrade")
         assigned = submission.get("assignedGrade")
-        stored = draft if draft is not None else assigned
-        if stored is None or abs(float(stored) - float(grade)) > 1e-6:
+        # The grade is verified when EITHER Classroom field carries it. Reading
+        # only the draft (or preferring a stale draft over a fresh assigned
+        # grade) is what made a correct final-grade write look like a failure
+        # whenever an earlier draft existed - the workflow then parked with the
+        # grade actually in Classroom. A genuinely absent grade still fails.
+        values = [v for v in (draft, assigned) if v is not None]
+        if not any(abs(float(v) - float(grade)) <= 1e-6 for v in values):
             raise StepFailure(
-                f"Classroom reported draftGrade={stored!r} but Grade {grade} was "
-                f"submitted.", transient=True,
-                state=states.GRADE_VERIFICATION_FAILED,
+                f"Classroom reported draftGrade={draft!r}, "
+                f"assignedGrade={assigned!r} but Grade {grade} was submitted.",
+                transient=True, state=states.GRADE_VERIFICATION_FAILED,
                 code="grade_verification_failed")
         # Record the write-back so the rest of the app sees it as graded.
         db.execute(
             "UPDATE classroom_submissions SET assigned_grade = ? WHERE submission_id = ?",
             (float(grade), job["submission_id"]))
+
+    def _grade_already_present(self, job: dict, grade) -> bool:
+        """True when Classroom ALREADY holds this exact grade.
+
+        A grade write that times out or crashes mid-request may still have been
+        applied by Google, so a retry must READ the remote state instead of
+        blindly submitting again (§34). The remote read only happens when our
+        own publish-op log shows a PREVIOUS grade write for this submission, so
+        a first run always performs the write and a grade the teacher entered
+        can never be mistaken for ours. Treating an unreadable submission as
+        "not present" keeps this a pure optimisation - the write remains the
+        source of truth.
+        """
+        if grade is None:
+            return False
+        from ..classroom import managed
+        if managed.grade_write_evidence(job.get("coursework_id"),
+                                        job.get("submission_id")) == "none":
+            return False
+        try:
+            submission = self._read_submission(job)
+        except Exception:  # noqa: BLE001 - a read failure must not block the write
+            return False
+        for value in (submission.get("draftGrade"),
+                      submission.get("assignedGrade")):
+            if value is None:
+                continue
+            try:
+                if abs(float(value) - float(grade)) <= 1e-6:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
 
     def _verify_returned(self, job: dict) -> None:
         try:

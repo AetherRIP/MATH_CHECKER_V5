@@ -4,7 +4,9 @@ Spawns the REAL launcher (``MATH V5/main.py``) against a throwaway data dir
 and drives it over HTTP exactly like the browser does — no TestClient, no
 shortcuts:
 
-  1. first run bootstraps the DEVELOPER + TEACHER accounts (credentials file),
+  1. first run bootstraps the DEVELOPER + TEACHER accounts (credentials file)
+     — in Multi-Account Mode, which this script switches on, because a
+     single-account install deliberately has no accounts at all,
   2. with MC5_LOGIN_REQUIRED=1 the sign-in gate blocks every API route,
   3. a wrong password gets a GENERIC 401 (never reveals the username) and
      repeated failures are throttled with 429,
@@ -56,6 +58,11 @@ def spawn(port: int, data_dir: Path) -> subprocess.Popen:
     env = dict(os.environ)
     env["MC5_DATA_DIR"] = str(data_dir)
     env["MC5_LOGIN_REQUIRED"] = "1"
+    # The DEVELOPER/TEACHER bootstrap accounts only exist in Multi-Account Mode
+    # (a shipped single-account install has none, and opens on "Create the
+    # first account" instead) - this script exercises the shared multi-user
+    # login, so the layer is explicitly on.
+    env["MULTI_ACCOUNT_ENABLED"] = "1"
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env.pop("MC5_PUBLIC", None)
     return subprocess.Popen(

@@ -530,6 +530,19 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .notice.ok { background: var(--ok-soft); border-color: var(--ok-line); color: var(--ok); }
 .notice.info { background: var(--accent-soft); border-color: var(--accent-line); }
 
+/* ------------------------------------------ server lifecycle (reconnecting)
+   Shown only when the backend is genuinely not answering (an idle stop it is
+   being woken from, or a restart). Fixed so it is visible whatever page the
+   teacher was on when the link dropped; it removes itself the moment the
+   backend answers again. */
+.lifecycle-away {
+  position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+  z-index: 3000; max-width: min(680px, calc(100vw - 24px));
+  align-items: center; gap: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+}
+.lifecycle-away strong { letter-spacing: 0.04em; }
+
 /* ---------------------------------------------------------------- tables */
 
 .table-wrap { overflow-x: auto; border-radius: var(--radius-sm); margin-top: calc(var(--s1) * -1); }

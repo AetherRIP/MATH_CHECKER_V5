@@ -36,6 +36,10 @@ workers without touching your data.
 
 ## First run
 
+**This copy ships with no password — and none is asked for.** Opening it for the
+first time shows the setup wizard below, and it opens straight into the app on
+this computer. There is no default password to look up or guess.
+
 The first-run setup asks for:
 
 1. **AI provider & keys** — paste your Gemini API key(s). Keys are stored only
@@ -45,9 +49,23 @@ The first-run setup asks for:
    refresh token for you locally. It never ships or inherits anyone else's.
 3. **Storage & retention** — how long original submissions are kept.
 
+### Your own sign-in
+
+Your copy starts with no sign-in account, so nothing is demanded of you up
+front. Create your own on **Settings → Access & accounts → Host account**: a
+username (leave it blank to keep `teacher`) and a password of at least 10
+characters. From then on the app asks for it whenever it starts, and the
+account is stored only on this computer as a salted hash — nobody but you knows
+it.
+
+That card is also the one to use **before switching Public Address on**: a
+public address must serve a login page, and the switch refuses to expose a copy
+that nobody could sign in to.
+
 Explore without any setup first: launch **Math Checker (Demo mode)** from the
-Start Menu to see the app with synthetic students and assignments. Demo Mode
-cannot connect to a real Google Classroom account.
+Start Menu to see the app with synthetic students and assignments - it opens
+straight into the app and does not ask for a password. Demo Mode cannot connect
+to a real Google Classroom account.
 
 ## Settings that decide who can reach the app
 
@@ -57,11 +75,16 @@ the server enforces that — not just the screen.
 
 ### Multi-Account Mode (off by default)
 
-Your copy runs as a **single-account** install. Switching this ON enables the
-full accounts/roles/teams system (shared Identity across several installations);
-switching it OFF again hides it — and the server refuses those operations —
-**without deleting anything**: accounts, roles, permissions, teams and audit
-records are kept exactly as they are, ready for the next time you switch it on.
+Your copy runs as a **single-account** install, which is why it asks you to
+create just one sign-in and nothing else. Switching this ON enables the full
+accounts/roles/teams system (shared Identity across several installations) and
+creates the administration account that system is managed from; its one-time
+password is written to `distributed_bootstrap.txt` in your data folder (see
+*Where your data lives*), so keep that file private or change the password
+after you first sign in with it. Switching the switch OFF again hides the
+system — and the server refuses those operations — **without deleting
+anything**: accounts, roles, permissions, teams and audit records are kept
+exactly as they are, ready for the next time you switch it on.
 Your correction work, Google Classroom connection, reports, retries, approvals,
 sync and the 1–9 grade scale are unaffected either way. No restart is needed.
 

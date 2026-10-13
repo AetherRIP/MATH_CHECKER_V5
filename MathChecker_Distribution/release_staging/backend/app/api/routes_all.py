@@ -2152,6 +2152,19 @@ def get_settings():
             "access_mode": cfg.network.access_mode,
             "port": cfg.network.port,
         },
+        # Server lifecycle (app.lifecycle): start on demand, stay up while a
+        # browser is using the app, stop when idle. These are the real numbers
+        # the monitor is running with — the page never displays a value it was
+        # not told by the backend.
+        "lifecycle": {
+            "enabled": cfg.lifecycle.enabled,
+            "supervisor": cfg.lifecycle.supervisor,
+            "heartbeat_seconds": cfg.lifecycle.heartbeat_seconds,
+            "session_timeout_seconds": cfg.lifecycle.session_timeout_seconds,
+            "idle_grace_seconds": cfg.lifecycle.idle_grace_seconds,
+            "max_shutdown_wait_seconds": cfg.lifecycle.max_shutdown_wait_seconds,
+            "last_chance_seconds": cfg.lifecycle.last_chance_seconds,
+        },
         "version": APP_VERSION,
     }
 
@@ -2250,6 +2263,20 @@ def update_settings(payload: dict):
             raise AppError("Access mode must be 'local' or 'lan'.",
                            status=400, code="bad_access_mode")
         cfg.network.access_mode = mode
+    if isinstance(payload.get("lifecycle"), dict):
+        # Server lifecycle. ``enabled`` (stop when idle) applies on the next
+        # monitor tick — the monitor re-reads the config every few seconds, so
+        # the switch takes effect without a restart. ``supervisor`` (the relay
+        # that starts the app again) is a PROCESS and therefore needs a
+        # restart; the UI says so next to the switch rather than pretending.
+        from ..config import apply_lifecycle_settings
+        apply_lifecycle_settings(cfg, payload["lifecycle"])
+        log_event("api", "lifecycle settings changed",
+                  enabled=cfg.lifecycle.enabled,
+                  supervisor=cfg.lifecycle.supervisor,
+                  heartbeat_seconds=cfg.lifecycle.heartbeat_seconds,
+                  session_timeout_seconds=cfg.lifecycle.session_timeout_seconds,
+                  idle_grace_seconds=cfg.lifecycle.idle_grace_seconds)
     save_config(cfg)
     log_event("api", "settings updated", role=cfg.role, mock_mode=cfg.mock_mode)
     return get_settings()

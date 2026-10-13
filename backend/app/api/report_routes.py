@@ -876,7 +876,12 @@ def render_result_pdf(result: dict, *, detail: str = "standard",
         ("Class", class_label),
         ("Assignment", assignment or "Not recorded"),
         ("Date", D.esc(_fmt_ts(result.get("created_at")))),
-        ("Marked by", str(result.get("marking_model") or "Not recorded")),
+        # NOTE: the AI model/provider that marked this work is deliberately NOT
+        # printed. This PDF is student-facing, so it must never reveal which
+        # model corrected the homework (§ report privacy). ``marking_model``
+        # stays available in the database and the internal diagnostics/logs for
+        # debugging and provider management - it is simply kept out of the
+        # report the student receives.
     ]
     if result.get("classroom_name") and result.get("nickname"):
         # The teacher asked for the nickname; the official name stays visible

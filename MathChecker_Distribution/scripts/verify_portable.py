@@ -869,18 +869,19 @@ def main() -> int:
     report.note(f"report file: {args.report or '(console only)'}")
 
     port = args.port or free_port()
-    demo_port = args.demo_port or free_port()
     before_python = python_pids()
     local_before = snapshot_local()
 
     instance = Instance(package, port, Path(tempfile.gettempdir()) / "mc5_verify_main.log")
-    demo = Instance(package, demo_port, Path(tempfile.gettempdir()) / "mc5_verify_demo.log")
+    demo: Instance | None = None
 
     # Never leave a copy running because a check raised: a stale instance holds
     # its log files open and would break the next verification run.
     @atexit.register
     def _teardown() -> None:
         for copy in (demo, instance):
+            if copy is None:
+                continue
             try:
                 if listening_pids(copy.port):
                     copy.stop_with_launcher()
@@ -894,6 +895,15 @@ def main() -> int:
     check_duplicate_launch(report, instance)
     session = check_auth(report, instance, package / "Data")
 
+    # The demo port is chosen ONLY NOW, after the first copy is up. The on-demand
+    # supervisor runs the backend on a PRIVATE port of its own, so a port picked
+    # before that copy started could already belong to it: the demo launch would
+    # find a listener answering the Math Checker health check, refuse to start
+    # and ATTACH to the first copy instead — demo mode, its isolated data and its
+    # mock engine would silently not be exercised. A port picked while the first
+    # copy is running cannot be one of that copy's ports.
+    demo_port = args.demo_port or free_port()
+    demo = Instance(package, demo_port, Path(tempfile.gettempdir()) / "mc5_verify_demo.log")
     report.note(f"\n== demo copy on port {demo_port} ==")
     demo.start("--demo")
     report.check("demo copy starts", wait_health(demo_port),

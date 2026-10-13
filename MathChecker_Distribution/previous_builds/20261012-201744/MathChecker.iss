@@ -9,7 +9,7 @@
 
 #define AppName "Math Checker"
 #define AppVersion "5.2.1"
-#define AppBuild "20261012"
+#define AppBuild "20261012-2"
 #define AppPublisher "Math Checker"
 #define AppExeName "MathChecker.bat"
 ; Public / LAN access launcher: starts the server AND the tunnel, verifies the

@@ -75,6 +75,15 @@ _PUBLIC_PATHS = {
     # Remote-access status: addresses and timestamps only — no student data,
     # no secrets. The sign-in screen needs it to show the public address.
     "/api/remote/status",
+    # Server lifecycle: "this tab is still here", "I am leaving" and the real
+    # idle/stop state. They must work BEFORE there is a session, because the
+    # sign-in screen is itself a browser session that keeps the app running —
+    # gating the heartbeat would let the app fall asleep under a teacher who is
+    # sitting on the login page. None of them reads a student record, a secret
+    # or a setting, and all three are GET (see app/lifecycle/routes.py).
+    "/api/lifecycle/heartbeat",
+    "/api/lifecycle/leave",
+    "/api/lifecycle/status",
 }
 _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
@@ -110,6 +119,15 @@ def login_required_enabled() -> bool:
     env = os.environ.get("MC5_LOGIN_REQUIRED")
     if env in ("0", "1"):
         return env == "1"
+    # Demo Mode is the one local mode that does not ask for an account. It runs
+    # on this computer only (its own data directory, synthetic students, mock
+    # engine, Google Classroom hard-disabled), so there is nothing behind the
+    # gate to protect - and its whole point is "explore without any setup".
+    # An explicit MC5_LOGIN_REQUIRED above still wins, and public mode is
+    # unaffected: gate_enabled() raises the gate there regardless.
+    from .demo import is_demo
+    if is_demo():
+        return False
     from .config import get_config
     try:
         return bool(get_config().security.login_required)

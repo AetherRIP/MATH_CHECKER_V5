@@ -470,6 +470,75 @@ class TestingConfig:
 
 
 @dataclass
+class LifecycleConfig:
+    """Start on demand, stay up while a browser is using the app, stop when idle.
+
+    Two halves, and they are separately useful:
+
+    * ``enabled`` — the STOP half. With it on, the backend stops itself once no
+      browser session has been seen for the grace period AND nothing is running
+      (no correction, no long document, no database write in flight). Logging
+      back in is not needed: opening the site again starts it (see below).
+    * ``supervisor`` — the START half. The launcher runs a tiny stdlib relay
+      that owns the public port, starts the backend on the first connection and
+      keeps it as a single child process, so a stopped app is one page load
+      away instead of something the teacher has to find and start. Turning it
+      off restores the legacy behaviour: one always-on process on the port.
+
+    All timeouts are seconds. ``backend_port`` is the private port the backend
+    listens on behind the relay; 0 lets the operating system choose a free one,
+    which is what almost every install wants (an adjacent port would collide
+    with a second copy's public port).
+    """
+    enabled: bool = True
+    supervisor: bool = True
+    heartbeat_seconds: int = 30
+    session_timeout_seconds: int = 90
+    idle_grace_seconds: int = 120
+    max_shutdown_wait_seconds: int = 900
+    last_chance_seconds: int = 5
+    backend_port: int = 0
+
+
+def apply_lifecycle_settings(cfg: "AppConfig", values: dict) -> None:
+    """Clamp and apply the ``[lifecycle]`` block.
+
+    ONE implementation for the config file and the Settings page, because the
+    two must not be able to disagree: a heartbeat of 0 seconds, or a grace
+    period of a month, are both ways of making the app unusable — and a screen
+    that accepted what the file rejects is a bug waiting to happen.
+    """
+    lifecycle = cfg.lifecycle
+    if "enabled" in values:
+        lifecycle.enabled = bool(values["enabled"])
+    if "supervisor" in values:
+        lifecycle.supervisor = bool(values["supervisor"])
+    for key, floor, ceiling in (
+            ("heartbeat_seconds", 5, 3600),
+            ("session_timeout_seconds", 15, 7200),
+            ("idle_grace_seconds", 0, 86400),
+            ("max_shutdown_wait_seconds", 0, 604800),
+            ("last_chance_seconds", 0, 300)):
+        if key in values:
+            try:
+                setattr(lifecycle, key,
+                        max(floor, min(ceiling, int(values[key]))))
+            except (TypeError, ValueError):
+                pass
+    if "backend_port" in values:
+        try:
+            picked = int(values["backend_port"])
+            lifecycle.backend_port = picked if 1 <= picked <= 65535 else 0
+        except (TypeError, ValueError):
+            pass
+    # A session must not be declared dead before the browser is due to beat
+    # again, or one slow heartbeat would look like a departure and the
+    # countdown would start under a live user.
+    if lifecycle.session_timeout_seconds < lifecycle.heartbeat_seconds * 2:
+        lifecycle.session_timeout_seconds = lifecycle.heartbeat_seconds * 2
+
+
+@dataclass
 class AssignmentNamingConfig:
     """OPTIONAL default display name for NEW Classroom assignments.
 
@@ -503,6 +572,7 @@ class AppConfig:
     retention: RetentionConfig = field(default_factory=RetentionConfig)
     large_pdf: LargePdfConfig = field(default_factory=LargePdfConfig)
     testing: TestingConfig = field(default_factory=TestingConfig)
+    lifecycle: LifecycleConfig = field(default_factory=LifecycleConfig)
     network: NetworkConfig = field(default_factory=NetworkConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
     accounts: AccountsConfig = field(default_factory=AccountsConfig)
@@ -872,6 +942,11 @@ def get_config(reload: bool = False) -> AppConfig:
             testing = data.get("testing", {})
             if isinstance(testing, dict):
                 cfg.testing.only = bool(testing.get("only", False))
+            lifecycle = data.get("lifecycle", {})
+            if isinstance(lifecycle, dict):
+                # Values are clamped, never trusted (see the helper: the
+                # Settings page uses the very same rules).
+                apply_lifecycle_settings(cfg, lifecycle)
             network = data.get("network", {})
             if isinstance(network, dict):
                 mode = str(network.get("access_mode", cfg.network.access_mode))
@@ -1048,6 +1123,16 @@ def save_config(cfg: AppConfig) -> None:
         },
         "testing": {
             "only": cfg.testing.only,
+        },
+        "lifecycle": {
+            "enabled": cfg.lifecycle.enabled,
+            "supervisor": cfg.lifecycle.supervisor,
+            "heartbeat_seconds": cfg.lifecycle.heartbeat_seconds,
+            "session_timeout_seconds": cfg.lifecycle.session_timeout_seconds,
+            "idle_grace_seconds": cfg.lifecycle.idle_grace_seconds,
+            "max_shutdown_wait_seconds": cfg.lifecycle.max_shutdown_wait_seconds,
+            "last_chance_seconds": cfg.lifecycle.last_chance_seconds,
+            "backend_port": cfg.lifecycle.backend_port,
         },
     }
     _write_toml(CONFIG_PATH, payload)

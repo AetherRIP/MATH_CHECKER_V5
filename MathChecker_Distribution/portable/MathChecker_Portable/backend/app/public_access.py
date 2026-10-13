@@ -506,8 +506,9 @@ class PublicAccess:
                            "try again.")
         if not self._has_sign_in_account():
             return False, ("No sign-in account exists yet, so nobody could get "
-                           "in through the public address. Create the account "
-                           "in first-run setup, then switch public access on.")
+                           "in through the public address. Create one on the "
+                           "Host account card on this page (Access & accounts), "
+                           "then switch public access on.")
         return True, None
 
     def _has_sign_in_account(self) -> bool:
