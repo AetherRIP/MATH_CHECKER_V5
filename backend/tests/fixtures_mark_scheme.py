@@ -97,6 +97,40 @@ def page_break_mark_scheme(path: Path) -> Path:
     return path
 
 
+def compiled_image_only_mark_scheme(path: Path, *, pages: int = 9,
+                                    per_page: int = 2) -> Path:
+    """A multi-page, image-only compiled scheme whose questions are indexed.
+
+    Mirrors the real document that exposed the 67-vs-69 loss: landscape pages,
+    NO text layer at all, and a printed index that runs continuously across the
+    pages (page N holds ``(N-1)*per_page + 1 .. N*per_page``). Built with PIL so
+    the pages really are images - there is no text to extract, which is exactly
+    why the whole-document read has to be verified page by page.
+    """
+    from PIL import Image, ImageDraw
+
+    rendered: list[Image.Image] = []
+    for page in range(1, pages + 1):
+        img = Image.new("RGB", (1100, 850), "white")
+        draw = ImageDraw.Draw(img)
+        draw.text((30, 30), f"CLASSIFIED MARK SCHEME - page {page} of {pages}",
+                  fill="black")
+        for offset in range(per_page):
+            index = (page - 1) * per_page + offset + 1
+            top = 100 + offset * 260
+            draw.text((40, top), f"{index}. June 05/4H/Q{index}   [4 marks]",
+                      fill="black")
+            draw.text((40, top + 40),
+                      "M1 correct method   A1 answer   B1 units", fill="black")
+            draw.text((40, top + 80), "Accept equivalent fractions.", fill="black")
+        rendered.append(img)
+
+    first, rest = rendered[0], rendered[1:]
+    first.save(str(path), "PDF", resolution=150, save_all=True,
+               append_images=rest)
+    return path
+
+
 def image_only_mark_scheme(path: Path) -> Path:
     """A PDF with no text layer at all - mirrors the real Ch1L7 scheme."""
     from PIL import Image, ImageDraw
