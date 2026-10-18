@@ -36,6 +36,9 @@ import json
 from dataclasses import dataclass, field
 
 from ..config import get_config
+# One definition of "percentage" for the whole engine (re-exported here because
+# this module's callers/tests read ``double_check.percentage_of``).
+from .result_guard import percentage_of
 
 
 def _dump(value) -> str | None:
@@ -151,15 +154,6 @@ def differences_of(result_row) -> list[dict]:
             return []
     return raw if isinstance(raw, list) else []
 
-
-def percentage_of(earned, available) -> float:
-    """Unrounded percentage (§2: never trigger from a rounded display value)."""
-    try:
-        earned = float(earned or 0)
-        available = float(available or 0)
-    except (TypeError, ValueError):
-        return 0.0
-    return (earned / available * 100.0) if available else 0.0
 
 
 def direction_of(earned, available) -> str | None:

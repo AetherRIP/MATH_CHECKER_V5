@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from .. import db
-from ..config import get_config, get_secrets, save_config
+from ..config import data_dir, get_config, get_secrets, save_config
 from ..errors import AppError
 from ..logging_setup import log_event
 from ..version import APP_NAME, APP_VERSION, SCHEMA_VERSION
@@ -27,11 +27,6 @@ router = APIRouter(prefix="/api")
 
 def register(app) -> None:
     app.include_router(router)
-
-
-def _data_dir() -> Path:
-    from .. import config as app_config
-    return app_config.DATA_DIR
 
 
 # ============================================================
@@ -102,7 +97,7 @@ def setup_complete(payload: dict):
 
 def _storage_writable() -> bool:
     try:
-        probe = _data_dir() / ".write_probe"
+        probe = data_dir() / ".write_probe"
         probe.write_text("ok", encoding="utf-8")
         probe.unlink()
         return True
@@ -139,9 +134,9 @@ def selfcheck(test_ai: bool = False):
 
     # Storage
     try:
-        usage = shutil.disk_usage(str(_data_dir()))
+        usage = shutil.disk_usage(str(data_dir()))
         free_gb = usage.free / (1024 ** 3)
-        data_size = _dir_size(_data_dir())
+        data_size = _dir_size(data_dir())
         status = "warn" if free_gb < 2 else "pass"
         add("Storage", status,
             f"{free_gb:.1f} GB free; Math Checker data uses {_human(data_size)}.",

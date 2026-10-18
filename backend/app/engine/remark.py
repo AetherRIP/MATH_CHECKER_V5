@@ -29,6 +29,7 @@ from typing import Any
 
 from .. import db
 from . import versions
+from .result_guard import percentage_of
 
 # Teacher decisions after a remark.
 DECISION_KEEP_PREVIOUS = "KEEP_PREVIOUS"
@@ -41,14 +42,6 @@ NOTE_REMARK = "Remark attempt"
 _UNTRUSTED = ("LOW", "VALIDATION_FAILED", "LARGE_SCORE_CHANGE",
               "SUBMISSION_REVIEW_REQUIRED")
 
-
-def _pct(earned: Any, available: Any) -> float:
-    try:
-        earned = float(earned or 0)
-        available = float(available or 0)
-    except (TypeError, ValueError):
-        return 0.0
-    return (earned / available * 100.0) if available else 0.0
 
 
 def _questions(result_json: Any) -> dict[str, dict]:
@@ -78,7 +71,7 @@ def _side(version: dict | None) -> dict:
         "version": version.get("version"),
         "earned": version.get("earned"),
         "available": version.get("available"),
-        "percentage": round(_pct(version.get("earned"), version.get("available")), 2),
+        "percentage": round(percentage_of(version.get("earned"), version.get("available")), 2),
         "provisional_grade": version.get("provisional_grade"),
         "marking_model": version.get("marking_model"),
         "confidence": confidence,

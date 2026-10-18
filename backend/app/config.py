@@ -29,6 +29,18 @@ CONFIG_PATH = DATA_DIR / "config.toml"
 OAUTH_CLIENT_PATH = DATA_DIR / "secrets" / "google_oauth_client.json"
 
 
+def data_dir() -> Path:
+    """The runtime data directory, resolved on EVERY call.
+
+    Callers must use this instead of importing ``DATA_DIR`` by value: tests,
+    ``MC5_DATA_DIR`` overrides and a future config reload all rebind the
+    module global, and a copy frozen at import time would write to the wrong
+    directory. This is the single definition; routers and workers must not
+    each carry their own re-export.
+    """
+    return DATA_DIR
+
+
 def allowed_origins() -> list[str]:
     """Browser origins allowed to call this backend cross-origin (§ shared backend).
 

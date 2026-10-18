@@ -43,7 +43,13 @@ folder cleanup and preserve their regression tests.
 cancellation and duplicate prevention. `backend/app/workers/` runs isolated
 workers. `backend/app/large_pdf/` owns the resumable large-document workflow;
 it shares the correction engine and database rather than implementing a second
-marking policy.
+marking policy. Long-document preparation reads each PDF **once**
+(`engine/pdf_inspect.py`): the student's page count and per-page question
+evidence come from the same read, and the mark scheme's page count plus official
+question ids come from one deterministic analysis. That derived mark-scheme
+evidence is reused for the same file, keyed by absolute path, size and
+`mtime_ns` — a replaced scheme is re-read immediately, and a failed read is
+never cached.
 
 ### Google Classroom, reports and automation
 
@@ -123,13 +129,18 @@ Backend route modules live in `backend/app/api/`, with dedicated packages for
 scheme review, lifecycle, large-PDF processing and Classroom tracking. The
 application registers these routers in `backend/app/main.py`. The frontend
 navigation and pages under `frontend/src/` call the API through the shared
-frontend API module. Preserve route paths, database schema and frontend asset
-paths when making changes.
+frontend API module. Page components are loaded on demand (route-level chunks);
+the shell stays eager, so the navigation and sign-in never wait for a page's
+code. A chunk that belongs to a previous build triggers one rate-limited reload,
+which is what makes lazy loading safe across an in-place upgrade. Preserve route
+paths, database schema and frontend asset paths when making changes.
 
 ## Persistence, configuration and privacy
 
 The source checkout defaults to `data/`; `MC5_DATA_DIR` selects an alternate
-root for isolated runs. Portable launches set data beside the package. The
+root for isolated runs. Resolve it through `config.data_dir()` on every call —
+never import `DATA_DIR` by value — so a test, override or reload cannot write to
+a stale path. Portable launches set data beside the package. The
 installed distribution uses its configured per-user data root. SQLite,
 settings/secrets TOML, OAuth client material, blueprints, mark schemes, logs,
 retained submissions and temporary job files are application data: do not treat
@@ -147,7 +158,9 @@ outside source and generated public packages.
 Classroom behavior, reporting, automation, lifecycle and release safeguards.
 External services are mocked in tests unless a test explicitly says otherwise.
 `frontend/tests/` contains dependency-light UI logic tests; `npm run build`
-provides the TypeScript and production-bundle check.
+provides the TypeScript and production-bundle check. `backend/requirements.txt`
+lists RUNTIME packages only; `backend/requirements-dev.txt` adds the test tools
+(pytest, httpx) and is what `setup.bat` installs for a source checkout.
 
 The supported release path is
 `MathChecker_Distribution/build_release.bat` → `scripts/build_release.py`.

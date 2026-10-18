@@ -16,7 +16,9 @@ inspection could not read text.
 
 from __future__ import annotations
 
+import os
 import re
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -184,23 +186,68 @@ def inspect_student_pdf(path: str | Path,
     return inspection
 
 
-def expected_question_numbers(mark_scheme_path: str | Path) -> list[str]:
-    """Official question ids from a mark-scheme PDF, with NO AI call.
+# Derived mark-scheme evidence, keyed by FILE IDENTITY (absolute path, size,
+# mtime_ns), never by time. Analysing a multi-page scheme's text layer is the
+# expensive deterministic step, and every long-document job for the same
+# assignment asks the same question about the same file; it used to be redone
+# for every student. Only the tiny derived result is kept (ids + page count),
+# never the page/block evidence, so memory stays small.
+#
+# Invalidation is implicit and exact: a replaced or edited file has a different
+# size/mtime and is analysed again. A failed analysis is NOT cached, so a
+# transient read problem cannot stick to the file for the rest of the process.
+_SCHEME_CACHE: dict[tuple[str, int, int], tuple[tuple[str, ...], int]] = {}
+_SCHEME_CACHE_LOCK = threading.Lock()
+_SCHEME_CACHE_MAX = 16
 
-    Uses the deterministic reconstruction the app already trusts
-    (``mark_scheme.analyse_document`` -> ``candidate_question_numbers``). An
-    unreadable or image-only mark scheme yields an empty list, which the
-    planner treats as "structure unknown" rather than guessing.
+
+def scheme_evidence(mark_scheme_path: str | Path) -> tuple[list[str], int]:
+    """``(official question ids, page count)`` from ONE analysis of a scheme.
+
+    Deterministic and model-free: uses the reconstruction the app already
+    trusts (``mark_scheme.analyse_document`` -> ``candidate_question_numbers``).
+    An unreadable or image-only scheme yields ``([], page_count)``, which the
+    planner treats as "structure unknown" rather than guessing. This is also
+    the only place callers should need: the page count and the question ids
+    come from the same read instead of opening the PDF twice.
     """
+    path = str(mark_scheme_path)
+    try:
+        stat = os.stat(path)
+        key = (os.path.abspath(path), int(stat.st_size), int(stat.st_mtime_ns))
+    except OSError:
+        key = None
+    if key is not None:
+        with _SCHEME_CACHE_LOCK:
+            hit = _SCHEME_CACHE.get(key)
+        if hit is not None:
+            return list(hit[0]), hit[1]
+
     from . import mark_scheme as ms
     try:
-        evidence = ms.analyse_document(str(mark_scheme_path))
-    except Exception:
-        return []
+        evidence = ms.analyse_document(path)
+    except Exception:  # noqa: BLE001 — never fail a plan over read-only evidence
+        # Page count is still useful for the plan/report; only the question ids
+        # are unknown. This path is not cached (see below).
+        return [], page_count(path)
     try:
-        return list(ms.candidate_question_numbers(evidence))
-    except Exception:
-        return []
+        questions = tuple(ms.candidate_question_numbers(evidence))
+    except Exception:  # noqa: BLE001
+        questions = ()
+    pages = int(evidence.get("page_count") or 0)
+
+    if key is not None and evidence.get("mode") not in (None, "NONE"):
+        with _SCHEME_CACHE_LOCK:
+            if len(_SCHEME_CACHE) >= _SCHEME_CACHE_MAX:
+                # Drop the oldest insertion; entries are cheap to rebuild.
+                _SCHEME_CACHE.pop(next(iter(_SCHEME_CACHE)))
+            _SCHEME_CACHE[key] = (questions, pages)
+    return list(questions), pages
+
+
+def expected_question_numbers(mark_scheme_path: str | Path) -> list[str]:
+    """Official question ids from a mark-scheme PDF, with NO AI call."""
+    return scheme_evidence(mark_scheme_path)[0]
 
 
 def split_pdf(source: str | Path, ranges: list[tuple[int, int]],

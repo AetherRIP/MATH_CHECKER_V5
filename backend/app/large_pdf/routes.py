@@ -15,7 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, UploadFile
 
 from .. import db
-from ..config import ensure_dirs, get_config
+from ..config import data_dir, ensure_dirs, get_config
 from ..errors import AppError
 from . import runner as runner_mod
 from . import states, store
@@ -33,10 +33,6 @@ def register(app) -> None:
 def _runner():
     return runner_mod.LargePdfRunnerHolder.instance()
 
-
-def _data_dir() -> Path:
-    from .. import config
-    return config.DATA_DIR
 
 
 # ------------------------------------------------------------------ reads
@@ -187,7 +183,7 @@ async def create_large_pdf_job(
         raise AppError("The Large PDF Worker is disabled in settings.",
                        status=400, code="disabled")
     ensure_dirs()
-    staging = _data_dir() / "tmp" / "large_pdf_uploads"
+    staging = data_dir() / "tmp" / "large_pdf_uploads"
     staging.mkdir(parents=True, exist_ok=True)
     token = uuid.uuid4().hex
     saved: dict[str, str] = {}

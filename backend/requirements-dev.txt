@@ -1,0 +1,10 @@
+# DEVELOPMENT / TEST dependencies (never installed into a release runtime).
+#
+#   python -m pip install -r backend/requirements-dev.txt
+#
+# setup.bat installs this file so a source checkout can run the suite; the
+# portable build installs backend/requirements.txt only.
+-r requirements.txt
+pytest>=8.0
+# Starlette's TestClient transport, used exclusively by the backend tests.
+httpx>=0.27

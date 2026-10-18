@@ -101,18 +101,6 @@ export function Stat({
   );
 }
 
-export function MetricCard({ label, value, tone, sub }: {
-  label: ReactNode; value: ReactNode; tone?: "ok" | "err" | "warn"; sub?: ReactNode;
-}) {
-  return (
-    <div className="stat">
-      <div className="label">{label}</div>
-      <div className={`value ${tone ?? ""}`}>{value}</div>
-      {sub != null && <div className="faint small" style={{ marginTop: 2 }}>{sub}</div>}
-    </div>
-  );
-}
-
 /** Polished, clickable status card: icon + big value + supporting text. */
 export function StatusCard({
   icon, value, label, sub, tone = "info", onClick,
@@ -193,31 +181,6 @@ export function rowActivate(onActivate: () => void) {
       onActivate();
     },
   };
-}
-
-/** Circular progress ring for sync / publishing queues. */
-export function Ring({ value, size = 44, label }: { value: number; size?: number; label?: ReactNode }) {
-  const r = (size - 6) / 2;
-  const c = 2 * Math.PI * r;
-  const pct = Math.min(1, Math.max(0, value));
-  return (
-    <div style={{ position: "relative", width: size, height: size }} role="img"
-      aria-label={typeof label === "string" ? label : "progress"}>
-      <svg className="ring" width={size} height={size}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none"
-          stroke="var(--surface-strong)" strokeWidth={4} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--accent)"
-          strokeWidth={4} strokeLinecap="round" strokeDasharray={c}
-          strokeDashoffset={c * (1 - pct)} />
-      </svg>
-      {label != null && (
-        <span style={{
-          position: "absolute", inset: 0, display: "grid", placeItems: "center",
-          fontSize: "var(--fs-xs)", fontWeight: 700,
-        }}>{label}</span>
-      )}
-    </div>
-  );
 }
 
 /* ============================================================== states */

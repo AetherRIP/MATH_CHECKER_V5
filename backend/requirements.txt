@@ -1,3 +1,8 @@
+# RUNTIME dependencies of the application.
+#
+# This file is what a teacher's machine (or the bundled Windows runtime) needs
+# to RUN Math Checker. Test/build-only packages live in requirements-dev.txt so
+# they are never installed into — or shipped inside — the portable release.
 fastapi>=0.115
 uvicorn>=0.30
 # FastAPI refuses to register Form/File routes without this (AppError at boot).
@@ -6,8 +11,6 @@ google-genai>=1.40
 google-auth>=2.35
 google-auth-oauthlib>=1.2
 requests>=2.31
-pytest>=8.0
-httpx>=0.27
 # Tracking / reporting exports (CSV is stdlib; these back XLSX + PDF).
 openpyxl>=3.1
 reportlab>=4.0

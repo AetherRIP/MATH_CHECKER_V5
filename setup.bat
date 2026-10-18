@@ -48,8 +48,10 @@ if not exist "%~dp0.venv\Scripts\python.exe" (
 
 :have_venv
 echo   Installing dependencies into .venv (this can take a minute) ...
+rem requirements-dev.txt layers the test-only packages (pytest, httpx) on top
+rem of the runtime set. The portable release installs requirements.txt only.
 "%~dp0.venv\Scripts\python.exe" -m pip install --upgrade pip
-"%~dp0.venv\Scripts\python.exe" -m pip install -r "%~dp0backend\requirements.txt"
+"%~dp0.venv\Scripts\python.exe" -m pip install -r "%~dp0backend\requirements-dev.txt"
 if errorlevel 1 (
   echo.
   echo   Dependency installation failed. Check your internet connection and

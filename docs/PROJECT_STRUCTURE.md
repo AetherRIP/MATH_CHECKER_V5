@@ -50,7 +50,8 @@ backend/
   tests/        the pytest suite (all provider calls mocked — no quota used)
   scripts/      developer/diagnostic one-off scripts (never shipped)
   run.py        small uvicorn runner
-  requirements.txt
+  requirements.txt      RUNTIME packages (installed into the portable runtime)
+  requirements-dev.txt  runtime packages + pytest/httpx (source checkout only)
 frontend/
   src/          React + TypeScript UI source and page modules
   tests/        dependency-light TypeScript regression tests
@@ -86,7 +87,7 @@ blocking scan `scan_release.py`):
 |---|---|---|
 | Active source | `backend/app/`, `frontend/src/`, `agent/`, `main.py`, `remote.py` | Modify deliberately; keep runtime resource paths stable |
 | Configuration templates | `MathChecker_Distribution/portable/MathChecker_Portable/Data/config.toml.example`, `MathChecker_Distribution/documentation/` | Sanitized defaults and recipient guidance; never put live secrets here |
-| Dependencies | `backend/requirements.txt`, `frontend/package.json` and `frontend/package-lock.json` | Preserve declared dependency behavior and lockfile reproducibility |
+| Dependencies | `backend/requirements.txt` (runtime only), `backend/requirements-dev.txt` (tests), `frontend/package.json` and `frontend/package-lock.json` | Preserve declared dependency behavior and lockfile reproducibility; never add test-only packages to the runtime file |
 | Regression tests | `backend/tests/`, `frontend/tests/` | Keep mocked/synthetic; don't copy student data into fixtures |
 | Runtime/persistent data | `data/`, `autostart/` | Preserve; user-specific and never source cleanup targets |
 | Generated UI | `frontend/dist/` | Rebuild from source; git-ignored and required to run this checkout |

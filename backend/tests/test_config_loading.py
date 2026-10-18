@@ -54,3 +54,18 @@ def test_valid_config_is_still_read(tmp_path):
     good.write_text('[network]\naccess_mode = "lan"\nport = 9100\n',
                     encoding="utf-8")
     assert cfg._read_toml(good)["network"]["port"] == 9100
+
+
+def test_data_dir_is_resolved_on_every_call(fresh_state, monkeypatch, tmp_path):
+    """One live accessor: no caller may freeze the data root at import time.
+
+    Tests, ``MC5_DATA_DIR`` overrides and a reload all rebind ``config.DATA_DIR``.
+    A frozen copy silently writes (or deletes) in the wrong directory, which is
+    exactly the class of bug the per-router ``_data_dir()`` copies prevented.
+    """
+    from app import config as cfg
+
+    assert cfg.data_dir() == fresh_state
+    other = tmp_path / "relocated"
+    monkeypatch.setattr(cfg, "DATA_DIR", other)
+    assert cfg.data_dir() == other

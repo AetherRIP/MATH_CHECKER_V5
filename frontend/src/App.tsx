@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ComponentType, Suspense, lazy, useCallback, useEffect, useMemo, useState,
+} from "react";
 import {
   api, authStatus, setCsrfToken, timeAgo,
   type AttentionFeed, type AuthStatus, type Dashboard,
 } from "./api";
 import {
-  Badge, Drawer, Dropdown, IconButton, Icon,
+  Badge, Drawer, Dropdown, IconButton, Icon, Loading,
   ToastProvider, useToast, type IconName,
 } from "./components";
 import SignIn from "./SignIn";
@@ -13,32 +15,68 @@ import { ThemeProvider, useTheme } from "./theme";
 import SearchBox from "./SearchBox";
 import { TooltipLayer } from "./TooltipLayer";
 import { ServerLifecycleBanner } from "./lifecycle";
-import DashboardPage from "./pages/DashboardPage";
-import ClassesPage from "./pages/ClassesPage";
-import AssignmentsPage from "./pages/AssignmentsPage";
-import ClassroomPage from "./pages/ClassroomPage";
-import StudentsPage from "./pages/StudentsPage";
-import AuditPage from "./pages/AuditPage";
-import CorrectionsPage from "./pages/CorrectionsPage";
-import AutomationPage from "./pages/AutomationPage";
-import LargePdfWorkerPage from "./pages/LargePdfWorkerPage";
-import TaskManagerPage from "./pages/TaskManagerPage";
-import PdfCorrectionPage from "./pages/PdfCorrectionPage";
-import UsagePage from "./pages/UsagePage";
-import ResultsPage from "./pages/ResultsPage";
-import ReviewPage from "./pages/ReviewPage";
-import ReportPage from "./pages/ReportPage";
 import AiPage from "./pages/AiPage";
-import SettingsPage from "./pages/SettingsPage";
-import StoragePage from "./pages/StoragePage";
-import PrivacyPage from "./pages/PrivacyPage";
-import DiagnosticsPage from "./pages/DiagnosticsPage";
-import PromptsPage from "./pages/PromptsPage";
 import SetupWizard from "./pages/SetupWizard";
-import DistributedPage from "./distributed/DistributedPage";
-import UpdatesPage from "./distributed/UpdatesPage";
-import SchemeReviewPage from "./pages/SchemeReviewPage";
 import { storedSession } from "./distributed/api";
+
+/**
+ * Route-level code splitting.
+ *
+ * The shell (navigation, sign-in, theme, shared components) loads eagerly; a
+ * page's code is fetched the first time that page is opened. There is no
+ * behaviour change: every page is still mounted by the same route switch.
+ *
+ * The retry exists because the app supports in-place upgrades. A tab left
+ * open across an upgrade still references the OLD hashed chunk names, which
+ * the new build no longer serves; without this the teacher would see a blank
+ * page after clicking a navigation item. One reload (rate-limited by
+ * sessionStorage) fetches the new index and its current chunks.
+ */
+const CHUNK_RELOAD_KEY = "mc5.chunk-reload";
+
+function lazyRoute<T extends ComponentType<any>>(
+  load: () => Promise<{ default: T }>,
+) {
+  return lazy(async () => {
+    try {
+      return await load();
+    } catch (error) {
+      try {
+        const last = Number(window.sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0);
+        if (Date.now() - last > 60_000) {
+          window.sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
+          window.location.reload();
+          return await new Promise<never>(() => { /* reloading */ });
+        }
+      } catch { /* storage unavailable: report the real error */ }
+      throw error;
+    }
+  });
+}
+
+const DashboardPage = lazyRoute(() => import("./pages/DashboardPage"));
+const ClassesPage = lazyRoute(() => import("./pages/ClassesPage"));
+const AssignmentsPage = lazyRoute(() => import("./pages/AssignmentsPage"));
+const ClassroomPage = lazyRoute(() => import("./pages/ClassroomPage"));
+const StudentsPage = lazyRoute(() => import("./pages/StudentsPage"));
+const AuditPage = lazyRoute(() => import("./pages/AuditPage"));
+const CorrectionsPage = lazyRoute(() => import("./pages/CorrectionsPage"));
+const AutomationPage = lazyRoute(() => import("./pages/AutomationPage"));
+const LargePdfWorkerPage = lazyRoute(() => import("./pages/LargePdfWorkerPage"));
+const TaskManagerPage = lazyRoute(() => import("./pages/TaskManagerPage"));
+const PdfCorrectionPage = lazyRoute(() => import("./pages/PdfCorrectionPage"));
+const UsagePage = lazyRoute(() => import("./pages/UsagePage"));
+const ResultsPage = lazyRoute(() => import("./pages/ResultsPage"));
+const ReviewPage = lazyRoute(() => import("./pages/ReviewPage"));
+const ReportPage = lazyRoute(() => import("./pages/ReportPage"));
+const SettingsPage = lazyRoute(() => import("./pages/SettingsPage"));
+const StoragePage = lazyRoute(() => import("./pages/StoragePage"));
+const PrivacyPage = lazyRoute(() => import("./pages/PrivacyPage"));
+const DiagnosticsPage = lazyRoute(() => import("./pages/DiagnosticsPage"));
+const PromptsPage = lazyRoute(() => import("./pages/PromptsPage"));
+const DistributedPage = lazyRoute(() => import("./distributed/DistributedPage"));
+const UpdatesPage = lazyRoute(() => import("./distributed/UpdatesPage"));
+const SchemeReviewPage = lazyRoute(() => import("./pages/SchemeReviewPage"));
 
 export type Route =
   | "dashboard" | "classes" | "assignments" | "students" | "reports" | "results" | "corrections" | "review" | "automation" | "largepdf" | "classroom" | "ai" | "settings" | "storage"
@@ -522,6 +560,8 @@ function Shell() {
                   </span>
                 </div>
               )}
+              {/* Page code is fetched on first visit; the shell never blanks. */}
+              <Suspense fallback={<Loading label="Loading page…" />}>
               {route === "dashboard" && <DashboardPage onNavigate={go} />}
               {route === "classes" && (
                 <ClassesPage onNavigate={navigate} />
@@ -573,6 +613,7 @@ function Shell() {
                     are unavailable here; developers retain diagnostics access.</p></div>)}
               {route === "updates" && <UpdatesPage />}
               {route === "audit" && <AuditPage />}
+              </Suspense>
             </div>
           </div>
         </div>

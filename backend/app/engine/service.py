@@ -20,7 +20,7 @@ import uuid
 from pathlib import Path
 
 from .. import db
-from ..config import DATA_DIR, get_config
+from ..config import data_dir, get_config
 from ..gemini.key_manager import KeyManager, WaitForApiError
 from ..jobs.manager import HandedOff, WaitForApiRetry
 from ..gemini.tester import KeyManagerHolder
@@ -618,13 +618,13 @@ class CorrectionService:
 # -- helpers (pure functions / per-call state; no hidden globals) --------------
 
 def _tmp_dir() -> str:
-    path = DATA_DIR / "tmp"
+    path = data_dir() / "tmp"
     path.mkdir(parents=True, exist_ok=True)
     return str(path)
 
 
 def _mark_scheme_dir() -> Path:
-    return DATA_DIR / "mark_schemes"
+    return data_dir() / "mark_schemes"
 
 
 def _make_client():
@@ -660,9 +660,7 @@ def cleanup_job_files(job_id: str) -> None:
     db.execute("DELETE FROM pending_manual_files WHERE job_id = ?", (job_id,))
     try:
         import shutil
-        # Resolve DATA_DIR at call time — tests rebind config.DATA_DIR per test.
-        from ..config import DATA_DIR as _live_data_dir
-        shutil.rmtree(_live_data_dir / "tmp" / f"job-{job_id}",
+        shutil.rmtree(data_dir() / "tmp" / f"job-{job_id}",
                       ignore_errors=True)
     except OSError:
         pass
@@ -708,7 +706,7 @@ def _retain_originals(job_id: str, rows) -> None:
         if mode not in ("days", "always"):
             return
         import shutil
-        retain_dir = DATA_DIR / "retained" / job_id
+        retain_dir = data_dir() / "retained" / job_id
         retain_dir.mkdir(parents=True, exist_ok=True)
         retain_until = 0.0 if mode == "always" else time.time() + max(0, cfg.keep_days) * 86400
         for row in rows:
@@ -754,7 +752,7 @@ def sweep_expired_retained() -> int:
         db.execute("DELETE FROM retained_files WHERE job_id = ? AND path = ?",
                    (row["job_id"], row["path"]))
     # Tidy empty per-job directories left behind.
-    retain_root = DATA_DIR / "retained"
+    retain_root = data_dir() / "retained"
     if retain_root.exists():
         import shutil
         for child in retain_root.iterdir():
@@ -779,8 +777,7 @@ def sweep_stale_temp(max_age_seconds: float = 24 * 3600) -> int:
     A dir belonging to a still-ACTIVE job is never touched.
     """
     import shutil
-    from ..config import DATA_DIR as live_data_dir
-    tmp = live_data_dir / "tmp"
+    tmp = data_dir() / "tmp"
     if not tmp.exists():
         return 0
     active: set[str] = set()

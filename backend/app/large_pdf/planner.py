@@ -34,12 +34,18 @@ def prepare(student_pdf: str, mark_scheme_pdf: str) -> PreparedPlan:
     cfg = get_config().large_pdf
     notes: list[str] = []
 
-    # The mark scheme's page count is read independently: its page numbers are
-    # NEVER assumed to line up with the student's PDF.
-    mark_scheme_pages = pdf_inspect.page_count(mark_scheme_pdf)
-    scheme_questions = pdf_inspect.expected_question_numbers(mark_scheme_pdf)
+    # ONE read of the mark scheme gives both its page count and its question
+    # ids; its page numbers are NEVER assumed to line up with the student's
+    # PDF. Repeated jobs for the same file reuse the cached derived evidence.
+    scheme_questions, mark_scheme_pages = pdf_inspect.scheme_evidence(
+        mark_scheme_pdf)
 
-    page_count = pdf_inspect.page_count(student_pdf)
+    # ONE read of the student PDF gives its page count AND its per-page
+    # question evidence. Reading the count separately opened the same file
+    # twice on every long-document job.
+    inspection = pdf_inspect.inspect_student_pdf(
+        student_pdf, scheme_questions or None)
+    page_count = inspection.page_count
     if page_count < 1:
         return PreparedPlan(
             page_count=0, plan=None, scheme_questions=scheme_questions,
@@ -48,8 +54,6 @@ def prepare(student_pdf: str, mark_scheme_pdf: str) -> PreparedPlan:
                          "pages. Nothing was sent to the correction engine.",
             mark_scheme_pages=mark_scheme_pages)
 
-    inspection = pdf_inspect.inspect_student_pdf(
-        student_pdf, scheme_questions or None)
     question_pages = inspection.question_pages
     if inspection.mode != "TEXT":
         notes.append(
@@ -62,7 +66,7 @@ def prepare(student_pdf: str, mark_scheme_pdf: str) -> PreparedPlan:
             "coverage will be validated against the mark scheme at merge time.")
 
     # The one-time routing decision (centralised, configurable).
-    if page_count <= cfg.threshold_pages and not _forced_batching(cfg):
+    if page_count <= cfg.threshold_pages:
         # Short document: the existing single-pass workflow is preserved.
         plan = batching.plan_batches(
             page_count, target_min=cfg.target_min, target_max=cfg.threshold_pages,
@@ -89,8 +93,3 @@ def prepare(student_pdf: str, mark_scheme_pdf: str) -> PreparedPlan:
     return PreparedPlan(
         page_count=page_count, plan=plan, scheme_questions=scheme_questions,
         question_pages=question_pages, notes=notes, mark_scheme_pages=mark_scheme_pages)
-
-
-def _forced_batching(cfg) -> bool:
-    """Batching is the norm for long docs; a short doc stays single-pass."""
-    return False

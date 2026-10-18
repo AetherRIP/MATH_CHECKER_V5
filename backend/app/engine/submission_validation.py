@@ -28,14 +28,6 @@ _BLANK_AWARDED_FRACTION_MIN = 1   # <= this many marks earned looks blank
 _BLANK_MAX_FRACTION = 0.15        # <=15% of max answered looks near-blank
 
 
-def _pct(earned, available) -> float:
-    try:
-        earned = float(earned or 0)
-        available = float(available or 0)
-    except (TypeError, ValueError):
-        return 0.0
-    return (earned / available * 100.0) if available else 0.0
-
 
 def assess_submission_quality(result: dict | None,
                               verification: dict | None) -> dict:

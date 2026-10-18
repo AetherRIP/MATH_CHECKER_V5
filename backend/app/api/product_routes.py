@@ -18,7 +18,8 @@ from fastapi import APIRouter, Request
 from .. import db
 from .. import student_identity
 from .. import testing_guard
-from ..api.routes_all import _require_classroom, _classroom_error, _data_dir
+from ..api.routes_all import _require_classroom, _classroom_error
+from ..config import data_dir
 from ..classroom import client as gc
 from ..classroom import managed as managed_mod
 from ..classroom.auth import auth_state, account_email
@@ -193,8 +194,7 @@ def _assignment_rows(course_id: str | None = None,
 
 def _has_mark_scheme(coursework_id: str) -> bool:
     from pathlib import Path
-    from .. import config as app_config
-    path = app_config.DATA_DIR / "mark_schemes" / f"{coursework_id}.pdf"
+    path = data_dir() / "mark_schemes" / f"{coursework_id}.pdf"
     if path.exists():
         return True
     row = db.query_one(
@@ -659,7 +659,7 @@ def _key_health() -> dict:
 
 def _mark_scheme_path(coursework_id: str) -> Path | None:
     """Locate the uploaded mark scheme for an assignment (no network)."""
-    direct = _data_dir() / "mark_schemes" / f"{coursework_id}.pdf"
+    direct = data_dir() / "mark_schemes" / f"{coursework_id}.pdf"
     if direct.exists():
         return direct
     pending = db.query_one(
@@ -917,7 +917,7 @@ _PAGE_DPI_MAX = 300
 
 def _rendered_page_path(sha: str, page: int, dpi: int) -> Path:
     """Where a rendered page is cached on disk (per document, per page, per dpi)."""
-    folder = _data_dir() / "tmp" / "scheme_pages" / sha[:16]
+    folder = data_dir() / "tmp" / "scheme_pages" / sha[:16]
     folder.mkdir(parents=True, exist_ok=True)
     return folder / f"p{page:04d}@{dpi}.png"
 

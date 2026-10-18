@@ -27,7 +27,7 @@ from pathlib import Path
 
 from .. import db
 from .. import retry_policy
-from ..config import DATA_DIR, get_config
+from ..config import data_dir, get_config
 from ..engine import legacy_marking as legacy
 from ..engine import remark, result_guard, versions
 from ..engine.result_guard import assess_confidence, evaluate_overwrite
@@ -55,13 +55,6 @@ def _fmt_pct(pct: float | None) -> str:
     except (TypeError, ValueError):
         return "?"
 
-
-def _data_dir() -> Path:
-    """Resolve DATA_DIR at CALL time: tests (and any future config reload)
-    rebind app.config.DATA_DIR per test, and a module-level ``from import``
-    binding would silently point at the wrong directory."""
-    from ..config import DATA_DIR
-    return DATA_DIR
 
 
 # -- prepared-input manifest (§5/§6/§7/§10) ----------------------------------
@@ -161,7 +154,7 @@ class WorkerPool:
                 for i in range(current, n):
                     worker = CorrectionWorker(
                         worker_id=f"W{i + 1}",
-                        workspace=_data_dir() / "tmp" / f"worker-{i + 1:03d}",
+                        workspace=data_dir() / "tmp" / f"worker-{i + 1:03d}",
                         key_manager=self.keys,
                     )
                     self._workers.append(worker)
@@ -497,7 +490,7 @@ class WorkerPool:
         from ..classroom import sync as classroom_sync
         from ..classroom.client import download_drive_file
 
-        cache_dir = _data_dir() / "tmp" / f"job-{job['id']}"
+        cache_dir = data_dir() / "tmp" / f"job-{job['id']}"
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         # 1. Reuse a previously prepared input set (retry/failover path).
@@ -623,7 +616,7 @@ class WorkerPool:
 
         # Mark scheme for classroom jobs: shared per-assignment PDF (read-only).
         if mark_scheme_path is None and job.get("coursework_id"):
-            shared = _data_dir() / "mark_schemes" / f"{job['coursework_id']}.pdf"
+            shared = data_dir() / "mark_schemes" / f"{job['coursework_id']}.pdf"
             if shared.exists():
                 mark_scheme_path = str(shared)
             else:

@@ -23,18 +23,7 @@ from ..classroom.auth import (
     auth_state, disconnect as classroom_disconnect, get_access_token,
     start_device_or_loopback_flow,
 )
-from ..config import ensure_dirs, get_config, save_config
-from .. import config as app_config
-
-
-def _data_dir() -> Path:
-    """Runtime data directory, resolved on EVERY call.
-
-    Importing ``DATA_DIR`` by value would freeze whatever path existed when
-    this module was first imported (tests and MC5_DATA_DIR overrides then
-    write to the wrong directory).
-    """
-    return app_config.DATA_DIR
+from ..config import data_dir, ensure_dirs, get_config, save_config
 from ..engine import legacy_marking as legacy
 from ..errors import AppError, brief_traceback
 from ..gemini.tester import KeyManagerHolder as KMHolder, test_key
@@ -737,7 +726,7 @@ async def manual_correction(
         if suffix not in (".pdf", ".png", ".jpg", ".jpeg", ".webp"):
             raise AppError(f"Unsupported file type for {kind}: {suffix}",
                            status=400, code="bad_file_type")
-        out = _data_dir() / "tmp" / f"{job_id}_{kind}{suffix}"
+        out = data_dir() / "tmp" / f"{job_id}_{kind}{suffix}"
         content = await upload.read()
         if len(content) > 50 * 1024 * 1024:
             raise AppError(f"{kind} file is larger than 50 MB.",
@@ -794,7 +783,7 @@ async def unified_correction(
     ensure_dirs()
 
     token = uuid.uuid4().hex
-    staging = _data_dir() / "tmp" / "unified_uploads"
+    staging = data_dir() / "tmp" / "unified_uploads"
     staging.mkdir(parents=True, exist_ok=True)
     saved: dict[str, str] = {}
     sizes: dict[str, int] = {}
@@ -1145,7 +1134,7 @@ def correct_selected(course_id: str, coursework_id: str, payload: dict):
         raise AppError("Selection is limited to 200 submissions at once.",
                        status=400, code="selection_too_large")
 
-    scheme_dir = _data_dir() / "mark_schemes"
+    scheme_dir = data_dir() / "mark_schemes"
     if not (scheme_dir / f"{coursework_id}.pdf").exists():
         pending = db.query_one(
             "SELECT path FROM pending_mark_schemes WHERE coursework_id = ?",
@@ -1294,7 +1283,7 @@ async def upload_mark_scheme(course_id: str, coursework_id: str,
     if not (file.filename or "").lower().endswith(".pdf"):
         raise AppError("The mark scheme must be a PDF.", status=400, code="bad_file_type")
     ensure_dirs()
-    scheme_dir = _data_dir() / "mark_schemes"
+    scheme_dir = data_dir() / "mark_schemes"
     scheme_dir.mkdir(parents=True, exist_ok=True)
     path = scheme_dir / f"{coursework_id}.pdf"
     content = await file.read()
@@ -1449,7 +1438,7 @@ def correct_all_preview(coursework_id: str, refresh: bool = False):
     course_id = cw["course_id"]
     classified = _classify_correction(course_id, coursework_id, refresh=bool(refresh))
 
-    scheme_dir = _data_dir() / "mark_schemes"
+    scheme_dir = data_dir() / "mark_schemes"
     has_scheme = (scheme_dir / f"{coursework_id}.pdf").exists()
     if not has_scheme:
         pending = db.query_one(
@@ -1520,7 +1509,7 @@ def correct_all(course_id: str, coursework_id: str, payload: dict | None = None)
             "This assignment is not allowlisted. Allow it first — nothing is "
             "processed automatically for non-allowlisted assignments.",
             status=403, code="not_allowlisted")
-    scheme_dir = _data_dir() / "mark_schemes"
+    scheme_dir = data_dir() / "mark_schemes"
     if not (scheme_dir / f"{coursework_id}.pdf").exists():
         pending = db.query_one(
             "SELECT path FROM pending_mark_schemes WHERE coursework_id = ?",
@@ -2522,7 +2511,7 @@ def diagnostics_logs(tail: int = 300, category: str | None = None):
     if cfg.role != "developer":
         raise AppError("Logs are available in Developer role only.",
                        status=403, code="developer_only")
-    log_path = _data_dir() / "logs" / "app.log"
+    log_path = data_dir() / "logs" / "app.log"
     entries: list[dict] = []
     if log_path.exists():
         lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -2573,7 +2562,7 @@ def diagnostics_clear_log(payload: dict | None = None):
             "Clearing the stored log discards its history. Confirm to "
             "proceed (database records are never affected).",
             status=400, code="confirm_required")
-    log_path = _data_dir() / "logs" / "app.log"
+    log_path = data_dir() / "logs" / "app.log"
     size_before = log_path.stat().st_size if log_path.exists() else 0
     # Truncate in place: the FileHandler keeps its handle and mode='a', so
     # logging continues normally afterwards.
@@ -2623,9 +2612,9 @@ def _storage_stats():
 
     return {
         "db_bytes": db.DB_PATH.stat().st_size if db.DB_PATH.exists() else 0,
-        "tmp_bytes": dir_size(_data_dir() / "tmp"),
-        "mark_scheme_bytes": dir_size(_data_dir() / "mark_schemes"),
-        "logs_bytes": dir_size(_data_dir() / "logs"),
+        "tmp_bytes": dir_size(data_dir() / "tmp"),
+        "mark_scheme_bytes": dir_size(data_dir() / "mark_schemes"),
+        "logs_bytes": dir_size(data_dir() / "logs"),
     }
 
 

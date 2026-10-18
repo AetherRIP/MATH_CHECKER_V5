@@ -29,6 +29,7 @@ from fastapi.responses import Response
 
 from .. import config as app_config
 from .. import db
+from ..config import data_dir
 from ..errors import AppError
 from ..logging_setup import log_event, reset_logging, setup_logging
 from ..version import build_info
@@ -38,12 +39,6 @@ router = APIRouter(prefix="/api")
 
 def register(app) -> None:
     app.include_router(router)
-
-
-# --------------------------------------------------------------- locations
-
-def _data_dir() -> Path:
-    return Path(app_config.DATA_DIR)
 
 
 def _remove(target: Path, attempts: int = 6) -> None:
@@ -79,7 +74,7 @@ def _redact_path(path: Path) -> str:
 
 @router.get("/privacy/info")
 def privacy_info():
-    data = _data_dir()
+    data = data_dir()
     def exists(rel: str) -> bool:
         return (data / rel).exists()
     return {
@@ -120,7 +115,7 @@ def factory_reset(payload: dict):
         raise AppError("Factory reset requires an explicit confirmation.",
                        status=400, code="confirmation_required")
 
-    data = _data_dir()
+    data = data_dir()
     removed: list[str] = []
     failures: list[str] = []
 
@@ -198,7 +193,7 @@ def _memory_gb() -> float | None:
 
 
 def _recent_log_lines(limit: int = 80) -> list[str]:
-    log_dir = _data_dir() / "logs"
+    log_dir = data_dir() / "logs"
     if not log_dir.is_dir():
         return []
     files = sorted(log_dir.glob("*.log"), key=lambda p: p.stat().st_mtime)

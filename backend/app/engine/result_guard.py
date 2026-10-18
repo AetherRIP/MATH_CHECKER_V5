@@ -64,7 +64,14 @@ class OverwriteDecision:
                                 SUBMISSION_REVIEW_REQUIRED)
 
 
-def _pct(earned, available) -> float:
+def percentage_of(earned, available) -> float:
+    """Unrounded percentage, the one definition used across the engine.
+
+    A missing/invalid value counts as 0 rather than raising: callers classify
+    an untrustworthy result, they do not crash on one. ``available == 0`` has
+    no defined percentage and returns 0.0 (a grade cannot be computed from it
+    anyway — the caller reports that separately).
+    """
     try:
         earned = float(earned or 0)
         available = float(available or 0)
@@ -168,8 +175,8 @@ def evaluate_overwrite(*, existing: dict | None, earned: int, available: int,
                     "kept. " + " ".join(confidence_reasons[:2])).strip(),
             confidence=confidence, confidence_reasons=confidence_reasons)
 
-    existing_pct = _pct(existing.get("earned"), existing.get("available"))
-    new_pct = _pct(earned, available)
+    existing_pct = percentage_of(existing.get("earned"), existing.get("available"))
+    new_pct = percentage_of(earned, available)
     existing_earned = existing.get("earned") or 0
 
     # The motivating bug: 67/103 replaced by 0/103.

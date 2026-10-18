@@ -286,7 +286,8 @@ and reinstalls never destroy it.
 
 1. Install Python 3.12 or later and enable **Add Python to PATH**.
 2. From the project folder, run `setup.bat` once. It creates a native `.venv`
-   and installs `backend/requirements.txt`. It does **not** add anything to
+   and installs `backend/requirements-dev.txt` (the runtime set plus the test
+   tools; the portable release installs `backend/requirements.txt` only). It does **not** add anything to
    Windows startup — the app runs only when you launch `start.bat`. If you
    do want it to start with Windows, run `setup.bat /autostart` and approve
    the UAC prompt; undo it later with
@@ -306,14 +307,18 @@ server.
 From the project root, run the backend regression suite with:
 
 ```bat
-python -m pytest backend\tests -q
+.venv\Scripts\python.exe -m pytest backend\tests -q
 ```
+
+The suite needs the test tools from `backend/requirements-dev.txt` (installed by
+`setup.bat`); `backend/requirements.txt` deliberately contains runtime packages
+only so they are not shipped to teachers.
 
 From `frontend/`, run the TypeScript/production build with `npm run build` and
 the dependency-free frontend regression test with:
 
 ```bat
-node --test --experimental-strip-types tests\largePdfPolling.test.ts
+node --test "tests/*.test.ts"
 ```
 
 There is intentionally no `npm test` script. If the UI appears stale after a
