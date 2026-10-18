@@ -71,7 +71,7 @@ export default function ReviewPage({ onNavigate }: { onNavigate: (r: string) => 
         sub="Flagged or low-confidence results. Accept them or set your own mark — nothing is published to Classroom without your confirmation.">
         <Button variant="ghost" icon="refresh" onClick={load}>Refresh</Button>
         {items.length > 0 && (
-          <Badge tone="warn" icon="review">{items.length} awaiting review</Badge>
+          <Badge tone="review" icon="review">{items.length} awaiting review</Badge>
         )}
       </PageHeader>
 
@@ -95,8 +95,8 @@ export default function ReviewPage({ onNavigate }: { onNavigate: (r: string) => 
 
       {items.length === 0 ? (
         <div className="card">
-          <Empty icon="check-circle" title="Nothing needs review"
-            hint="Every corrected result passed verification. Flagged results will appear here."
+          <Empty icon="check-circle" art="check" title="Nothing needs review"
+            hint="No corrections are flagged right now. Results with low confidence, validation failures or large score changes appear here."
             action={<Button variant="secondary" icon="assignments"
               onClick={() => onNavigate("#/assignments")}>Go to assignments</Button>} />
         </div>

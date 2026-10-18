@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type UsageState } from "../api";
 import { DataTable, PageHeader, Stat, useToast } from "../components";
+import { BarChart } from "../charts/Charts";
 
 const ERROR_CLASS_LABELS: Record<string, string> = {
   RATE_LIMIT: "Rate limit (429)",
@@ -30,10 +31,6 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 function mb(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(2);
-}
-
-function fmtHour(ts: number): string {
-  return new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function LimitBar({ used, cap }: { used: number; cap: number }) {
@@ -92,8 +89,6 @@ export default function UsagePage() {
   const { hour, day, limits } = state;
   const apiStats = state.api;
   const blocked = state.hourly_over || state.daily_over;
-  const maxBucket = Math.max(1, ...state.history.map((h) => h.up + h.down));
-
   return (
     <>
       <PageHeader
@@ -214,27 +209,24 @@ export default function UsagePage() {
 
       <div className="card">
         <h3>Last 24 hours <span className="hint">total MB per hour (up + down)</span></h3>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 150, marginTop: 10 }}>
-          {state.history.map((h) => {
+        <BarChart
+          title="Internet usage per hour"
+          hint="red bars are at the hourly limit"
+          summary={`Internet usage in MB per hour over the last 24 hours: ${state.history
+            .map((h) => `${new Date(h.bucket * 1000).getHours()}:00 ${mb(h.up + h.down)} MB`)
+            .join(", ")}.`}
+          height={170}
+          valueFormat={(v) => `${v.toFixed(2)} MB`}
+          bars={state.history.map((h) => {
             const total = h.up + h.down;
-            const height = Math.max(2, (total / maxBucket) * 130);
             const over = limits.hourly_bytes > 0 && total >= limits.hourly_bytes;
-            return (
-              <div key={h.bucket} style={{ flex: 1, minWidth: 0, textAlign: "center" }}
-                title={`${fmtHour(h.bucket)} — ${mb(total)} MB (up ${mb(h.up)}, down ${mb(h.down)})`}>
-                <div style={{
-                  height,
-                  background: over ? "var(--err)" : "linear-gradient(180deg, var(--accent), var(--accent-2))",
-                  borderRadius: 3,
-                  opacity: total > 0 ? 1 : 0.35,
-                }} />
-                <div className="faint" style={{ fontSize: 10, marginTop: 4 }}>
-                  {new Date(h.bucket * 1000).getHours()}
-                </div>
-              </div>
-            );
+            return {
+              label: `${new Date(h.bucket * 1000).getHours()}:00`,
+              value: total / (1024 * 1024),
+              tone: (over ? "err" : "accent") as "err" | "accent",
+            };
           })}
-        </div>
+        />
       </div>
     </>
   );

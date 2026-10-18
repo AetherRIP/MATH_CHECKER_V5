@@ -191,13 +191,16 @@ const ALIASES: Record<string, Route> = {
   // still lands on the right surface.
   keys: "ai",
   workers: "ai",
+  // Old links opened the results list as "resultsPage"; without it in the
+  // valid set (and here) the deep link silently fell back to AI.
+  resultsPage: "results",
 };
 
 const VALID_ROUTES = new Set<Route>([
   "dashboard", "classes", "assignments", "students", "reports",
   "results", "corrections", "review", "scheme-review", "automation", "largepdf", "classroom", "ai", "settings", "storage",
   "privacy", "diagnostics", "prompts", "distributed", "audit", "updates", "tasks", "correct", "usage",
-  "report", "keys", "workers",
+  "report", "keys", "workers", "resultsPage",
 ]);
 
 interface ParsedHash { route: Route; params: string[] }
@@ -219,7 +222,7 @@ const SIDEBAR_KEY = "mc5.sidebar.collapsed";
 
 function Shell() {
   const toast = useToast();
-  const { resolved, toggle } = useTheme();
+  const { choice, resolved, setChoice, cycle } = useTheme();
   const [nav, setNav] = useState<ParsedHash>(parseHash);
   const [role, setRole] = useState<string>("teacher");
   const [mockMode, setMockMode] = useState(false);
@@ -280,7 +283,9 @@ function Shell() {
       .catch(() => {})
       .finally(() => setSetupChecked(true));
     load();
-    const t = setInterval(load, 25_000);
+    // One shared dashboard loader for the shell AND the Dashboard page (§17):
+    // two independent pollers of the same endpoint were two pollers too many.
+    const t = setInterval(load, 15_000);
     return () => clearInterval(t);
   }, [route, serverEpoch]);
 
@@ -371,11 +376,21 @@ function Shell() {
     return <SetupWizard onDone={() => setNeedsSetup(false)} />;
   }
 
-  // Contextual top-bar sub-line: what is the teacher looking at?
+  // Contextual top-bar sub-line: what is the teacher looking at? Drill-downs
+  // get a real breadcrumb (§7): the parent is clickable, never a dead label.
+  const crumbParent = ((): { label: string; hash: string; current: string } | null => {
+    if (route === "assignments" && nav.params[0])
+      return { label: "Assignments", hash: "#/assignments", current: "Assignment detail" };
+    if (route === "students" && nav.params[0])
+      return { label: "Students", hash: "#/students", current: "Student profile" };
+    if (route === "results" && nav.params[0])
+      return { label: "Results", hash: "#/results", current: "Correction detail" };
+    if (route === "scheme-review" && nav.params[0])
+      return { label: "Mark-Scheme Review", hash: "#/scheme-review", current: "Discrepancy" };
+    return null;
+  })();
   const contextLine = (() => {
-    if (route === "assignments" && nav.params[0]) return "Assignment detail";
-    if (route === "students" && nav.params[0]) return "Student profile";
-    if (route === "results" && nav.params[0]) return "Correction detail";
+    if (crumbParent) return crumbParent.current;
     if (dash) {
       const bits: string[] = [];
       if (dash.classroom.last_sync) bits.push(`synced ${timeAgo(dash.classroom.last_sync)}`);
@@ -389,6 +404,7 @@ function Shell() {
   return (
     <AttentionCtx.Provider value={ctx}>
       <div className="app-shell">
+        <a className="skip-link" href="#main-content">Skip to main content</a>
         <aside className={`sidebar ${collapsed ? "collapsed" : ""} ${drawerOpen ? "open" : ""}`}
           aria-label="Main navigation">
           <div className="brand">
@@ -454,13 +470,37 @@ function Shell() {
 
             <div className="topbar-title">
               <span className="t">{current?.label ?? "Dashboard"}</span>
-              {contextLine && <span className="c chip-hide-sm">{contextLine}</span>}
+              {crumbParent ? (
+                <span className="c chip-hide-sm">
+                  <a className="crumb-link" href={crumbParent.hash}
+                    onClick={(e) => { e.preventDefault(); navigate(crumbParent.hash); }}>
+                    {crumbParent.label}
+                  </a>
+                  <span aria-hidden="true"> / </span>
+                  {crumbParent.current}
+                </span>
+              ) : contextLine && <span className="c chip-hide-sm">{contextLine}</span>}
             </div>
 
             <div className="topbar-spacer" />
             <SearchBox onNavigate={navigate} />
 
             <div className="topbar-actions">
+              {/* Live background-work indicator: the same data the jobs page
+                  shows, always visible so work is never hidden behind
+                  navigation. Opens the attention drawer. */}
+              <button
+                className={`activity-pill ${dash && (dash.processing > 0 || dash.pending > 0) ? "busy" : ""}`}
+                onClick={() => setAttentionOpen(true)}
+                data-tooltip="Background jobs — click for what needs attention"
+                aria-label={dash && dash.processing > 0
+                  ? `${dash.processing} corrections running`
+                  : "No corrections running"}>
+                <span className="led-dot" aria-hidden="true" />
+                {dash && dash.processing > 0 ? `${dash.processing} correcting`
+                  : dash && dash.pending > 0 ? `${dash.pending} queued`
+                  : "Idle"}
+              </button>
               <div className="topbar-chips chip-hide-sm">
                 <Badge tone={connectionTone} icon="classroom">
                   {dash?.classroom.connected ? "Classroom"
@@ -480,9 +520,10 @@ function Shell() {
               />
 
               <IconButton
-                icon={resolved === "dark" ? "sun" : "moon"}
-                label={resolved === "dark" ? "Light mode" : "Dark mode"}
-                onClick={toggle}
+                icon={resolved === "dark" ? "moon" : "sun"}
+                label={`Theme: ${choice} — click for ${choice === "light" ? "dark"
+                  : choice === "dark" ? "system" : "light"}`}
+                onClick={cycle}
               />
 
               <Dropdown align="right" icon="user" label=""
@@ -500,6 +541,14 @@ function Shell() {
                         {dash?.version ? ` · v${dash.version}` : ""}
                       </div>
                     </div>
+                    <div className="menu-label">Theme</div>
+                    {(["light", "dark", "system"] as const).map((c) => (
+                      <button key={c} onClick={() => { close(); setChoice(c); }}>
+                        <Icon name={c === "light" ? "sun" : c === "dark" ? "moon" : "gear"} size={15} />
+                        {c === "light" ? "Light" : c === "dark" ? "Dark" : "Follow system"}
+                        {choice === c && <span style={{ marginLeft: "auto" }}>✓</span>}
+                      </button>
+                    ))}
                     <div className="menu-sep" />
                     <button onClick={() => { close(); go("classroom"); }}>
                       <Icon name="classroom" size={15} /> Classroom connection
@@ -549,7 +598,7 @@ function Shell() {
             </div>
           </header>
 
-          <div className="main-scroll">
+          <div className="main-scroll" id="main-content" tabIndex={-1}>
             <div className="main-inner">
               {dash?.demo_mode && (
                 <div className="notice info" style={{ marginBottom: 14 }}>
@@ -562,7 +611,7 @@ function Shell() {
               )}
               {/* Page code is fetched on first visit; the shell never blanks. */}
               <Suspense fallback={<Loading label="Loading page…" />}>
-              {route === "dashboard" && <DashboardPage onNavigate={go} />}
+              {route === "dashboard" && <DashboardPage onNavigate={go} data={dash} />}
               {route === "classes" && (
                 <ClassesPage onNavigate={navigate} />
               )}

@@ -304,7 +304,22 @@ server.
 
 ### Tests and diagnostics
 
-From the project root, run the backend regression suite with:
+From the project root, run every check with one command:
+
+```bat
+.venv\Scripts\python.exe scripts\run_all_tests.py
+```
+
+It builds the frontend, runs the frontend suite (including the headless-browser
+workspace checks), then runs the backend suite, and prints one pass/fail
+summary. The exit status is 0 only when every selected check passed, so it can
+be used in a pre-release script; `--only build|frontend|backend`, `--no-build`
+and `-v` (stream each check's output) narrow a run. Start the app with
+`start.bat` first if the browser checks should drive the live UI — otherwise
+they are reported as skipped rather than passing silently. On macOS/Linux the
+same command is `python scripts/run_all_tests.py`.
+
+To run one suite directly, the backend regression suite is:
 
 ```bat
 .venv\Scripts\python.exe -m pytest backend\tests -q

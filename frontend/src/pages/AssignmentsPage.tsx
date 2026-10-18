@@ -113,7 +113,7 @@ function AssignmentsList({ onNavigate }: { onNavigate: (hash: string) => void })
         </div>
       ) : filtered.length === 0 ? (
         <div className="card">
-          <Empty icon="assignments"
+          <Empty icon="assignments" art={items.length === 0 ? "paper" : "search"}
             title={items.length === 0 ? "No assignments yet" : "Nothing matches"}
             hint={items.length === 0
               ? "Create your first assignment to begin correcting submissions."

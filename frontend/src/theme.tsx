@@ -16,16 +16,19 @@ interface ThemeCtx {
   resolved: "light" | "dark";
   setChoice: (c: ThemeChoice) => void;
   toggle: () => void;
+  /** Three-way cycle: light -> dark -> system -> light. */
+  cycle: () => void;
 }
 
 const Ctx = createContext<ThemeCtx>({
-  choice: "system", resolved: "dark", setChoice: () => {}, toggle: () => {},
+  choice: "system", resolved: "light",
+  setChoice: () => {}, toggle: () => {}, cycle: () => {},
 });
 
 const STORAGE_KEY = "mc5.theme";
 
 function systemPreferred(): "light" | "dark" {
-  if (typeof window === "undefined" || !window.matchMedia) return "dark";
+  if (typeof window === "undefined" || !window.matchMedia) return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
@@ -62,9 +65,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setChoice(resolved === "dark" ? "light" : "dark");
   }, [resolved, setChoice]);
 
+  const cycle = useCallback(() => {
+    setChoice(choice === "light" ? "dark" : choice === "dark" ? "system" : "light");
+  }, [choice, setChoice]);
+
   const value = useMemo(
-    () => ({ choice, resolved, setChoice, toggle }),
-    [choice, resolved, setChoice, toggle]);
+    () => ({ choice, resolved, setChoice, toggle, cycle }),
+    [choice, resolved, setChoice, toggle, cycle]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

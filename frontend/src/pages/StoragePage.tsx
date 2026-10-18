@@ -437,8 +437,8 @@ export default function StoragePage() {
       <Section title="Stored corrections" icon="chart"
         hint={`${counts.results ?? 0} total · showing ${results.length}`}>
         {results.length === 0 ? (
-          <Empty icon="chart" title="No corrections stored yet"
-            hint="Correct a submission on the AI page and its result appears here." />
+          <Empty icon="chart" art="chart" title="No corrections stored yet"
+            hint="Run a correction — from Correct a PDF or a Classroom assignment — and its result appears here." />
         ) : (
           <DataTable head={<tr>
             <th>Student</th><th>Assignment</th><th>Marks</th><th>%</th>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { BarChart, LineChart } from "../charts/Charts";
 import {
   api, classLabel, timeAgo, type BulkDetailsResult, type ClassVocabulary,
   type StudentListItem, type StudentProfile,
@@ -653,6 +654,39 @@ export default function StudentsPage({
               </div>
             </div>
 
+            {/* ---- real-data charts (§10 #9/#10): behavior + recent scores ---- */}
+            <div className="card">
+              <h3>
+                <Icon name="chart" size={16} style={{ color: "var(--accent)" }} />
+                At a glance <span className="hint">from stored Classroom and correction records</span>
+              </h3>
+              <div className="grid grid-2">
+                <BarChart
+                  title="Submission behavior"
+                  hint="assignment counts"
+                  summary={`Submission behavior: ${p.behavior.on_time} on time, ${p.behavior.late} late, ${p.behavior.missing} outstanding, ${p.behavior.draft} draft, ${p.behavior.turned_in} turned in, ${p.behavior.returned} returned.`}
+                  bars={[
+                    { label: "On time", value: p.behavior.on_time, tone: "ok" },
+                    { label: "Late", value: p.behavior.late, tone: "warn" },
+                    { label: "Outstanding", value: p.behavior.missing, tone: "err" },
+                    { label: "Draft", value: p.behavior.draft, tone: "mute" },
+                    { label: "Turned in", value: p.behavior.turned_in, tone: "accent" },
+                    { label: "Returned", value: p.behavior.returned, tone: "review" },
+                  ]}
+                />
+                <LineChart
+                  title="Recent correction scores"
+                  hint="percentage per corrected paper, oldest first"
+                  summary={`Recent Math Checker percentages, oldest to newest: ${[...p.corrections.recent].reverse()
+                    .map((c) => `${c.percentage.toFixed(0)}%`).join(", ") || "none yet"}.`}
+                  valueFormat={(v) => `${Math.round(v)}%`}
+                  points={[...p.corrections.recent].reverse().map((c) => ({
+                    label: timeAgo(c.created_at), value: c.percentage,
+                  }))}
+                />
+              </div>
+            </div>
+
             {/* ---- submission behavior (§9): secondary detail, collapsed ---- */}
             <div className="card">
               <details className="expander">
@@ -730,10 +764,10 @@ export default function StudentsPage({
                 </div>
               </div>
               {p.classroom.assignments.length === 0 ? (
-                <Empty icon="📭" title="No assignment data"
-                  hint="Sync an assignment in the Classroom page to see real submission states here." />
+                <Empty icon="inbox" art="inbox" title="No assignment data"
+                  hint="Sync an assignment in the Classroom page to see submission states here." />
               ) : history.length === 0 ? (
-                <Empty icon="🔍" title="Nothing matches this filter"
+                <Empty icon="search" art="search" title="Nothing matches this filter"
                   hint="Try a different filter above." />
               ) : (
                 <DataTable head={
@@ -834,8 +868,8 @@ export default function StudentsPage({
               </h3>
               {p.classroom.assignments.length === 0 && p.corrections.recent.length === 0
                 && failedJobs.length === 0 ? (
-                <Empty icon="🕒" title="No activity yet"
-                  hint="Sync Google Classroom and run a correction — real events appear here." />
+                <Empty icon="clock" art="inbox" title="No activity yet"
+                  hint="Sync Google Classroom and run a correction — events appear here as they happen." />
               ) : (
                 <div className="activity-feed">
                   {latestAssignment && (
@@ -967,10 +1001,10 @@ export default function StudentsPage({
 
         {!students && <Loading label="Loading students…" />}
         {students && filtered.length === 0 && (
-          <Empty icon="🎓"
+          <Empty icon="students" art={students.length === 0 ? "generic" : "search"}
             title={students.length === 0 ? "No students yet" : "Nothing matches"}
             hint={students.length === 0
-              ? "Connect Google Classroom and sync an assignment — real students appear here."
+              ? "Connect Google Classroom and sync an assignment — students appear here."
               : "Try a different search."} />
         )}
 

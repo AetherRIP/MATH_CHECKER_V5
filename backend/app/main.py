@@ -355,6 +355,17 @@ from .api import scheme_routes  # noqa: E402
 
 scheme_routes.register(app)
 
+# Marking-workspace viewer (read-only): the original submission's pages, or an
+# honest "not stored" answer. Registered before the SPA fallback.
+from .api import viewer_routes  # noqa: E402
+
+viewer_routes.register(app)
+
+# Read-only analytics aggregates for the dashboard charts (no schema change).
+from .api import analytics_routes  # noqa: E402
+
+analytics_routes.register(app)
+
 from .api import privacy_routes  # noqa: E402
 
 privacy_routes.register(app)

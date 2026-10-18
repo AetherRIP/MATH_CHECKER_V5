@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api, displayName, timeAgo, type AttachmentStatus, type Course, type Coursework,
   type ReportCleanupOutcome,
@@ -7,8 +7,15 @@ import {
 } from "../api";
 import {
   Badge, Button, Dropdown, Empty, ErrorState, ExportMenu, Icon, Loading,
-  Modal, PageHeader, Segmented, Stat, useToast, type IconName, type Tone,
+  Modal, PageHeader, ProvenanceBadge, Segmented, Stat, WorkspacePanes,
+  useToast, type IconName, type Tone,
 } from "../components";
+import { prefersReducedMotion } from "../motion";
+import {
+  MASTERY_LABEL, TRIAGE_LABEL, TRIAGE_RANK, buildTopicGroups, questionTriage,
+  type MasteryBand,
+} from "../topicGroups";
+import { useSort, type SortColumns } from "../useSort";
 
 interface ResultVersion {
   version: number; is_current: boolean; earned: number; available: number;
@@ -49,7 +56,7 @@ function VersionsPanel({ resultId, onRestored }: {
       <div className="table-wrap">
         <table className="table">
           <thead><tr><th>Version</th><th className="num">Score</th><th>Model</th>
-            <th>When</th><th>Note</th><th /></tr></thead>
+            <th>Confidence</th><th>When</th><th>Note</th><th /></tr></thead>
           <tbody>
             {versions.map((v) => (
               <tr key={v.version}>
@@ -61,6 +68,9 @@ function VersionsPanel({ resultId, onRestored }: {
                   <span className="faint small">({Math.round(v.percentage)}%)</span>
                 </td>
                 <td data-label="Model" className="small faint">{v.marking_model ?? "—"}</td>
+                <td data-label="Confidence" className="small faint">
+                  {v.confidence ? v.confidence.toLowerCase().replace(/_/g, " ") : "—"}
+                </td>
                 <td data-label="When" className="small faint">{timeAgo(v.created_at)}</td>
                 <td data-label="Note" className="small muted wrap-cell">{v.note ?? "—"}</td>
                 <td>
@@ -234,6 +244,8 @@ interface ResultDetail extends ResultSummary {
   disagreement_status?: string | null; first_correction_id?: string | null;
   second_correction_id?: string | null; double_check_reason?: string | null;
   double_check_differences?: DoubleCheckDifference[] | null;
+  /** Recorded by the verification guard; may arrive as a JSON string. */
+  confidence_reasons?: string[] | string | null;
   result_json: {
     paper_info: Record<string, string>;
     questions: Question[];
@@ -247,6 +259,47 @@ interface ResultDetail extends ResultSummary {
     review_questions?: string[];
     blueprint?: { source?: string; missing_questions?: string[] } | null;
   } | null;
+}
+
+/* ---- triage + confidence: derived from RECORDED fields, never invented ---- */
+
+const CONFIDENCE_META: Record<string, { tone: Tone; label: string }> = {
+  HIGH: { tone: "ok", label: "Confidence: high" },
+  MEDIUM: { tone: "info", label: "Confidence: medium" },
+  LOW: { tone: "warn", label: "Confidence: low — check the flagged questions" },
+  VALIDATION_FAILED: { tone: "err", label: "Validation failed — treat as provisional" },
+  LARGE_SCORE_CHANGE: { tone: "warn", label: "Large change vs the previous correction" },
+};
+
+function parseReasons(raw: ResultDetail["confidence_reasons"]): string[] {
+  if (!raw) return [];
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch { return []; }
+  }
+  return Array.isArray(raw) ? raw.map(String) : [];
+}
+
+/**
+ * Per-question triage pill. The tooltip states the derivation out loud:
+ * this is a reading of recorded flags (unmarked parts, mark-scheme
+ * disagreement, unreadable work) — NOT a model confidence score. The engine
+ * records confidence at result level only.
+ */
+function TriagePill({ q }: { q: Question }) {
+  const t = questionTriage(q);
+  return (
+    <span className={`triage-pill ${t}`}
+      title="Derived from recorded flags (unmarked parts, mark-scheme disagreement, unreadable work) — not a model confidence score.">
+      {TRIAGE_LABEL[t]}
+    </span>
+  );
+}
+
+function masteryTone(band: MasteryBand): Tone {
+  return band === "secure" ? "ok" : band === "developing" ? "warn" : "err";
 }
 
 function QuestionTone({ awarded, max }: { awarded: number; max: number }) {
@@ -275,13 +328,14 @@ function QuestionCard({ q, resultId, onChanged }: {
   }
 
   return (
-    <details className="expander" style={{ marginBottom: 8 }}>
+    <details className="expander" id={`question-${q.question_number}`} style={{ marginBottom: 8 }}>
       <summary>
         <span style={{ minWidth: 90 }}>Question {q.question_number}</span>
         <span className="mono" style={{ fontWeight: 700 }}>
           {q.awarded_marks}/{q.max_marks}
         </span>
         <QuestionTone awarded={q.awarded_marks} max={q.max_marks} />
+        <TriagePill q={q} />
         {needsReview && <Badge tone="warn">⚠ REVIEW — unmarked</Badge>}
         {flag && <Badge tone={flag.student_answer_valid ? "warn" : "info"}>
           ⚠ Mark-scheme check</Badge>}
@@ -299,35 +353,37 @@ function QuestionCard({ q, resultId, onChanged }: {
         {/* §4/§9: which marking point earned what — including the ones the
             marker never returned, which are UNMARKED (not a confirmed 0). */}
         {(q.subquestions?.length ?? 0) > 0 && (
-          <table className="table small" style={{ marginBottom: 12 }}>
-            <thead>
-              <tr><th>Subquestion</th><th className="num">Marks</th>
-                <th>Expected answer(s)</th><th>Marking points</th><th /></tr>
-            </thead>
-            <tbody>
-              {q.subquestions!.map((s) => {
-                const unmarked = (s.status ?? "").toUpperCase() !== "MARKED";
-                return (
-                  <tr key={s.id} style={unmarked ? { opacity: 0.75 } : undefined}>
-                    <td><strong>{s.label || s.id}</strong></td>
-                    <td className="num">
-                      {unmarked ? <span className="muted">—</span>
-                        : `${s.awarded_marks}/${s.max_marks}`}
-                    </td>
-                    <td>{(s.answers ?? []).length
-                      ? s.answers!.join(" or ")
-                      : <span className="muted">not stated</span>}</td>
-                    <td>{(s.mark_codes ?? []).length
-                      ? s.mark_codes!.join(", ")
-                      : <span className="muted">none stated</span>}</td>
-                    <td>{unmarked
-                      ? <Badge tone="warn">UNMARKED</Badge>
-                      : <Icon name="check" size={13} style={{ color: "var(--ok)" }} />}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="table-wrap" style={{ marginBottom: 12 }}>
+            <table className="table small">
+              <thead>
+                <tr><th>Subquestion</th><th className="num">Marks</th>
+                  <th>Expected answer(s)</th><th>Marking points</th><th /></tr>
+              </thead>
+              <tbody>
+                {q.subquestions!.map((s) => {
+                  const unmarked = (s.status ?? "").toUpperCase() !== "MARKED";
+                  return (
+                    <tr key={s.id} style={unmarked ? { opacity: 0.75 } : undefined}>
+                      <td><strong>{s.label || s.id}</strong></td>
+                      <td className="num">
+                        {unmarked ? <span className="muted">—</span>
+                          : `${s.awarded_marks}/${s.max_marks}`}
+                      </td>
+                      <td>{(s.answers ?? []).length
+                        ? s.answers!.join(" or ")
+                        : <span className="muted">not stated</span>}</td>
+                      <td>{(s.mark_codes ?? []).length
+                        ? s.mark_codes!.join(", ")
+                        : <span className="muted">none stated</span>}</td>
+                      <td>{unmarked
+                        ? <Badge tone="warn">UNMARKED</Badge>
+                        : <Icon name="check" size={13} style={{ color: "var(--ok)" }} />}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
         {/* mark checklist first — the headline result */}
         {q.mark_breakdown.length > 0 && (
@@ -894,15 +950,219 @@ function RetryActions({ result }: { result: ResultDetail }) {
   );
 }
 
-function ResultView({ result, onReload }: { result: ResultDetail; onReload: () => void }) {
+/* ============================================== marking workspace (§11) */
+
+interface ResultPages {
+  available: boolean; reason: string | null; message: string | null;
+  page_count: number; file_kind: string | null; file_name: string | null;
+  source: string | null; dpi: number; page_url_template: string;
+}
+
+/**
+ * The student's ACTUAL work (centre pane). The backend serves the stored
+ * submission page by page (``/api/results/{id}/pages``); when the original is
+ * not stored (retention deletes it at job end) this says so honestly instead
+ * of pretending. Zoom: buttons or +/- keys. Pages load lazily.
+ */
+function DocumentPane({ resultId }: { resultId: string }) {
+  const [info, setInfo] = useState<ResultPages | null>(null);
+  const [zoom, setZoom] = useState(100);
+  const [failed, setFailed] = useState<Record<number, boolean>>({});
+  const pagesRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setInfo(null); setZoom(100); setFailed({});
+    api<ResultPages>(`/results/${resultId}/pages`)
+      .then(setInfo).catch(() => setInfo(null));
+  }, [resultId]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
+      if (e.key === "+" || e.key === "=") setZoom((z) => Math.min(300, z + 25));
+      if (e.key === "-") setZoom((z) => Math.max(50, z - 25));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  if (!info) {
+    return (
+      <div className="skeleton-lines" aria-busy="true">
+        <div className="skeleton" style={{ height: 240 }} />
+      </div>
+    );
+  }
+  if (!info.available) {
+    return (
+      <Empty icon="file" art="paper" title="The original work is not stored on this device"
+        hint={info.message ?? "It is deleted when a job finishes unless Settings → Privacy & Data is set to keep submissions."} />
+    );
+  }
+
+  const urlFor = (p: number) => info.page_url_template.replace("{page}", String(p));
+
+  // "Fit width" must also undo any sideways scroll left over from a zoomed
+  // view; shrinking the image alone left the pages scrolled off-screen, which
+  // read as "the button does not fix it".
+  function fitWidth() {
+    setZoom(100);
+    pagesRef.current?.scrollTo({ left: 0 });
+  }
+
+  return (
+    <div className="stack">
+      {/* Header stays put; only the pages scroll (see .doc-pages). */}
+      <div className="doc-head">
+        <div className="doc-meta small muted" title={info.file_name ?? undefined}>
+          {info.file_name} · {info.page_count} page(s)
+          {info.source === "retained" ? " · retained copy" : ""}
+        </div>
+        <div className="row doc-zoom" style={{ gap: 6 }}>
+          <Button size="sm" variant="ghost" aria-label="Zoom out"
+            onClick={() => setZoom((z) => Math.max(50, z - 25))}>−</Button>
+          <span className="small mono" aria-live="polite">{zoom}%</span>
+          <Button size="sm" variant="ghost" aria-label="Zoom in"
+            onClick={() => setZoom((z) => Math.min(300, z + 25))}>+</Button>
+          <Button size="sm" variant="ghost" onClick={fitWidth}>Fit width</Button>
+        </div>
+      </div>
+      <div className="doc-pages" ref={pagesRef}>
+        {Array.from({ length: info.page_count }, (_, i) => i + 1).map((p) => (
+          failed[p] ? (
+            <div className="notice err small" key={p}>Page {p} could not be shown.</div>
+          ) : (
+            <figure key={p} style={{ margin: 0 }}>
+              <img src={urlFor(p)}
+                alt={`Page ${p} of ${info.file_name ?? "the student's submission"}`}
+                loading="lazy"
+                onError={() => setFailed((f) => ({ ...f, [p]: true }))}
+                style={{ width: `${zoom}%`, height: "auto", display: "block",
+                  border: "1px solid var(--border)", borderRadius: "var(--radius-xs)" }} />
+              <figcaption className="faint small" style={{ marginTop: 4 }}>Page {p}</figcaption>
+            </figure>
+          )
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Left pane: who/what is being marked + the question tree with real marks. */
+function QuestionNavigator({ result, activeQ, onSelect }: {
+  result: ResultDetail; activeQ: string | null; onSelect: (q: string) => void;
+}) {
+  const qs = result.result_json.questions;
+  const groups = buildTopicGroups(qs);
+  const provenance: "ai" | "verified" | "teacher" | "overridden" =
+    result.manual_override ? "overridden"
+      : result.verification_json?.verified ? "verified" : "ai";
+  return (
+    <div className="stack" style={{ gap: 2 }}>
+      <div>
+        <div style={{ fontWeight: 700 }}>{displayName(result)}</div>
+        <div className="faint small">
+          {result.assignment_title ?? result.result_json.paper_info.paper}
+        </div>
+      </div>
+      <div className="provenance-row" style={{ margin: "6px 0 10px" }}>
+        <ProvenanceBadge kind={provenance} />
+        {result.review_required ? <Badge tone="review" icon="review">Needs review</Badge> : null}
+      </div>
+      <div className="faint small" style={{ textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>
+        Questions <span style={{ textTransform: "none", letterSpacing: 0 }}>by topic</span>
+      </div>
+      {groups.map((g) => (
+        <div key={g.topic}>
+          <div className="qtree-topic"
+            title={`${g.topic}: ${g.earned}/${g.available} marks (${g.percentage.toFixed(1)}%)`}>
+            <span className="t">{g.topic}</span>
+            <span className="m">{g.earned}/{g.available}</span>
+          </div>
+          {g.questions.map((q) => (
+            <div key={q.question_number}>
+              <button type="button" className={`qtree-item ${activeQ === q.question_number ? "active" : ""}`}
+                onClick={() => onSelect(q.question_number)}>
+                <span style={{ minWidth: 32, fontWeight: 700 }}>Q{q.question_number}</span>
+                <span className="mono" style={{ fontWeight: 700 }}>
+                  {q.awarded_marks}/{q.max_marks}
+                </span>
+                {q.status === "REVIEW" && <Badge tone="warn">unmarked</Badge>}
+                {q.scheme_check && <Badge tone="info">scheme</Badge>}
+              </button>
+              {(q.subquestions ?? []).map((s) => (
+                <div key={s.id} className="qtree-sub">
+                  <span style={{ minWidth: 24 }}>{s.label}</span>
+                  <span className="mono">{s.awarded_marks}/{s.max_marks}</span>
+                  {s.status !== "MARKED" && <Badge tone="warn">unmarked</Badge>}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ResultView({ result, onReload, onPrev, onNext }: {
+  result: ResultDetail; onReload: () => void;
+  onPrev?: (() => void) | null; onNext?: (() => void) | null;
+}) {
   const verification = result.verification_json;
   const qs = result.result_json.questions;
   const fullCount = qs.filter((q) => q.awarded_marks === q.max_marks).length;
   const zeroCount = qs.filter((q) => q.awarded_marks === 0).length;
   const partialCount = qs.length - fullCount - zeroCount;
   const marksLost = qs.reduce((sum, q) => sum + (q.max_marks - q.awarded_marks), 0);
+  const [activeQ, setActiveQ] = useState<string | null>(null);
 
-  return (
+  // Topic groups + confidence triage (§ question groups): pure math from
+  // ../topicGroups, the exact arithmetic its Node tests cover.
+  const groups = useMemo(() => buildTopicGroups(qs), [qs]);
+  const checkFirst = useMemo(
+    () => qs.filter((q) => questionTriage(q) !== "ok")
+      .sort((a, b) => TRIAGE_RANK[questionTriage(a)] - TRIAGE_RANK[questionTriage(b)]),
+    [qs]);
+  const confidenceReasons = parseReasons(result.confidence_reasons);
+
+  // Sortable question breakdown (useSort). Question navigation (n/p, tree)
+  // deliberately keeps paper order — only this table sorts.
+  const breakdownCols = useMemo<SortColumns<Question>>(() => ({
+    q: { value: (x) => x.question_number },
+    marks: { value: (x) => (x.max_marks > 0 ? x.awarded_marks / x.max_marks : 0), numeric: true },
+    topic: { value: (x) => x.topic },
+    lost: { value: (x) => x.loss_reason },
+  }), []);
+  const { sorted: sortedQs, onSort: onSortCol, ariaSortFor } = useSort(qs, breakdownCols);
+  const sortArrow = (key: string) =>
+    ariaSortFor(key) === "ascending" ? "▲" : ariaSortFor(key) === "descending" ? "▼" : "";
+
+  function select(num: string) {
+    setActiveQ(num);
+    const el = document.getElementById(`question-${num}`);
+    el?.scrollIntoView({
+      behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start",
+    });
+    if (el instanceof HTMLDetailsElement) el.open = true;
+  }
+
+  // n/p step through the question tree (keyboard shortcuts §11).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
+      const keys = qs.map((q) => q.question_number);
+      const idx = activeQ ? keys.indexOf(activeQ) : -1;
+      if (e.key === "n" && idx < keys.length - 1) select(keys[idx + 1]);
+      if (e.key === "p" && idx > 0) select(keys[idx - 1]);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  const resultPane = (
     <div className="stack">
       {/* ---- header ---- */}
       <div className="card">
@@ -936,6 +1196,12 @@ function ResultView({ result, onReload }: { result: ResultDetail; onReload: () =
                       ? "blueprint extracted" : "free-form (no blueprint)"}
                 </Badge>
               )}
+              {result.confidence && (
+                <Badge tone={CONFIDENCE_META[result.confidence]?.tone ?? "mute"} icon="shield">
+                  {CONFIDENCE_META[result.confidence]?.label
+                    ?? `Confidence: ${result.confidence.toLowerCase().replace(/_/g, " ")}`}
+                </Badge>
+              )}
             </div>
           </div>
           <div className="row wrap">
@@ -946,6 +1212,16 @@ function ResultView({ result, onReload }: { result: ResultDetail; onReload: () =
               <div className="muted small">
                 {result.percentage.toFixed(2)}% · provisional band {result.provisional_grade}
               </div>
+            </div>
+            <div className="row" style={{ gap: 6 }}>
+              <Button variant="ghost" size="sm" icon="arrow-left" disabled={!onPrev}
+                tooltip="Previous submission (k)" onClick={() => onPrev?.()}>
+                Prev
+              </Button>
+              <Button variant="ghost" size="sm" iconRight="arrow-right" disabled={!onNext}
+                tooltip="Next submission (j)" onClick={() => onNext?.()}>
+                Next
+              </Button>
             </div>
             <ExportMenu base={`/results/${result.id}/export`}
               formats={["pdf", "md", "csv"]} params={{ detail: "detailed" }} />
@@ -959,6 +1235,22 @@ function ResultView({ result, onReload }: { result: ResultDetail; onReload: () =
               {verification.anomalies.map((a, i) => <li key={i}>{a}</li>)}
             </ul>
           </div>
+        )}
+        {confidenceReasons.length > 0 && (
+          <details className="expander" style={{ marginTop: 10 }}>
+            <summary>
+              {confidenceReasons.length} recorded reason(s) for this confidence level
+            </summary>
+            <div className="expander-body">
+              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                {confidenceReasons.map((r, i) => <li key={i} className="muted">{r}</li>)}
+              </ul>
+              <p className="faint small" style={{ marginBottom: 0 }}>
+                Recorded by the verification guard when this correction was stored.
+                Confidence flags where to look — it never changes a mark.
+              </p>
+            </div>
+          </details>
         )}
         {verification && verification.warnings.length > 0 && (
           <details className="expander" style={{ marginTop: 10 }}>
@@ -986,6 +1278,66 @@ function ResultView({ result, onReload }: { result: ResultDetail; onReload: () =
         <Stat compact label="Marks lost" value={marksLost} />
       </div>
 
+      {/* ---- question groups + confidence triage (§ question groups) ---- */}
+      <div className="card">
+        <h3>Question groups <span className="hint">by topic — a reading of the recorded marks</span></h3>
+        {checkFirst.length > 0 && (
+          <div className="triage-strip small" style={{ marginBottom: 10 }} data-testid="triage-strip">
+            <div><strong>Start here:</strong> {checkFirst.length} question(s) carry recorded flags.</div>
+            <div className="triage-chips">
+              {checkFirst.map((q) => {
+                const t = questionTriage(q);
+                return (
+                  <button key={q.question_number} type="button"
+                    className={`triage-pill ${t}`}
+                    style={{ cursor: "pointer", font: "inherit" }}
+                    onClick={() => select(q.question_number)}>
+                    Q{q.question_number} — {TRIAGE_LABEL[t]}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="faint" style={{ marginTop: 6 }}>
+              Flags come from recorded evidence (unmarked parts, mark-scheme
+              disagreement, unreadable work) — not from a model confidence score.
+            </div>
+          </div>
+        )}
+        {groups.map((g) => (
+          <div key={g.topic} className="qgroup">
+            <div className="qgroup-head">
+              <span className="title">{g.topic}</span>
+              <Badge tone={masteryTone(g.mastery)}>{MASTERY_LABEL[g.mastery]}</Badge>
+              {g.checkCount > 0 && <Badge tone="warn" icon="alert">{g.checkCount} to check</Badge>}
+              {g.watchCount > 0 && <Badge tone="info">{g.watchCount} to look at</Badge>}
+              <div className="mastery-bar" role="img"
+                aria-label={`${g.topic}: ${g.percentage.toFixed(0)}% of marks awarded`}>
+                <div className={`fill ${g.mastery}`}
+                  style={{ width: `${Math.min(100, Math.max(0, g.percentage))}%` }} />
+              </div>
+              <span className="marks mono">
+                {g.earned}/{g.available} · {g.percentage.toFixed(1)}%
+              </span>
+            </div>
+            <div className="qgroup-body">
+              {g.questions.map((q) => (
+                <button key={q.question_number} type="button"
+                  className="qtree-item" style={{ width: "auto" }}
+                  onClick={() => select(q.question_number)}>
+                  <span style={{ fontWeight: 700 }}>Q{q.question_number}</span>
+                  <span className="mono">{q.awarded_marks}/{q.max_marks}</span>
+                  {questionTriage(q) !== "ok" && <TriagePill q={q} />}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+        <p className="faint small" style={{ margin: "10px 0 0" }}>
+          Topic grouping and the bands are derived from the awarded marks —
+          they never change a stored score.
+        </p>
+      </div>
+
       {/* ---- overview notes ---- */}
       <div className="card">
         <h3>Overview</h3>
@@ -1008,16 +1360,38 @@ function ResultView({ result, onReload }: { result: ResultDetail; onReload: () =
         </div>
       </div>
 
-      {/* ---- question breakdown ---- */}
+      {/* ---- question breakdown (sortable via useSort) ---- */}
       <div className="card">
-        <h3>Question breakdown</h3>
+        <h3>Question breakdown <span className="hint">click a column heading to sort</span></h3>
         <div className="table-wrap">
           <table className="table table-stack">
             <thead>
-              <tr><th>Q</th><th className="num">Marks</th><th>Status</th><th>Topic</th><th>Why marks were lost</th></tr>
+              <tr>
+                <th aria-sort={ariaSortFor("q")}>
+                  <button className="th-sort" type="button" onClick={() => onSortCol("q")}>
+                    Q <span className="arrow">{sortArrow("q")}</span>
+                  </button>
+                </th>
+                <th className="num" aria-sort={ariaSortFor("marks")}>
+                  <button className="th-sort" type="button" onClick={() => onSortCol("marks")}>
+                    Marks <span className="arrow">{sortArrow("marks")}</span>
+                  </button>
+                </th>
+                <th>Status</th>
+                <th aria-sort={ariaSortFor("topic")}>
+                  <button className="th-sort" type="button" onClick={() => onSortCol("topic")}>
+                    Topic <span className="arrow">{sortArrow("topic")}</span>
+                  </button>
+                </th>
+                <th aria-sort={ariaSortFor("lost")}>
+                  <button className="th-sort" type="button" onClick={() => onSortCol("lost")}>
+                    Why marks were lost <span className="arrow">{sortArrow("lost")}</span>
+                  </button>
+                </th>
+              </tr>
             </thead>
             <tbody>
-              {qs.map((q) => (
+              {sortedQs.map((q) => (
                 <tr key={q.question_number}>
                   <td data-label="Question" className="num">{q.question_number}</td>
                   <td data-label="Marks" className="num">
@@ -1058,6 +1432,17 @@ function ResultView({ result, onReload }: { result: ResultDetail; onReload: () =
         </div>
       )}
     </div>
+  );
+
+  // Three panes (§11): the question tree, the student's ACTUAL work, and the
+  // marking result. Resizable; below 900px they become tabs.
+  return (
+    <WorkspacePanes storageKey="mc5.workspace.results" min={230} panes={[
+      { id: "nav", label: "Questions",
+        el: <QuestionNavigator result={result} activeQ={activeQ} onSelect={select} /> },
+      { id: "doc", label: "Student work", el: <DocumentPane resultId={result.id} /> },
+      { id: "mark", label: "Marking result", el: resultPane },
+    ]} />
   );
 }
 
@@ -1151,17 +1536,40 @@ export default function ResultsPage({ resultId, onNavigate }: {
 
   const filtersActive = Boolean(debouncedQ || status !== "all" || courseId || courseworkId);
 
+  // Submission navigation in the workspace (§11): j/k and the header buttons
+  // move through the CURRENT result list, in the order the table shows.
+  const goRelative = (delta: number) => {
+    const i = rows.findIndex((r) => r.id === resultId);
+    const target = rows[i + delta];
+    if (target) choose(target.id);
+  };
+
+  useEffect(() => {
+    if (!resultId) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
+      if (e.key === "j") goRelative(1);
+      if (e.key === "k") goRelative(-1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   // ---- correction detail (a deep link keeps every result reachable) ----
   if (resultId) {
+    const i = rows.findIndex((r) => r.id === resultId);
     return (
       <>
         <PageHeader title="Correction detail"
-          sub="The full stored result — history is preserved when work is rechecked.">
+          sub="The marking workspace — the student's work, the question tree and the result side by side.">
           <Button variant="secondary" size="sm" icon="arrow-left"
             onClick={() => onNavigate?.("#/results")}>All results</Button>
         </PageHeader>
         {detailLoading && !selected ? <Loading label="Loading correction…" />
-          : selected ? <ResultView result={selected} onReload={() => open(selected.id)} />
+          : selected ? <ResultView result={selected} onReload={() => open(selected.id)}
+              onPrev={i > 0 ? () => goRelative(-1) : null}
+              onNext={i >= 0 && i < rows.length - 1 ? () => goRelative(1) : null} />
             : <ErrorState title="Correction not found"
                 detail="This result could not be loaded. It may have been removed."
                 onRetry={() => open(resultId)} />}
@@ -1239,10 +1647,11 @@ export default function ResultsPage({ resultId, onNavigate }: {
         <Loading label="Loading corrections…" />
       ) : rows.length === 0 ? (
         <div className="card">
-          <Empty icon="search" title={filtersActive ? "No corrections match your filters" : "No corrections yet"}
+          <Empty icon="search" art={filtersActive ? "search" : "paper"}
+            title={filtersActive ? "No corrections match your filters" : "No corrections yet"}
             hint={filtersActive
               ? "Try a different search term or clear the filters."
-              : "Completed corrections appear here automatically."} />
+              : "Corrections appear here as soon as marking finishes."} />
         </div>
       ) : (
         <>

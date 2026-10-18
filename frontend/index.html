@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Math Checker V5</title>
+    <script>
+      // Apply the persisted theme BEFORE first paint (no flash of the wrong
+      // theme). Mirrors theme.tsx: stored choice wins, "system" follows the OS.
+      (function () {
+        try {
+          var choice = localStorage.getItem("mc5.theme");
+          var dark = choice === "dark" ||
+            ((choice == null || choice === "system") &&
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          var root = document.documentElement;
+          root.setAttribute("data-theme", dark ? "dark" : "light");
+          root.style.colorScheme = dark ? "dark" : "light";
+        } catch (e) { /* private mode: defaults apply */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

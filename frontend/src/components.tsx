@@ -1,13 +1,15 @@
 import {
-  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
+  createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from "react";
 import type { JobStatus } from "./api";
+import { EmptyArt, type EmptyArtVariant } from "./EmptyArt";
 import { Icon, type IconName } from "./Icons";
+import { fitPaneWidths } from "./paneWidths";
 
 /* ================================================================ badges */
 
-export type Tone = "ok" | "err" | "warn" | "info" | "mute";
+export type Tone = "ok" | "err" | "warn" | "info" | "review" | "mute";
 
 export function Badge({ tone, children, icon }: {
   tone: Tone; children: ReactNode; icon?: IconName;
@@ -103,10 +105,12 @@ export function Stat({
 
 /** Polished, clickable status card: icon + big value + supporting text. */
 export function StatusCard({
-  icon, value, label, sub, tone = "info", onClick,
+  icon, value, label, sub, tone = "info", onClick, spark,
 }: {
   icon: IconName; value: ReactNode; label: ReactNode; sub?: ReactNode;
-  tone?: "ok" | "err" | "warn" | "info" | "mute"; onClick?: () => void;
+  tone?: "ok" | "err" | "warn" | "info" | "review" | "mute"; onClick?: () => void;
+  /** Optional trailing visual (sparkline/mini chart). Display only. */
+  spark?: ReactNode;
 }) {
   const Tag = onClick ? "button" : "div";
   return (
@@ -121,6 +125,7 @@ export function StatusCard({
         <div className="sc-label">{label}</div>
         {sub != null && <div className="sc-sub">{sub}</div>}
       </div>
+      {spark != null && <div style={{ marginLeft: "auto", alignSelf: "center" }}>{spark}</div>}
     </Tag>
   );
 }
@@ -185,13 +190,18 @@ export function rowActivate(onActivate: () => void) {
 
 /* ============================================================== states */
 
-export function Empty({ icon, title, hint, action }: {
+export function Empty({ icon, art, title, hint, action }: {
   icon: string | IconName; title: ReactNode; hint?: ReactNode; action?: ReactNode;
+  /** Illustrated line-art instead of the plain icon glyph. Decorative. */
+  art?: EmptyArtVariant;
 }) {
   const isName = typeof icon === "string" && /^[a-z-]+$/.test(icon);
   return (
     <div className="empty">
-      <div className="big">{isName ? <Icon name={icon as IconName} size={30} /> : <span>{icon}</span>}</div>
+      <div className="big">
+        {art ? <EmptyArt variant={art} />
+          : isName ? <Icon name={icon as IconName} size={30} /> : <span>{icon}</span>}
+      </div>
       <div className="empty-title">{title}</div>
       {hint && <div className="empty-hint faint">{hint}</div>}
       {action && <div style={{ marginTop: 14, display: "flex", justifyContent: "center" }}>{action}</div>}
@@ -568,6 +578,199 @@ export function ExportMenu({ base, params, formats = ["csv", "xlsx", "pdf", "jso
         </>
       )}
     </Dropdown>
+  );
+}
+
+/* ====================================================== confirm dialog */
+
+/**
+ * Confirmation for consequential actions (factory reset, disconnect,
+ * publish). Never used for routine actions — a confirm dialog everywhere is
+ * a confirm dialog nowhere. ``danger`` marks destructive wording.
+ */
+export function ConfirmDialog({ title, message, confirmLabel = "Confirm",
+  danger, busy, onConfirm, onClose, icon }: {
+  title: string; message: ReactNode; confirmLabel?: string;
+  danger?: boolean; busy?: boolean;
+  onConfirm: () => void; onClose: () => void; icon?: IconName;
+}) {
+  return (
+    <Modal title={title} onClose={onClose} icon={icon ?? (danger ? "alert" : "info")}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant={danger ? "danger" : "primary"} onClick={onConfirm}
+            loading={busy} data-autofocus>{confirmLabel}</Button>
+        </>
+      }>
+      <div className="stack">{message}</div>
+    </Modal>
+  );
+}
+
+/* ========================================================= provenance */
+
+/**
+ * Where a marking number came from — always labelled, never colour alone.
+ *   ai         the model's output, not yet confirmed by anything else
+ *   verified   an independent check agreed with it
+ *   teacher    a teacher approved it explicitly
+ *   overridden the teacher set the mark themselves
+ */
+export function ProvenanceBadge({ kind }: {
+  kind: "ai" | "verified" | "teacher" | "overridden";
+}) {
+  const map = {
+    ai: { tone: "mute" as Tone, label: "AI output" },
+    verified: { tone: "ok" as Tone, label: "Verified" },
+    teacher: { tone: "info" as Tone, label: "Teacher approved" },
+    overridden: { tone: "info" as Tone, label: "Teacher edited" },
+  };
+  const { tone, label } = map[kind];
+  return (
+    <Badge tone={tone} icon={kind === "verified" ? "check-circle"
+      : kind === "ai" ? "sparkles" : "review"}>{label}</Badge>
+  );
+}
+
+/* ============================================================ filter bar */
+
+/** One row of list controls: search first, facet chips/controls, then the
+ *  trailing actions. The search box shrinks before anything else. */
+export function FilterBar({ search, onSearch, placeholder = "Search…",
+  children, right, ariaLabel = "Filters" }: {
+  search: string; onSearch: (v: string) => void; placeholder?: string;
+  children?: ReactNode; right?: ReactNode; ariaLabel?: string;
+}) {
+  return (
+    <div className="filter-bar" role="search" aria-label={ariaLabel}>
+      <input className="input filter-search" value={search}
+        placeholder={placeholder} aria-label={placeholder}
+        onChange={(e) => onSearch(e.target.value)} />
+      {children && <div className="row wrap filter-facets">{children}</div>}
+      {right && <div className="row wrap filter-right">{right}</div>}
+    </div>
+  );
+}
+
+/* ========================================================= workspace panes */
+
+/**
+ * Resizable N-pane workspace (marking workspace §11, review queue).
+ *
+ * Every pane except the last keeps an explicit pixel width the teacher can
+ * drag; the last pane absorbs the remainder. The divider is a real
+ * ``role="separator"`` with keyboard support (arrow keys). Below 900px a
+ * split layout is impractical, so the panes become tabs (responsive rule
+ * §11). Widths persist per ``storageKey``.
+ *
+ * The stored widths are fitted to the space actually available: a teacher who
+ * dragged the first panes wide in a big window and then narrowed the window
+ * used to leave the last pane a sliver (or, after inline-size containment, a
+ * few px of padding), which made the whole marking result overflow. The last
+ * pane now always keeps at least ``min`` and the others absorb the shortfall
+ * down to their own ``min``.
+ */
+
+
+export function WorkspacePanes({ panes, storageKey, min = 220 }: {
+  panes: { id: string; label: string; el: ReactNode }[];
+  storageKey: string; min?: number;
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [containerW, setContainerW] = useState(0);
+  const [widths, setWidths] = useState<number[]>(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed) && parsed.every((n) => typeof n === "number")) {
+        return parsed;
+      }
+    } catch { /* private mode */ }
+    return panes.map((_, i) => (i === 0 ? 260 : 380));
+  });
+  const [tab, setTab] = useState(0);
+  const [stacked, setStacked] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 900);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 899px)");
+    const onChange = () => setStacked(mq.matches);
+    onChange();
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    try { window.localStorage.setItem(storageKey, JSON.stringify(widths)); } catch { /* ignore */ }
+  }, [widths, storageKey]);
+
+  // Track the real workspace width so stored pane widths can be fitted to it.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      setContainerW((prev) => (Math.abs(prev - w) > 1 ? w : prev));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const fitted = useMemo(
+    () => fitPaneWidths(widths, panes.length, containerW, min),
+    [widths, panes.length, containerW, min],
+  );
+
+  if (stacked) {
+    return (
+      <div className="workspace-stacked">
+        <Tabs value={String(tab)} ariaLabel="Workspace panes"
+          options={panes.map((p, i) => ({ value: String(i), label: p.label }))}
+          onChange={(v) => setTab(Number(v))} />
+        <div className="workspace-pane">{panes[tab]?.el}</div>
+      </div>
+    );
+  }
+
+  const setWidth = (i: number, w: number) =>
+    setWidths((cur) => fitPaneWidths(
+      cur.map((v, j) => (j === i ? Math.max(min, w) : v)),
+      panes.length, containerW, min));
+
+  return (
+    <div className="workspace" ref={rootRef}>
+      {panes.map((pane, i) => (
+        <Fragment key={pane.id}>
+          {i > 0 && (
+            <div className="wp-divider" role="separator" aria-orientation="vertical"
+              aria-label={`Resize ${pane.label}`} tabIndex={0}
+              aria-valuenow={Math.round(fitted[i - 1] ?? 0)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowLeft") { setWidth(i - 1, (fitted[i - 1] ?? min) - 24); e.preventDefault(); }
+                if (e.key === "ArrowRight") { setWidth(i - 1, (fitted[i - 1] ?? min) + 24); e.preventDefault(); }
+              }}
+              onPointerDown={(e) => {
+                const startX = e.clientX;
+                const startW = fitted[i - 1] ?? min;
+                (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                const move = (ev: PointerEvent) =>
+                  setWidth(i - 1, startW + (ev.clientX - startX));
+                const up = () => {
+                  window.removeEventListener("pointermove", move);
+                  window.removeEventListener("pointerup", up);
+                };
+                window.addEventListener("pointermove", move);
+                window.addEventListener("pointerup", up);
+              }} />
+          )}
+          <div className="workspace-pane"
+            style={i < panes.length - 1 ? { width: fitted[i] ?? min, flex: "0 0 auto" } : undefined}>
+            {pane.el}
+          </div>
+        </Fragment>
+      ))}
+    </div>
   );
 }
 

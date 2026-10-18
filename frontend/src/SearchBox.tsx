@@ -58,6 +58,13 @@ export default function SearchBox({ onNavigate }: { onNavigate: (hash: string) =
         e.preventDefault();
         inputRef.current?.focus();
       }
+      // Command palette shortcut (§7): Ctrl/⌘+K opens the same global
+      // search from anywhere, including while typing in another field.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -112,6 +119,7 @@ export default function SearchBox({ onNavigate }: { onNavigate: (hash: string) =
         onFocus={() => query.trim().length >= 2 && setOpen(true)}
         onKeyDown={onKeyDown}
       />
+      <span className="cmdk-hint" aria-hidden="true">Ctrl K</span>
       {loading && open && <div className="search-panel"><div className="search-empty">Searching…</div></div>}
       {open && !loading && data && (
         <div className="search-panel" role="listbox">
