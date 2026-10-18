@@ -1,13 +1,24 @@
 import os
 import sys
-import tempfile
+import warnings
 from pathlib import Path
 
 import pytest
 
-# Every test gets an isolated data dir before app modules are imported.
-_TMP = tempfile.mkdtemp(prefix="mc5_test_")
-os.environ["MC5_DATA_DIR"] = _TMP
+# ``tempdirs`` lives next to this file. It owns every temp directory the suite
+# creates, so a run does not leave scratch trees in %TEMP% (it is imported by
+# path because the tests directory is not a package).
+_TESTS_DIR = Path(__file__).resolve().parent
+if str(_TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TESTS_DIR))
+import tempdirs  # noqa: E402  (after the path setup it needs)
+
+# Every test gets an isolated data dir before app modules are imported. It is
+# REGISTERED, not just created: ``pytest_sessionfinish`` below deletes it, and on
+# Windows deleting works only after the log/database handles inside it are closed
+# (see tempdirs.remove - deleting first is the bug this replaced).
+_TMP = tempdirs.make("mc5_test_")
+os.environ["MC5_DATA_DIR"] = str(_TMP)
 
 # The production default requires a sign-in session for local use too (the
 # main login page). The general API suite runs in the documented no-login
@@ -80,3 +91,24 @@ def fresh_state(tmp_path, monkeypatch):
     data_dir.mkdir(parents=True, exist_ok=True)
     db.init_db()
     yield data_dir
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 - pytest hook signature
+    """Delete this session's temp data directories and REPORT any that survive.
+
+    A silent cleanup is how the previous thousand-folder leak went unnoticed: the
+    run must fail loudly (a warning with the still-open file named) rather than
+    pretend the directory is gone.
+    """
+    failures = tempdirs.remove_all()
+    if not failures:
+        return
+    lines = ["test temp directories could not be deleted (a file was still open):"]
+    for path, leftovers in failures.items():
+        lines.append(f"  {path}  <- {', '.join(leftovers)}")
+    message = "\n".join(lines)
+    reporter = session.config.pluginmanager.getplugin("terminalreporter")
+    if reporter is not None:
+        reporter.write_line("WARNING: " + message, yellow=True)
+    else:  # pragma: no cover - only when the terminal reporter is disabled
+        warnings.warn(message)

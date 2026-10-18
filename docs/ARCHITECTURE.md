@@ -137,14 +137,30 @@ paths, database schema and frontend asset paths when making changes.
 
 ## Persistence, configuration and privacy
 
-The source checkout defaults to `data/`; `MC5_DATA_DIR` selects an alternate
-root for isolated runs. Resolve it through `config.data_dir()` on every call —
-never import `DATA_DIR` by value — so a test, override or reload cannot write to
-a stale path. Portable launches set data beside the package. The
-installed distribution uses its configured per-user data root. SQLite,
-settings/secrets TOML, OAuth client material, blueprints, mark schemes, logs,
-retained submissions and temporary job files are application data: do not treat
-them as generated build output or move/delete them during source cleanup.
+`backend/app/data_location.py` is the single place that decides the data root:
+`MC5_DATA_DIR` first (tests, scripts, the relay's child process — never
+overridden), then data beside the app (a portable copy or an existing
+installation), then a source checkout's own `data/`, otherwise the platform's
+per-user folder (`%LOCALAPPDATA%\MathChecker` on Windows,
+`~/Library/Application Support/MathChecker` on macOS,
+`$XDG_DATA_HOME/mathchecker` on Linux). An installed copy must never default
+into the system temp directory, which cleanup tools empty without asking.
+Resolve the result through `config.data_dir()` on every call — never import
+`DATA_DIR` by value — so a test, override or reload cannot write to a stale
+path.
+
+Changing that default is only safe because the same module migrates: if an
+older layout left a database in temp or beside the app, `main.py` copies it
+into the new root through SQLite's backup API (consistent while the old
+process still holds the database), copies the rest of the folder, and writes
+`migration.json`; the source is never moved or modified. `python main.py
+--adopt-data <folder> [--into <folder>]` performs the same copy on demand and
+refuses a destination that already holds data.
+
+SQLite, settings/secrets TOML, OAuth client material, blueprints, mark
+schemes, logs, retained submissions and temporary job files are application
+data: do not treat them as generated build output or move/delete them during
+source cleanup.
 
 Configuration is managed by the setup wizard and Settings and serialized by
 `backend/app/config.py`. `MathChecker_Distribution/portable/MathChecker_Portable/Data/config.toml.example`

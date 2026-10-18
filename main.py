@@ -8,9 +8,15 @@ Usage:
     python main.py            # serves http://127.0.0.1:8642 and opens the UI
     python main.py 9000       # custom port
     python main.py --stop     # stop the instance already running (Stop.bat)
+    python main.py --adopt-data <folder> [--into <folder>]
+                              # copy data left by an older layout into this
+                              # install's data folder (copy only, never moves)
 
 The launcher (MathChecker.bat / start.bat) sets MC5_DATA_DIR; ``--stop``
 uses it too, so it always stops the instance that belongs to THIS install.
+Without MC5_DATA_DIR the data folder comes from app.data_location: data
+beside the app (portable copy or existing installation), the checkout's own
+data/ during development, otherwise the platform's per-user folder.
 """
 
 import sys
@@ -427,6 +433,85 @@ def write_instance_record(port: int) -> Path | None:
     return path
 
 
+def announce_data_folder(data_dir: Path, adopted) -> None:
+    """Say where this install's data lives, and whether anything was adopted.
+
+    Printed on every launch path (relay, backend and plain server) because the
+    one question a support conversation always starts with is "where are my
+    classes?" -- and after a migration the answer is a folder the teacher has
+    never seen before.
+    """
+    print(f"  Data folder: {data_dir}", flush=True)
+    if adopted is not None:
+        print(f"  Copied existing data from {adopted.source} (original left "
+              "untouched).", flush=True)
+
+
+def adopt_legacy_data(argv: list[str]) -> int:
+    """``python main.py --adopt-data SRC [--into DEST]`` - copy older data in.
+
+    The escape hatch for the case automatic adoption deliberately refuses: more
+    than one candidate data set, so the choice must be the teacher's. It is
+    copy-only (the source is never moved, changed or deleted) and refuses a
+    destination that already holds a database, which makes it safe to run
+    twice, to run with the wrong folder, or to run on a live install.
+    """
+    import os
+
+    from app.data_location import (AdoptionRefused, AlreadyHasData, DB_NAME,
+                                   NoDataToAdopt, adopt, resolve_data_dir)
+
+    args = [a for a in argv if a != "--adopt-data"]
+    source: str | None = None
+    target: str | None = None
+    index = 0
+    while index < len(args):
+        item = args[index]
+        if item == "--into" and index + 1 < len(args):
+            target = args[index + 1]
+            index += 2
+            continue
+        if item == "--from" and index + 1 < len(args):
+            source = args[index + 1]
+            index += 2
+            continue
+        if not item.startswith("-") and source is None:
+            source = item
+        index += 1
+
+    if not source:
+        print("=" * 56)
+        print("  Usage:  python main.py --adopt-data <source folder> [--into <folder>]")
+        print("  Existing data is COPIED into this install's data folder (or")
+        print("  into --into). Nothing in <source> is changed or deleted.")
+        print("=" * 56)
+        return 2
+
+    destination = (Path(os.path.expanduser(target)) if target
+                   else resolve_data_dir())
+    origin = Path(os.path.expanduser(source))
+    try:
+        result = adopt(origin, destination)
+    except NoDataToAdopt:
+        print(f"  ! {origin} holds no {DB_NAME}, so there is nothing to adopt.")
+        return 3
+    except AlreadyHasData:
+        print(f"  ! {destination} already holds data - refusing to overwrite it.")
+        print("    Use --into <new folder>, or set MC5_DATA_DIR to the folder")
+        print("    this install should use, then run the command again.")
+        return 3
+    except AdoptionRefused as exc:
+        print(f"  ! {exc}")
+        return 3
+    except Exception as exc:  # noqa: BLE001 - a launcher must never traceback
+        print(f"  ! Could not adopt the data in {origin}: {exc}")
+        return 3
+    print(f"  {result.describe()}")
+    print("  The original folder was left untouched; remove it yourself once")
+    print("  the app shows your classes in the new location.")
+    return 0
+
+
 def serve(port: int, host: str, *, supervised: bool = False) -> int:
     """Run the web server, wired to the server-lifecycle stop hook.
 
@@ -480,6 +565,11 @@ def main() -> int:
         # including one started on a non-default port (its own record knows).
         return stop_running_instance(resolve_stop_port())
 
+    # Data migration (``--adopt-data``) is a one-shot command: it never starts
+    # the server, and it must run before app.config binds the data directory.
+    if "--adopt-data" in sys.argv[1:]:
+        return adopt_legacy_data(sys.argv[1:])
+
     # Demo Mode must be decided BEFORE app.config is imported: configuration
     # reads MC5_DATA_DIR at import time, and demo runs in its own isolated
     # data directory so it can never touch real data or credentials.
@@ -490,7 +580,21 @@ def main() -> int:
         activate(base)
         sys.argv = [a for a in sys.argv if a != "--demo"]
 
-    from app.config import ensure_dirs, get_config
+    # --- the data folder: resolve it, then adopt anything an older layout left --
+    # This has to happen BEFORE app.config is imported, because configuration
+    # binds DATA_DIR at import time. A legacy copy is ADOPTED (copied), never
+    # moved: if the guess is wrong the original is still exactly where it was.
+    # Demo runs stay isolated, and an explicit MC5_DATA_DIR is never second-guessed
+    # (both refusal rules live in app.data_location.auto_adopt).
+    adopted = None
+    if not demo:
+        from app.data_location import auto_adopt
+        try:
+            adopted = auto_adopt()
+        except Exception as exc:  # noqa: BLE001 - never block a launch on migration
+            print(f"  ! Existing data could not be adopted: {exc}")
+
+    from app.config import DATA_DIR, ensure_dirs, get_config
     from app.version import APP_NAME, APP_VERSION, BUILD_NUMBER
 
     ensure_dirs()
@@ -554,6 +658,7 @@ def main() -> int:
         print("=" * 56, flush=True)
         print(f"{APP_NAME} v{APP_VERSION} (build {BUILD_NUMBER})", flush=True)
         print("=" * 56, flush=True)
+        announce_data_folder(DATA_DIR, adopted)
         for warning in warnings:
             print(f"  ! {warning}", flush=True)
         if not warnings:
@@ -613,6 +718,7 @@ def main() -> int:
     if not under_supervisor and (supervise_only or cfg.lifecycle.supervisor):
         from app.lifecycle.supervisor import run_supervisor
 
+        announce_data_folder(DATA_DIR, adopted)
         if not cfg.lifecycle.supervisor and supervise_only:
             print("  Note: [lifecycle] supervisor is off in Settings — running "
                   "it anyway because --supervise was asked for.", flush=True)
@@ -631,6 +737,7 @@ def main() -> int:
     print("=" * 56)
     print(f"{APP_NAME} v{APP_VERSION} (build {BUILD_NUMBER})")
     print("=" * 56)
+    announce_data_folder(DATA_DIR, adopted)
     if demo:
         print("  DEMO MODE — synthetic data only; Google Classroom is disabled.")
         print(f"  Demo data directory: {os.environ.get('MC5_DATA_DIR')}")

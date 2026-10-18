@@ -25,6 +25,8 @@ from pathlib import Path
 
 import pytest
 
+import tempdirs
+
 BACKEND = Path(__file__).resolve().parents[1]
 CHILD = BACKEND / "app" / "workers" / "child.py"
 
@@ -33,7 +35,8 @@ def test_child_runs_as_a_script_without_pythonpath():
     """The ._pth condition: no PYTHONPATH, an unrelated working directory."""
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
-    env["MC5_DATA_DIR"] = tempfile.mkdtemp(prefix="mc5_child_")
+    # Registered, so the session sweep deletes it (mkdtemp alone never did).
+    env["MC5_DATA_DIR"] = str(tempdirs.make("mc5_child_"))
     env["PYTHONIOENCODING"] = "utf-8"
     result = subprocess.run(
         [sys.executable, str(CHILD)], input=json.dumps({"job_id": "launch-probe"}),
@@ -52,7 +55,7 @@ def test_child_reports_the_missing_input_not_an_import_error():
     """An empty job must fail on its own terms, proving the imports worked."""
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
-    env["MC5_DATA_DIR"] = tempfile.mkdtemp(prefix="mc5_child_")
+    env["MC5_DATA_DIR"] = str(tempdirs.make("mc5_child_"))
     result = subprocess.run([sys.executable, str(CHILD)], input="{}",
                             capture_output=True, text=True,
                             cwd=tempfile.gettempdir(), env=env, timeout=180)
@@ -96,8 +99,7 @@ def test_adapter_launches_the_child_by_path_and_keeps_its_stderr(monkeypatch):
     monkeypatch.setattr(CorrectionWorker, "workspace_dir",
                         lambda self: self.workspace)
 
-    worker = CorrectionWorker("W1", Path(tempfile.mkdtemp(prefix="mc5_ws_")),
-                              KeyManager())
+    worker = CorrectionWorker("W1", tempdirs.make("mc5_ws_"), KeyManager())
     job = WorkerJob(job_id="contract-1", student_name="Student",
                     submission_paths=[] , mark_scheme_path=None,
                     question_paper_path=None, api_key="k",

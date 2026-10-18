@@ -88,8 +88,8 @@ blocking scan `scan_release.py`):
 | Active source | `backend/app/`, `frontend/src/`, `agent/`, `main.py`, `remote.py` | Modify deliberately; keep runtime resource paths stable |
 | Configuration templates | `MathChecker_Distribution/portable/MathChecker_Portable/Data/config.toml.example`, `MathChecker_Distribution/documentation/` | Sanitized defaults and recipient guidance; never put live secrets here |
 | Dependencies | `backend/requirements.txt` (runtime only), `backend/requirements-dev.txt` (tests), `frontend/package.json` and `frontend/package-lock.json` | Preserve declared dependency behavior and lockfile reproducibility; never add test-only packages to the runtime file |
-| Regression tests | `backend/tests/`, `frontend/tests/` | Keep mocked/synthetic; don't copy student data into fixtures |
-| Runtime/persistent data | `data/`, `autostart/` | Preserve; user-specific and never source cleanup targets |
+| Regression tests | `backend/tests/`, `frontend/tests/` | Keep mocked/synthetic; don't copy student data into fixtures. The Dashboard browser fixture (`backend/scripts/seed_dashboard_fixture.py`) writes synthetic rows into a throwaway `MC5_DATA_DIR` and refuses a directory that already holds a real `app.db`. Scratch data directories are created through `backend/tests/tempdirs.py`, which registers them and deletes them at session end (closing the log/database handles first — Windows refuses to delete an open file), and reports any directory it could not remove |
+| Runtime/persistent data | `data/`, `autostart/` | Preserve; user-specific and never source cleanup targets. The `data/` folder is this checkout's; an installed copy resolves its own folder through `backend/app/data_location.py` (`%LOCALAPPDATA%\MathChecker`, never the system temp directory) |
 | Generated UI | `frontend/dist/` | Rebuild from source; git-ignored and required to run this checkout |
 | Release artifacts | `MathChecker_Distribution/build/`, `release_staging/`, `portable/`, `release/` | Generated/replaced by the release pipeline; current contents are ignored by source allowlisting and must be audited before sharing |
 | Release history | `MathChecker_Distribution/previous_builds/` | Large rollback material; deliberately retained, not cleanup fodder |
@@ -101,6 +101,14 @@ blocking scan `scan_release.py`):
   `config.toml`, `secrets.toml`, `secrets/`, `blueprints/`, `mark_schemes/`,
   `logs/`, `fixtures/`, `retained/`. It is the app's working database and the
   teacher's configuration; **no cleanup step touches it**.
+  This folder is the *source checkout's* data root: `backend/app/data_location.py`
+  resolves `MC5_DATA_DIR` first, then data beside the app (portable copy or an
+  existing installation), then a `.git` checkout's `data/`, and otherwise the
+  platform's per-user folder — `%LOCALAPPDATA%\MathChecker` on Windows. Data an
+  older layout left in the temp folder (or beside the app before the per-user
+  default) is **copied** into that folder on the next start, with
+  `migration.json` recording the source; the original is never moved or
+  modified. `python main.py --adopt-data <folder>` does the same on demand.
   `data/secrets/` is the canonical home for credentials, including
   `google_oauth_client.json` / `client_secret_*.json` (auto-detected by
   `backend/app/config.py`).

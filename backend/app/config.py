@@ -21,9 +21,17 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .data_location import resolve_data_dir
+
 # Repository root = parent of backend/
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = Path(os.environ.get("MC5_DATA_DIR", PROJECT_ROOT / "data"))
+# The data directory is NOT a literal "data/ next to the code" any more: an
+# installed copy lives where writing is unreliable and reinstalls replace it,
+# so ONE resolver decides (app.data_location): MC5_DATA_DIR, then data beside
+# the app, then a development checkout, then the platform's per-user folder.
+# Tests and scripts keep pointing MC5_DATA_DIR at a scratch directory, and a
+# checkout keeps using its own data/, so nothing that already worked moves.
+DATA_DIR = resolve_data_dir(PROJECT_ROOT)
 SECRETS_PATH = DATA_DIR / "secrets.toml"
 CONFIG_PATH = DATA_DIR / "config.toml"
 OAUTH_CLIENT_PATH = DATA_DIR / "secrets" / "google_oauth_client.json"

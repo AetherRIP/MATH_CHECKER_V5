@@ -319,6 +319,22 @@ and `-v` (stream each check's output) narrow a run. Start the app with
 they are reported as skipped rather than passing silently. On macOS/Linux the
 same command is `python scripts/run_all_tests.py`.
 
+The Dashboard card checks are self-contained: they boot their own copy of the
+app on a free port against a seeded throwaway data directory (2 courses, 4
+assignments, 18 students, 14 results over 27 days, 16 finished jobs and 2
+in-flight jobs — see
+[backend/scripts/seed_dashboard_fixture.py](backend/scripts/seed_dashboard_fixture.py)),
+then compare every populated card with the app's own API values. Nothing is
+written to `data/`, and no app has to be running first. To seed and serve that
+directory by hand (it prints the URL to open):
+
+```bat
+.venv\Scripts\python.exe backend\scripts\seed_dashboard_fixture.py --serve
+```
+
+Set `DASHBOARD_FIXTURE_URL` to point the same tests at an app you already run
+against seeded data instead.
+
 To run one suite directly, the backend regression suite is:
 
 ```bat
@@ -345,16 +361,38 @@ and commands are in [docs/SERVER_LIFECYCLE.md](docs/SERVER_LIFECYCLE.md).
 ### Configuration and generated/runtime files
 
 This app is configured through its first-run wizard and Settings, not `.env`.
-The source checkout's persistent state defaults to `data/`; the portable
-package uses its adjacent `Data/` folder, while an installed Windows build
-keeps user data under `%LOCALAPPDATA%\\MathChecker\\`. `MC5_DATA_DIR` can
-select an isolated data root for development and tests. The SQLite database,
-TOML settings/secrets, Classroom OAuth files, blueprints, cached mark schemes,
-retained submissions, logs, and temporary job inputs live under that selected
-root. In particular, runtime logs are under `data/logs/` in a source checkout;
-transient correction inputs are under `data/tmp/` and are cleaned as jobs
-finish. Do not manually remove these directories while the application is
-running or while retaining records is enabled.
+One module decides where the data folder is (`backend/app/data_location.py`),
+and the rule is deliberately short:
+
+1. `MC5_DATA_DIR`, when set — tests, scripts and the relay's child process use
+   it, and nothing ever overrides it;
+2. data beside the app — the portable package's `Data/` folder, or an
+   installation that already has its database there (moving that would look
+   exactly like losing every class);
+3. a source checkout (`.git` next to `main.py`) — the repository's own
+   `data/`;
+4. otherwise an **installed** copy — the per-user folder:
+   `%LOCALAPPDATA%\MathChecker\` on Windows,
+   `~/Library/Application Support/MathChecker` on macOS,
+   `$XDG_DATA_HOME/mathchecker` on Linux.
+
+An installed copy is never given a data folder inside the system temp
+directory: a temp cleanup, Disk Cleanup or "free up space" helper would delete
+a teacher's marks without asking. When an older layout left a database in
+temp (`%TEMP%\mc5_ui`) or beside the app, the next start **adopts** it — the
+database is copied through SQLite's backup API (consistent even while the old
+app is still running), the rest of the folder is copied across, and
+`migration.json` in the new folder records where it came from. The original is
+left byte-for-byte untouched, so a wrong guess costs nothing. Use
+`python main.py --adopt-data <folder> [--into <folder>]` to choose a source
+explicitly; it refuses a destination that already holds data.
+
+The SQLite database, TOML settings/secrets, Classroom OAuth files, blueprints,
+cached mark schemes, retained submissions, logs, and temporary job inputs live
+under the selected root. In particular, runtime logs are under `data/logs/` in
+a source checkout; transient correction inputs are under `data/tmp/` and are
+cleaned as jobs finish. Do not manually remove these directories while the
+application is running or while retaining records is enabled.
 
 | Edit this | For this purpose |
 |---|---|

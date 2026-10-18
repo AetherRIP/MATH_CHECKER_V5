@@ -166,7 +166,14 @@ body {
 
 /* ------------------------------------------------------------ app shell */
 
-.app-shell { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
+/* The shell clamps the app to the viewport. `position: relative` is load-bearing:
+   absolutely positioned descendants (`.visually-hidden` a11y tables under the
+   charts, the `.switch` checkbox, skip links) would otherwise take the initial
+   containing block as theirs, escape this box's clip and stretch the DOCUMENT
+   instead of their own card - which let the whole site scroll up past the
+   chrome, blank page background below it. Keeping the shell the containing
+   block confines every such element inside it. */
+.app-shell { display: flex; height: 100vh; height: 100dvh; position: relative; overflow: hidden; }
 
 .sidebar {
   width: var(--sidebar-w);
@@ -537,8 +544,11 @@ label.field > span {
   margin-bottom: 5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
 }
 
-.switch { display: inline-flex; align-items: center; gap: var(--s2); cursor: pointer; user-select: none; }
-.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch { display: inline-flex; align-items: center; gap: var(--s2); cursor: pointer; user-select: none;
+  position: relative; }
+/* The real checkbox is visually hidden but still focusable; it is anchored to
+   its own label so it can never reach outside the card that holds it. */
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
 .switch .track {
   width: 36px; height: 20px; border-radius: 999px; flex-shrink: 0;
   background: var(--surface-strong); border: 1px solid var(--border-strong);
@@ -947,10 +957,6 @@ details.expander .expander-body { padding: 2px 14px 14px; }
 
 /* ====================================================== responsive chrome
    ≥1200px : full sidebar   |   768-1199 : icon rail   |   <768 : drawer */
-
-@media (max-width: 1199px) {
-  .app-shell { position: relative; }
-}
 
 @media (max-width: 1100px) {
   /* Below ~1100px the header cannot fit the page title, the search field and

@@ -52,15 +52,22 @@ export function chromiumPath(): string | null {
 }
 
 /** True when the app answers its health endpoint (any non-5xx response). */
-export async function appReachable(baseUrl: string, timeoutMs = 1500): Promise<boolean> {
-  try {
-    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/api/health`, {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    return res.status < 500;
-  } catch {
-    return false;
+export async function appReachable(baseUrl: string, timeoutMs = 1500, attempts = 3): Promise<boolean> {
+  // Retried on purpose: the live-UI suites skip when this probe fails, and a
+  // single 1.5s request during a busy test run (a build or several browsers on
+  // the same machine) timed out often enough to report running checks as
+  // "not run". A genuinely stopped app still fails every attempt.
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await fetch(`${baseUrl.replace(/\/$/, "")}/api/health`, {
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      return res.status < 500;
+    } catch {
+      if (attempt < attempts) await new Promise((r) => setTimeout(r, 250 * attempt));
+    }
   }
+  return false;
 }
 
 export interface PageHandle {
