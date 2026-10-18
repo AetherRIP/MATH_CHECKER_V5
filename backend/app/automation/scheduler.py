@@ -35,6 +35,16 @@ RUNNER_TICK_SECONDS = 3.0
 #: Bound on how many assignments are checked in one cycle.
 MAX_ASSIGNMENTS_PER_CYCLE = 50
 
+#: Bound on how many stale jobs are reconciled per cycle. Reconciliation makes
+#: READ-ONLY Google calls, so it is deliberately tiny and slow: at most this
+#: many jobs, and each job at most once per RECONCILE_MIN_AGE_SECONDS.
+MAX_RECONCILE_PER_CYCLE = 5
+
+#: How long a parked job is left alone before its real Classroom state is
+#: checked again. Without this the same held job would be re-read on every
+#: cycle forever.
+RECONCILE_MIN_AGE_SECONDS = 30 * 60.0
+
 
 class AutomationScheduler:
     def __init__(self, *, sync_fn=None, detect_fn=None, cfg_fn=None,
@@ -197,6 +207,7 @@ class AutomationScheduler:
         next_check = now_ts + interval * 60
         store.set_meta("next_check", next_check)
         self._running = True
+        self._reconcile_stale()
         if found:
             store.log_event_entry("success", "cycle",
                                   f"Found {found} new submission(s)")
@@ -205,6 +216,34 @@ class AutomationScheduler:
         return {"checked": checked, "found": found, "errors": errors,
                 "next_check": next_check, "interval_minutes": interval}
 
+    def _reconcile_stale(self) -> None:
+        """Re-check the REAL Classroom state of jobs that look stale (§5).
+
+        Bounded to a handful of jobs per cycle, at most once every
+        ``RECONCILE_MIN_AGE_SECONDS`` per job, read-only, and skipped entirely
+        when Google is not connected or the worker is off — so a stale failure
+        repairs itself without an uncontrolled background loop or a stream of
+        API requests.
+        """
+        cfg = self._cfg()
+        if not cfg.enabled:
+            return
+        try:
+            from ..classroom import auth
+            if not auth.is_connected():
+                return
+        except Exception:  # noqa: BLE001 — never let this stop the cycle
+            return
+        try:
+            summary = self._runner_obj().reconcile_stale(
+                limit=MAX_RECONCILE_PER_CYCLE,
+                min_age_seconds=RECONCILE_MIN_AGE_SECONDS)
+        except Exception:  # noqa: BLE001
+            log.exception("reconciling stale automation jobs failed")
+            return
+        if summary.get("checked") or summary.get("failed"):
+            log_event("automation", "stale jobs reconciled", **summary)
+
     # -- status for the UI ---------------------------------------------------
 
     def status(self) -> dict:
@@ -212,15 +251,9 @@ class AutomationScheduler:
         counts = store.counts()
         assignments = store.enabled_assignments()
         total = sum(counts.values())
-        processing_states = (
-            states.NEW, states.CORRECTING, states.RESULT_VALIDATED,
-            states.REPORT_GENERATED, states.REPORT_VALIDATED,
-            states.REPORT_UPLOADED, states.REPORT_ATTACHED,
-            states.ATTACHMENT_VERIFIED, states.GRADE_DRAFTED,
-            states.GRADE_VERIFIED, states.RETURNING,
-        )
-        waiting = sum(counts.get(s, 0) for s in states.RETRYABLE_FAILURES) \
-            + counts.get(states.NEW, 0)
+        execution = store.execution_counts()
+        waiting = execution["waiting"]
+        active = execution["active"]
         thread_alive = self.running()
         last_activity = store.last_activity()
         candidate_activity = store.get_meta("last_check")
@@ -247,7 +280,7 @@ class AutomationScheduler:
             "thread_running": thread_alive,
             "last_activity": last_activity,
             "pending_jobs": waiting,
-            "active_jobs": sum(counts.get(s, 0) for s in processing_states),
+            "active_jobs": active,
             "assignments_enabled": len(assignments),
             # Post-correction behaviour, exposed so the UI can show/toggle it.
             # ``review_mode`` holds every grade as a teacher-approved draft and
@@ -266,7 +299,7 @@ class AutomationScheduler:
             "counts": {
                 "total": total,
                 "completed": counts.get(states.COMPLETE, 0),
-                "processing": sum(counts.get(s, 0) for s in processing_states),
+                "processing": active,
                 "waiting": waiting,
                 "failed": sum(counts.get(s, 0)
                               for s in states.RETRYABLE_FAILURES) +

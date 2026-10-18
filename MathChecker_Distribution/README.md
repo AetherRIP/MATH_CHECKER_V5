@@ -87,7 +87,23 @@ not accumulated by accident:
 build_release.bat                  :: full pipeline (needs Inno Setup 6 for the installer)
 build_release.bat --skip-frontend-build
 python scripts\verify_portable.py  :: exercise the packaged portable folder
+python scripts\verify_installer.py --setup release\MathChecker_Setup.exe
+
+:: live marking accuracy — OPT-IN, sends one real correction to Gemini
+:: with the key the app is already configured with. Without --live it only
+:: explains itself and sends nothing. Exit code says whether it certified.
+python scripts\verify_live_marking.py --live
+python scripts\verify_live_marking.py --live --student-pdf "Student Answer.pdf" ^
+       --scheme-pdf "Answer Sheet.pdf" --expected my-verified-marks.json
 ```
+
+The first two verifiers run the app in Demo mode, where the engine is mock:
+they prove packaging, launch, the API and uninstall, never the mathematical
+accuracy of a mark. `verify_live_marking.py` is the live counterpart: it marks
+a real PDF against a real mark scheme with the configured key and compares the
+marks with ground truth (a human-verified `--expected` file, or the built-in
+answer key for the bundled fixture quiz). See
+[documentation/RELEASE_HANDOVER.md](documentation/RELEASE_HANDOVER.md).
 
 Pipeline output is logged to `logs/`. Full verification evidence for the
 2026-10-12 build is in [docs/reports/PORTABLE_RELEASE_REPORT.md](../docs/reports/PORTABLE_RELEASE_REPORT.md)

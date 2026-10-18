@@ -13,7 +13,7 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from .. import db
 from .. import student_identity
@@ -713,19 +713,43 @@ def _mark_scheme_validation(coursework_id: str) -> dict:
     local_numbers = ms_mod.candidate_question_numbers(evidence)
     structure = msv.canonicalize(
         {"questions": blueprint.get("questions", []), "printed_total": declared})
-    verification = msv.cross_validate(structure, evidence)
+    # The page-scoped completeness verdict, when one exists, is an input here:
+    # a MISSING question the document's own numbering proves cannot be
+    # forgotten just because this diagnostics call does not re-read the PDF.
+    record = bp_mod.load_record(bp_mod.file_hash(path)) or {}
+    inventory = record.get("inventory") or None
+    verification = msv.cross_validate(structure, evidence, inventory)
     # The structure the questions add up to, vs the total the mark scheme itself
     # states. Disagreement is the §20 cross-check: never silently continue.
     confidence = bp_mod.mark_scheme_confidence(report, declared_total=declared)
     # The headline badge must never disagree with the cross-validation. A
     # structure we cannot cross-check is not "verified" just because the
     # numbering looks tidy - uncertainty must not become false certainty.
-    if verification["anomalies"]:
+    if verification["discrepancies"]:
         confidence = {
             "confidence": bp_mod.CONFIDENCE_NEEDS_REVIEW,
             "reasons": confidence["reasons"] + verification["anomalies"],
             "requires_verification": True,
         }
+    elif verification["evidence_notes"]:
+        # How the pages had to be read is not a finding about the mark scheme.
+        confidence = {
+            **confidence,
+            "reasons": confidence["reasons"] + verification["evidence_notes"],
+        }
+    completeness = record.get("completeness") or {}
+    verification_state = bp_mod.verification_status(record)
+    # "Verified" needs BOTH: nothing contradicting the structure, and a
+    # page-scoped read that established how many questions the document has and
+    # accounted for all of them. The second half is what stops a visually-read
+    # scheme from looking verified merely because no text layer means no text
+    # evidence to disagree with.
+    complete = (completeness.get("expected_count") is not None
+                and not completeness.get("unresolved", False))
+    verified = bool(verification["verified"]) and complete
+    if completeness.get("unresolved") and verification_state == bp_mod.STATUS_VERIFIED:
+        # Never show a badge that contradicts the stored verdict.
+        verification_state = bp_mod.STATUS_NEEDS_MANUAL_REVIEW
     return {
         "coursework_id": coursework_id,
         "assignment_title": cw["title"] if cw else None,
@@ -733,6 +757,14 @@ def _mark_scheme_validation(coursework_id: str) -> dict:
         "processed": True,
         "validation": report,
         "questions": blueprint.get("questions", []),
+        # Subquestion structure (§2/§8/§9): every declared marking point with
+        # its own id, answers, M/A/B codes, page and validation status, plus the
+        # anomalies the checker found at that level. The review surface can
+        # therefore point a teacher at ONE subquestion instead of invalidating
+        # an otherwise-correct scheme.
+        "subquestions": report.get("subquestions") or [],
+        "subquestion_count": report.get("subquestion_count") or 0,
+        "subquestion_anomalies": report.get("subquestion_anomalies") or [],
         "total_marks": declared if declared is not None else report["total_marks"],
         "detected_total": report["total_marks"],
         "declared_total": declared,
@@ -744,6 +776,17 @@ def _mark_scheme_validation(coursework_id: str) -> dict:
         "confidence": confidence["confidence"],
         "requires_verification": confidence["requires_verification"],
         "confidence_reasons": confidence["reasons"],
+        # ---- how far this mark scheme has actually been verified ----------
+        "verification_state": verification_state,
+        "completeness": completeness,
+        "inventory": inventory or {},
+        # A result marked against an incomplete structure must say so.
+        "marking_warning": (bp_mod.review_requirement(path)["warnings"]
+                            if completeness.get("unresolved") else []),
+        # Question/document-level marks reconciliation (§7): every index once,
+        # a question with parts summed from its parts, unread marks reported.
+        "reconciliation": (record.get("reconciliation")
+                           or bp_mod.reconcile_marks(blueprint, inventory)),
         # Independent verification evidence (§§17/§20/§21).
         "verification": {
             "extraction_mode": evidence_info.get("extraction_mode"),
@@ -761,9 +804,18 @@ def _mark_scheme_validation(coursework_id: str) -> dict:
                              or declared is None
                              or int(declared) == report["total_marks"]),
             "structural_confidence": verification["structural_confidence"],
-            "verified": verification["verified"],
+            "confidence_basis": verification["confidence_basis"],
+            "verified": verified,
+            # What contradicts the structure, vs how the document had to be
+            # read. The review surface must not present the second as the first.
+            "discrepancies": verification["discrepancies"],
+            "evidence_notes": verification["evidence_notes"],
+            "evidence_kind": verification["evidence_kind"],
+            "anomaly_records": verification["anomaly_records"],
             "evidence_agrees": verification["evidence_agrees"],
             "missing_questions": verification["checks"].get("missing_questions"),
+            "subquestion_counts": verification["checks"].get(
+                "subquestion_counts"),
             "anomalies": verification["anomalies"],
             # One actionable sentence instead of a bare "AI verification failed".
             "likely_cause": msv.likely_cause(verification),
@@ -795,32 +847,214 @@ def recheck_assignment_mark_scheme(coursework_id: str):
             "Mark-scheme recheck needs a real AI model; the app is in offline "
             "demo mode.", status=409, code="mock_mode")
 
+    # Is a re-verification justified at all? An unchanged document whose
+    # verification already concluded is returned as-is — the identical request
+    # cannot change its own answer, and repeating it is what filled the log
+    # with two identical "67 questions / 255 marks" runs per click.
+    run, reason, state = bp_mod.recheck_decision(path)
+    if not run:
+        log_event("api", "mark-scheme recheck skipped",
+                  coursework_id=coursework_id, state=state, reason=reason)
+        return _mark_scheme_validation(coursework_id) | {
+            "recheck": {
+                "skipped": True,
+                "state": state,
+                "reason": reason,
+                "previous": bp_mod.structure_report(
+                    bp_mod.blueprint_for_mark_scheme(path)[0]),
+                "passes": [],
+                "disagreement": False,
+                "warnings": [],
+            },
+        }
+
     from ..gemini.client_proxy import KeyAwareClient
     from ..gemini.key_manager import KeyManager
     client = KeyAwareClient(KeyManager())
     try:
-        outcome = bp_mod.recheck_blueprint(client, path, passes=2)
+        outcome = bp_mod.recheck_blueprint(client, path)
     except Exception as exc:  # noqa: BLE001 — report the real reason
         log_event("api", "mark-scheme recheck failed",
                   coursework_id=coursework_id, error=str(exc))
         raise AppError(f"The mark-scheme recheck failed: {exc}",
                        status=502, code="recheck_failed")
+    if outcome.get("busy"):
+        log_event("api", "mark-scheme recheck already running",
+                  coursework_id=coursework_id)
+        raise AppError(
+            "This mark scheme is already being verified. The running check "
+            "will finish and its result will be shown — no second request was "
+            "sent.", status=409, code="recheck_in_progress")
     log_event("api", "mark-scheme rechecked", coursework_id=coursework_id,
               ok=outcome.get("ok"),
               count=outcome.get("validation", {}).get("question_count"),
-              disagreement=outcome.get("disagreement"))
+              disagreement=outcome.get("disagreement"),
+              state=outcome.get("state"),
+              missing=(outcome.get("completeness") or {}).get("missing_indices"))
     if not outcome.get("ok"):
         raise AppError(
             outcome.get("error") or "The mark scheme could not be reprocessed.",
             status=502, code="recheck_failed")
     return _mark_scheme_validation(coursework_id) | {
         "recheck": {
+            "skipped": False,
+            "state": outcome.get("state"),
             "previous": outcome.get("previous"),
             "passes": outcome.get("passes"),
             "disagreement": outcome.get("disagreement", False),
             "warnings": outcome.get("warnings", []),
+            "completeness": outcome.get("completeness") or {},
         },
     }
+
+
+#: Rendered page resolution for the review viewer. High enough to read a
+#: compiled mark scheme's small print, low enough that one page is a normal
+#: HTTP response. Clamped per request.
+_PAGE_DPI_DEFAULT = 150
+_PAGE_DPI_MAX = 300
+
+
+def _rendered_page_path(sha: str, page: int, dpi: int) -> Path:
+    """Where a rendered page is cached on disk (per document, per page, per dpi)."""
+    folder = _data_dir() / "tmp" / "scheme_pages" / sha[:16]
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / f"p{page:04d}@{dpi}.png"
+
+
+@router.get("/assignments/{coursework_id}/mark-scheme/pages")
+def assignment_mark_scheme_pages(coursework_id: str):
+    """Which pages of the mark scheme exist, and what each one contributed.
+
+    Feeds the review viewer: the teacher sees the SOURCE document page next to
+    the questions, marks and anomalies read from it. Deterministic and offline —
+    it reads the PDF's page count and the persisted inventory, never a model.
+    """
+    from ..engine import scheme_inventory as si
+    from ..engine import blueprint as bp_mod
+
+    path = _mark_scheme_path(coursework_id)
+    if not path:
+        raise AppError("Upload a mark scheme for this assignment first.",
+                       status=400, code="mark_scheme_missing")
+    try:
+        total = si.page_count(path)
+        sha = bp_mod.file_hash(path)
+    except OSError as exc:
+        raise AppError(f"The mark scheme file could not be read: {exc}",
+                       status=500, code="mark_scheme_unreadable")
+    record = bp_mod.load_record(sha) or {}
+    inventory = record.get("inventory") or {}
+    completeness = record.get("completeness") or {}
+
+    # Per-page evidence: which questions were read from each page, so selecting
+    # a question can point at its source page and vice versa.
+    by_page: dict[int, list[dict]] = {}
+    for item in (inventory.get("items") or []):
+        page = item.get("page")
+        if not page:
+            continue
+        by_page.setdefault(int(page), []).append({
+            "source_index": item.get("source_index"),
+            "label": item.get("label"),
+            "max_marks": item.get("max_marks"),
+        })
+
+    pages = []
+    for number in range(1, total + 1):
+        items = by_page.get(number, [])
+        pages.append({
+            "page": number,
+            "has_items": bool(items),
+            "item_count": len(items),
+            "indices": [i["source_index"] for i in items],
+            # A page with nothing on it is the one a reviewer should look at:
+            # either it is a cover, or a page whose read failed.
+            "needs_review": (not items)
+                            and number in (completeness.get("pages_without_items") or []),
+        })
+    return {
+        "coursework_id": coursework_id,
+        "sha256": sha,
+        "page_count": total,
+        "pages": pages,
+        "items": inventory.get("items") or [],
+        "completeness": completeness,
+        # Both readings of a disputed index, so the reviewer can see the
+        # disagreement instead of being told that one exists.
+        "conflicts": inventory.get("conflicts") or [],
+        "label_variants": inventory.get("label_variants") or [],
+        "verification_state": bp_mod.verification_status(record),
+        "anomalies": record.get("anomalies") or [],
+        "dpi": _PAGE_DPI_DEFAULT,
+        "page_url_template": (
+            f"/api/assignments/{coursework_id}/mark-scheme/page/{{page}}.png"),
+    }
+
+
+@router.get("/assignments/{coursework_id}/mark-scheme/page/{page}.png")
+def assignment_mark_scheme_page_image(coursework_id: str, page: int,
+                                      request: Request,
+                                      dpi: int = _PAGE_DPI_DEFAULT):
+    """The ACTUAL uploaded page, rendered as PNG — never a reconstruction.
+
+    Cached on disk per document/page/dpi so flipping through pages in review
+    does not re-render, and served with an ETag so the browser can keep showing
+    the page while verification runs.
+    """
+    from fastapi.responses import Response
+    from ..engine import scheme_inventory as si
+    from ..engine import blueprint as bp_mod
+
+    path = _mark_scheme_path(coursework_id)
+    if not path:
+        raise AppError("Upload a mark scheme for this assignment first.",
+                       status=400, code="mark_scheme_missing")
+    dpi = max(72, min(int(dpi or _PAGE_DPI_DEFAULT), _PAGE_DPI_MAX))
+    try:
+        sha = bp_mod.file_hash(path)
+        total = si.page_count(path)
+    except OSError as exc:
+        raise AppError(f"The mark scheme file could not be read: {exc}",
+                       status=500, code="mark_scheme_unreadable")
+    if page < 1 or page > total:
+        raise AppError(f"This mark scheme has {total} page(s); page {page} does "
+                       "not exist.", status=404, code="page_out_of_range")
+
+    target = _rendered_page_path(sha, page, dpi)
+    etag = f'"{sha[:16]}-p{page}-{dpi}"'
+    # A conditional request gets an empty 304: the page for this document hash
+    # can never change, so there is nothing to send and nothing to re-render.
+    if etag in (request.headers.get("if-none-match") or ""):
+        return Response(status_code=304, headers={"ETag": etag,
+                                                  "Cache-Control": "private, max-age=86400"})
+    if not target.exists():
+        try:
+            images = si.render_pages_png(path, [page], dpi=dpi)
+        except si.InventoryError as exc:
+            raise AppError(f"The page could not be rendered: {exc}",
+                           status=500, code="page_render_failed")
+        if not images:
+            raise AppError(f"Page {page} could not be rendered.",
+                           status=500, code="page_render_failed")
+        try:
+            target.write_bytes(images[0]["png"])
+        except OSError:  # caching is best-effort; the response still goes out
+            pass
+        content = images[0]["png"]
+    else:
+        try:
+            content = target.read_bytes()
+        except OSError as exc:
+            raise AppError(f"The cached page could not be read: {exc}",
+                           status=500, code="page_render_failed")
+    return Response(
+        content=content, media_type="image/png",
+        headers={"ETag": etag,
+                 # The page for a given document hash never changes, so the
+                 # browser may reuse it: a reload must not blank the viewer.
+                 "Cache-Control": "private, max-age=86400",
+                 "Content-Disposition": f'inline; filename="page-{page}.png"'})
 
 
 @router.post("/assignments/{coursework_id}/mark-scheme/override")

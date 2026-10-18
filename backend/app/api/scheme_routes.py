@@ -12,14 +12,20 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
 
-from .. import db
+from .. import auth_gate, db
 from ..errors import AppError
 from ..engine import scheme_audit
 from ..logging_setup import log_event
 
-router = APIRouter(prefix="/api/scheme")
+def _authorized_reviewer(request: Request) -> None:
+    # These assignment-wide views are not class-scoped. Never expose them to
+    # assistants/co-teachers until their scope can be enforced here.
+    auth_gate.require_role(request, "TEACHER", "DEVELOPER")
+
+
+router = APIRouter(prefix="/api/scheme", dependencies=[Depends(_authorized_reviewer)])
 
 log = logging.getLogger("api.scheme")
 
@@ -28,11 +34,12 @@ def register(app) -> None:
     app.include_router(router)
 
 
-def _actor(payload: dict | None = None) -> str:
+def _actor(request: Request) -> str:
     """The authorised reviewer's name. App authentication gates who may reach
     these routes at all; the name is recorded for the audit trail."""
-    if payload and str(payload.get("actor") or "").strip():
-        return str(payload["actor"]).strip()[:200]
+    identity = auth_gate.identity_of(request)
+    if identity:
+        return str(identity.get("account_id") or identity.get("username"))[:200]
     try:
         from ..config import get_config
         return (get_config().teacher.teacher_name or "").strip() or "teacher"
@@ -66,19 +73,21 @@ def get_discrepancy(discrepancy_id: str):
     return {
         "discrepancy": row,
         "review_history": scheme_audit.review_history(discrepancy_id),
-        "proposals": scheme_audit.list_proposals(limit=50),
+        "proposals": [scheme_audit.proposal_detail(p["id"])
+                      for p in scheme_audit.list_proposals(limit=100)
+                      if p["discrepancy_id"] == discrepancy_id],
     }
 
 
 @router.post("/discrepancies/{discrepancy_id}/decision")
-def decide(discrepancy_id: str, payload: dict):
+def decide(discrepancy_id: str, payload: dict, request: Request):
     """Record an authorised reviewer's outcome on a discrepancy (section 8)."""
     decision = str((payload or {}).get("decision") or "").upper()
     if not decision:
         raise _bad_request("A decision is required.")
     try:
         row = scheme_audit.record_decision(
-            discrepancy_id, decision=decision, decided_by=_actor(payload),
+            discrepancy_id, decision=decision, decided_by=_actor(request),
             note=str((payload or {}).get("note") or ""))
     except ValueError as exc:
         raise _bad_request(str(exc)) from exc
@@ -115,41 +124,77 @@ def get_proposal(proposal_id: str):
         raise _not_found(str(exc)) from exc
 
 
-def _classroom_publish(proposal: dict):
-    """Publish approved grades via the existing Classroom managed flow.
+def _classroom_publish(coursework_id: str | None, course_id: str | None,
+                       items: list[dict]) -> dict:
+    """Publish approved item grades via the existing Classroom managed flow.
 
-    Only called AFTER explicit approval has been recorded. Every write is the
-    real Google response; nothing is reported as published without it.
+    ``items`` are the APPLIED rows of a proposal (the exact shape the engine
+    passes to its publish callback). Only called AFTER explicit approval has
+    been recorded, and every write is the real Google response: nothing is
+    reported as published without it. The returned dict is normalised so the
+    engine's outcome accounting never has to guess at the provider's nesting.
     """
     from ..classroom import managed as managed_mod
-    coursework_id = proposal.get("coursework_id")
-    course_id = proposal.get("course_id")
     if not coursework_id or not course_id:
         return {"error": "This proposal is not linked to a Classroom assignment."}
-    cw = db.query_one("SELECT * FROM coursework WHERE id = ?", (coursework_id,))
-    max_points = cw["max_points"] if cw else None
+    from ..automation.grading import compute_grade
+    from ..automation.runner import WorkflowRunner
     operations = []
-    for item in proposal.get("items") or []:
-        if item.get("status") != scheme_audit.ITEM_APPLIED:
+    for item in items or []:
+        if not item.get("result_id") or not item.get("submission_id"):
             continue
         row = db.query_one("SELECT earned, available FROM results WHERE id = ?",
                            (item["result_id"],))
         if not row or not row["available"]:
             continue
-        if max_points:
-            grade = round((row["earned"] / row["available"]) * max_points, 2)
-        else:
-            grade = round(float(row["earned"]), 2)
-        operations.append({"type": "assign_grade",
+        grade = int(compute_grade(row["earned"], row["available"],
+                                  coursework_id=coursework_id).grade)
+        operations.append({"type": "final_grade",
                            "submission_id": item["submission_id"],
                            "grade": grade})
     if not operations:
-        return {"published": 0, "failed": 0, "total": 0}
-    return managed_mod.publish(coursework_id, course_id, operations)
+        return {"published": 0, "failed": 0, "not_supported": 0,
+                "requires_auth": 0, "total": 0, "results": []}
+    report = managed_mod.publish(coursework_id, course_id, operations) or {}
+    summary = dict(report.get("summary") or {})
+    # A PATCH/return response alone is not evidence of the resulting grade.
+    # Verify the final assigned value AND returned state for each success.
+    verifier = WorkflowRunner()
+    for outcome in report.get("results") or []:
+        if outcome.get("status") != managed_mod.STATUS_PUBLISHED:
+            continue
+        sid = outcome.get("submission_id")
+        operation = next((op for op in operations if op["submission_id"] == sid), None)
+        try:
+            if operation is None:
+                raise RuntimeError("No approved operation matched the publication outcome.")
+            remote = verifier._read_submission({"course_id": course_id,
+                                               "coursework_id": coursework_id,
+                                               "submission_id": sid})
+            if remote.get("assignedGrade") is None or \
+                    abs(float(remote["assignedGrade"]) - operation["grade"]) > 1e-6 or \
+                    remote.get("state") != "RETURNED":
+                raise RuntimeError("Classroom did not confirm the approved grade and returned state.")
+        except Exception:
+            outcome["status"] = managed_mod.STATUS_FAILED
+            outcome["message"] = "Grade return could not be verified; inspect Classroom before retrying."
+            summary["published"] = max(0, int(summary.get("published") or 0) - 1)
+            summary["failed"] = int(summary.get("failed") or 0) + 1
+            if outcome.get("id"):
+                db.execute("UPDATE classroom_publish_ops SET status='failed', message=? WHERE id=?",
+                           (outcome["message"], outcome["id"]))
+    return {
+        "published": int(summary.get("published") or 0),
+        "failed": int(summary.get("failed") or 0),
+        "not_supported": int(summary.get("not_supported") or 0),
+        "requires_auth": int(summary.get("requires_auth") or 0),
+        "total": int(summary.get("total") or len(operations)),
+        "results": report.get("results") or [],
+    }
 
 
 @router.post("/proposals/{proposal_id}/approve")
-def approve(proposal_id: str, payload: dict):
+def approve(proposal_id: str, payload: dict, request: Request):
     """Apply an approved bulk correction. Requires explicit confirmation.
 
     ``confirm: true`` is the deliberate approval action; a missing/false value
@@ -174,19 +219,22 @@ def approve(proposal_id: str, payload: dict):
     publish = bool(payload.get("publish"))
     try:
         if publish:
-            # Reject up-front if the assignment cannot be published, so the
-            # local marks are not changed for a write-back that cannot happen?
-            # No: local correction is independently valuable, and Classroom may
-            # be temporarily unavailable. We apply locally, then report the
-            # real publish outcome honestly.
+            # Local correction is independently valuable and Classroom may be
+            # temporarily unavailable, so we apply the approved marks locally
+            # and report the REAL write-back outcome honestly. The assignment's
+            # Classroom identity comes from the proposal itself (the engine's
+            # publish callback receives only the applied items).
             detail = scheme_audit.proposal_detail(proposal_id)
+            cw_id = detail.get("coursework_id")
+            course_id = detail.get("course_id")
             result = scheme_audit.apply_approved(
-                proposal_id, approved_by=_actor(payload),
+                proposal_id, approved_by=_actor(request),
                 note=str(payload.get("note") or ""), publish=True,
-                publish_fn=_classroom_publish)
+                publish_fn=lambda applied: _classroom_publish(cw_id, course_id,
+                                                              applied))
         else:
             result = scheme_audit.apply_approved(
-                proposal_id, approved_by=_actor(payload),
+                proposal_id, approved_by=_actor(request),
                 note=str(payload.get("note") or ""))
     except ValueError as exc:
         raise _bad_request(str(exc)) from exc
@@ -199,12 +247,25 @@ def approve(proposal_id: str, payload: dict):
 
 
 @router.post("/proposals/{proposal_id}/reject")
-def reject(proposal_id: str, payload: dict):
+def reject(proposal_id: str, payload: dict, request: Request):
     payload = payload or {}
     try:
         return scheme_audit.reject_proposal(
-            proposal_id, rejected_by=_actor(payload),
+            proposal_id, rejected_by=_actor(request),
             note=str(payload.get("note") or ""))
+    except ValueError as exc:
+        raise _bad_request(str(exc)) from exc
+    except LookupError as exc:
+        raise _not_found(str(exc)) from exc
+
+
+@router.post("/proposals/{proposal_id}/retry")
+def retry(proposal_id: str, payload: dict, request: Request):
+    if (payload or {}).get("confirm") is not True:
+        raise _bad_request("Confirm recovery of the failed items in this approved batch.")
+    try:
+        return scheme_audit.apply_approved(proposal_id, approved_by=_actor(request),
+                                           retry_failed=True)
     except ValueError as exc:
         raise _bad_request(str(exc)) from exc
     except LookupError as exc:

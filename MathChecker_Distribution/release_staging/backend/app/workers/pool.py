@@ -106,6 +106,25 @@ def _write_prepared_manifest(cache_dir: Path, prepared: dict) -> None:
         pass
 
 
+def _record_scheme_audit(job: dict, result_id: str, result: dict,
+                         now_ts: float) -> None:
+    """Record substantiated mark-scheme disagreements from a pooled result.
+
+    Mirrors the legacy service path through the SAME engine function, so the
+    two save paths can never disagree about detection. A failure to record is
+    logged, never allowed to fail the correction.
+    """
+    try:
+        from ..engine import scheme_audit
+        with db.transaction() as conn:
+            scheme_audit.record_from_result(
+                conn, job=job, result_id=result_id, result=result,
+                now_ts=now_ts)
+    except Exception:  # noqa: BLE001 - audit is a side channel
+        logging.getLogger("workers.pool").exception(
+            "mark-scheme discrepancy recording failed")
+
+
 class WorkerPool:
     """Owns the worker set; round-robins QUEUED jobs onto idle workers."""
 
@@ -949,6 +968,7 @@ class WorkerPool:
                         "stage_detail = ?, finished_at = ?, updated_at = ? WHERE id = ?",
                         ("COMPLETED", result_id, detail, now_ts, now_ts, job_id),
                     )
+            _record_scheme_audit(job, result_id, final_result, now_ts)
             worker.state.jobs_done += 1
             cleanup_job_files(job_id)
             self._api_wait_total.pop(job_id, None)

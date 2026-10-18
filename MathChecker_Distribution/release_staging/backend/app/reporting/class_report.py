@@ -7,7 +7,8 @@ Three things separate it from the general class report:
   * it keeps "did not submit" and "scored 1" apart, because those are
     different problems with different follow-ups;
   * every row names the actual assignment it is about - code, chapter and
-    lesson - so a teacher reading "L4" can see what L4 is without a key.
+    lesson - so a teacher reading "CH1L4" can see what CH1L4 is without a
+    key, and "CH2L4" is never mistaken for the same lesson.
 
 Everything here is a pure function of the rows handed in by the API layer,
 so the data rules can be tested without a database and the PDF renderer can
@@ -59,12 +60,30 @@ _QUIZ = re.compile(r"\bquiz\s*(\d{1,2})\b", re.I)
 _CODE = re.compile(r"^([A-Za-z]{1,3}\s?\d{1,2})\b")
 
 
+def lesson_code(chapter: str, lesson: str) -> str:
+    """The lesson's complete identifier, built from the source data only.
+
+    A chapter is always kept when the title carries one, because CH1L1 and
+    CH2L1 are DIFFERENT lessons: dropping the chapter prefix turned both of
+    them into "L1" in every table, key and count that used the compact code.
+    Nothing is invented - a title with a lesson but no chapter stays "L1", and
+    a chapter with no lesson stays "Ch1".
+    """
+    if chapter and lesson:
+        return f"CH{chapter}L{lesson}"
+    if lesson:
+        return f"L{lesson}"
+    if chapter:
+        return f"Ch{chapter}"
+    return ""
+
+
 @dataclass(frozen=True)
 class AssignmentCode:
     """What a teacher calls an assignment, and what it actually is (§21).
 
-    ``code`` is the compact notation used in tables ("L4"); ``detail`` spells
-    it out ("Chapter 1, Lesson 4 - Percentages"). Both come from the real
+    ``code`` is the lesson's full identifier ("CH1L4"); ``detail`` spells it
+    out ("Chapter 1, Lesson 4 - Percentages"). Both come from the real
     Classroom title - nothing is assigned by position or guessed.
     """
 
@@ -92,25 +111,54 @@ class AssignmentCode:
 
     @property
     def label(self) -> str:
-        """'L4 - Chapter 1, Lesson 4 - Percentages', or the title alone."""
+        """'CH1L4 - Chapter 1, Lesson 4 - Percentages', or the title alone."""
         return f"{self.code} - {self.detail}" if self.detail else self.code
 
     @property
+    def key(self) -> str:
+        """The lesson's unique key: its complete chapter-and-lesson identifier.
+
+        Grouping, sorting and comparison all use this rather than the lesson
+        number alone, so CH1L1 and CH2L1 stay separate entries everywhere.
+        When the source title carries no chapter, the key is exactly as
+        specific as the data is ("L2") - a chapter is never guessed.
+        """
+        return self.code
+
+    @property
+    def row_key(self) -> str:
+        """Identity of the ASSIGNMENT the row is about (not just the lesson).
+
+        Two separate assignments may legitimately share an identifier (two
+        quizzes both called "Quiz 3"), so anything that pairs a row with its
+        own assignment - the grade matrix above all - keys on the coursework
+        id and only falls back to the identifier when the id is missing.
+        """
+        return self.coursework_id or self.code
+
+    @property
     def sort_key(self) -> tuple:
-        """Order lessons by chapter then lesson; everything else keeps title."""
+        """Order by chapter, then lesson, then the full identifier.
+
+        Sorting on the complete identifier keeps two "L4" lessons from
+        different chapters in their own chapters' order instead of collapsing
+        into one another.
+        """
         def num(value: str) -> int:
             try:
                 return int(value)
             except (TypeError, ValueError):
                 return 0
-        return (0, num(self.chapter), num(self.lesson), self.title) \
-            if (self.chapter or self.lesson) else (1, 0, 0, self.title)
+        if self.chapter or self.lesson:
+            return (0, num(self.chapter), num(self.lesson), self.code, self.title)
+        return (1, 0, 0, self.code, self.title)
 
     def as_dict(self) -> dict:
         return {
             "coursework_id": self.coursework_id,
             "title": self.title,
             "code": self.code,
+            "key": self.key,
             "chapter": self.chapter,
             "lesson": self.lesson,
             "topic": self.topic,
@@ -122,12 +170,14 @@ class AssignmentCode:
 
 def parse_assignment(title: str, *, coursework_id: str = "",
                      max_points: Any = None) -> AssignmentCode:
-    """Derive the compact code and the chapter/lesson detail from a title.
+    """Derive the lesson's full identifier and its chapter/lesson detail.
 
-    Handles the shapes real Classroom titles come in: "Ch1L4 - Percentages",
-    "Chapter 1 Lesson 7", "Math Chapter 2 lesson 3", "Quiz 2 and Answers".
-    A title it does not recognise falls back to its own first token rather
-    than to a number, because an invented code is worse than a long one.
+    Handles the shapes real Classroom titles come in: "CH1L4 - Percentages",
+    "Ch1L4", "Chapter 1 Lesson 7", "Math Chapter 2 lesson 3", "Quiz 2 and
+    Answers". The chapter is part of the code whenever the title has one, so
+    CH1L1 and CH2L1 never share an identifier; a title it does not recognise
+    falls back to its own first token rather than to a number, because an
+    invented code is worse than a long one.
     """
     raw = str(title or "").strip()
     clean = _FILE_SUFFIX.sub("", raw).strip()
@@ -154,11 +204,8 @@ def parse_assignment(title: str, *, coursework_id: str = "",
         quiz = _QUIZ.search(clean)
         topic = clean[quiz.end():].strip(" -–—:·,.") if quiz else ""
 
-    if lesson:
-        code = f"L{lesson}"
-    elif chapter:
-        code = f"Ch{chapter}"
-    else:
+    code = lesson_code(chapter, lesson)
+    if not code:
         quiz = _QUIZ.search(clean)
         if quiz:
             code = f"Q{quiz.group(1)}"
@@ -174,9 +221,21 @@ def parse_assignment(title: str, *, coursework_id: str = "",
 
 
 def _codes_for(courses: Iterable[dict]) -> list[AssignmentCode]:
-    codes = [parse_assignment(c.get("title"), coursework_id=c.get("id"),
-                              max_points=c.get("max_points"))
-             for c in courses]
+    """One column per selected assignment, ordered by chapter then lesson.
+
+    The coursework id is the identity, so the same assignment selected twice
+    cannot become two columns, while two DIFFERENT assignments that happen to
+    share an identifier ("Quiz 3") keep a column each.
+    """
+    codes: list[AssignmentCode] = []
+    seen: set[str] = set()
+    for c in courses:
+        code = parse_assignment(c.get("title"), coursework_id=c.get("id"),
+                                max_points=c.get("max_points"))
+        if code.row_key in seen:
+            continue
+        seen.add(code.row_key)
+        codes.append(code)
     codes.sort(key=lambda c: c.sort_key)
     return codes
 
@@ -526,7 +585,9 @@ def assemble(course: dict, rows: Sequence[dict],
                 "display_name": entry["display_name"],
                 "class_label": label,
                 "grades": [
-                    {"code": c.code, "label": c.label, "detail": c.detail,
+                    {"code": c.code, "key": c.key,
+                     "coursework_id": c.row_key,
+                     "label": c.label, "detail": c.detail,
                      "title": c.title, "chapter": c.chapter,
                      "lesson": c.lesson,
                      "grade": cell.grade or "—", "source": cell.grade_source,
@@ -552,7 +613,9 @@ def assemble(course: dict, rows: Sequence[dict],
                 cell = entry["cells"].get(c.coursework_id)
                 if cell is None:
                     continue
-                base = {"code": c.code, "label": c.label,
+                base = {"code": c.code, "key": c.key,
+                        "coursework_id": c.row_key,
+                        "label": c.label,
                         "detail": c.detail, "title": c.title,
                         "chapter": c.chapter, "lesson": c.lesson}
                 if cell.is_draft:
@@ -707,11 +770,16 @@ def scale_note() -> str:
 
 
 def _chapters_for(assignments: list[dict]) -> str:
-    """'L1 = Chapter 1, Lesson 1; L2 = ...' - a code is never the only clue."""
+    """'CH1L1 = Chapter 1, Lesson 1; CH2L1 = ...' - a code is never alone.
+
+    Deduplicated on the assignment's identity, not on the code alone, so two
+    chapters' L1 lessons each get their own legend entry.
+    """
     seen: set[str] = set()
     parts: list[str] = []
     for a in assignments:
-        key = a.get("detail") or a.get("title") or a.get("code", "")
+        key = a.get("coursework_id") or a.get("detail") \
+            or a.get("title") or a.get("code", "")
         if key and key not in seen:
             seen.add(key)
             parts.append(f"{a['code']} = {a['detail']}"
@@ -872,11 +940,15 @@ def render_pdf(data: ClassReportData, brand, *,
             weights = [30] + [70 / max(1, len(data.codes))] * len(data.codes)
             grade_rows, tones = [], []
             for student in group.students:
-                by_code = {g["code"]: g for g in student["grades"]}
+                # Keyed on the assignment's OWN row (coursework id), so two
+                # assignments that share an identifier can never show each
+                # other's mark in the matrix.
+                by_row = {g.get("coursework_id") or g["code"]: g
+                          for g in student["grades"]}
                 row = [student["display_name"]]
                 tone = None
                 for code in data.codes:
-                    token, cell_tone = _matrix_cell(by_code.get(code.code),
+                    token, cell_tone = _matrix_cell(by_row.get(code.row_key),
                                                     threshold)
                     row.append(token)
                     tone = tone or cell_tone

@@ -59,6 +59,19 @@ STATUS_REVIEW = "REVIEW"    # needs a human look (gap/extra/ambiguity)
 #: an earlier pass inserted, a split-question flag, an explicit unmarked row.
 UNRESOLVED_STATUSES = (STATUS_REVIEW, "NEEDS_REVIEW", "UNMARKED")
 
+#: The explanation attached to a question the marker never answered (the
+#: technical-gap placeholder). It is written to BOTH ``review_reason`` and
+#: ``loss_reason``: the placeholder stores ``awarded_marks: 0`` so that the gap
+#: still counts in the denominator (a dropped question must never inflate the
+#: percentage), which means any reader that only looks at the mark sees a 0.
+#: Leaving ``loss_reason`` blank made that indistinguishable from "the student
+#: scored 0 and there is nothing to say" in the report, the CSV and the audit
+#: harness — so the placeholder now says what it is in the field those readers
+#: actually display.
+UNMARKED_REASON = (
+    "The marker did not return an answer for this question. It is UNMARKED - "
+    "do not treat this 0 as a confirmed score; review it manually.")
+
 BLUEPRINT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -111,29 +124,20 @@ PROMPT_HEADER = (
 
 
 def prompt_block(blueprint: dict) -> str:
-    """Render the blueprint as an instruction block for the marking prompt."""
-    lines = [PROMPT_HEADER, "total_marks: %s" % blueprint.get("total_marks", "?")]
-    lines.append("questions:")
-    for q in blueprint.get("questions", []):
-        lines.append(
-            '  - question_number=%s max_marks=%s criteria=%s'
-            % (q.get("question_number"), q.get("max_marks"),
-               (q.get("criteria") or "").replace("\n", " ")[:400])
-        )
-    lines.append("")
-    lines.append(
-        "Rules:\n"
-        "- Return EXACTLY one entry per blueprint question, using the SAME\n"
-        "  question_number string and the SAME max_marks value shown above.\n"
-        "- Do not invent, split, merge, rename or omit questions, even if the\n"
-        "  student left one blank — blank work is still an entry with\n"
-        "  awarded_marks 0.\n"
-        "- Award marks ONLY against the criteria above and the mark scheme;\n"
-        "  never against your own sense of what looks reasonable.\n"
-        "- Use the mark_breakdown codes (M/A/B...) from the criteria as the\n"
-        "  evidence for each awarded or withheld mark.\n"
-    )
-    return "\n".join(lines)
+    """Render the blueprint as an instruction block for the marking prompt.
+
+    Delegates to :mod:`app.engine.scheme_structure`, which prints every
+    SUBQUESTION on its own line with its own id, accepted answers and M/A/B
+    marking points. The old rendering squeezed a whole question into one line
+    and cut the criteria at 400 characters *silently*; the structured rendering
+    gives each subquestion its own budget and marks a truncation explicitly.
+    """
+    from . import scheme_structure as st
+    questions = blueprint.get("questions") or []
+    total = blueprint.get("total_marks")
+    if total is None:
+        total = sum(int(q.get("max_marks", 0) or 0) for q in questions)
+    return st.prompt_block(questions, total_marks=total)
 
 
 # ---------------------------------------------------------------- caching
@@ -186,6 +190,35 @@ def save_cached(sha: str, blueprint: dict, model: str) -> None:
         log.warning("could not cache blueprint %s: %s", sha[:12], exc)
 
 
+def _question_number(question: Any) -> str:
+    """A question's number as a USABLE string, or "" when it has none.
+
+    ``None`` and whitespace are not question numbers, but ``str(None)`` is the
+    perfectly good string "None", and that is what this module used to compute
+    with. The consequences were not cosmetic:
+
+    * ``validate()`` accepted ``{"question_number": None}`` ("None" is a
+      non-empty string), so an unnumbered blueprint could pass the gate that
+      decides whether a structure may be used at all;
+    * ``structure_report()`` fed the same "None" into the numbering sequence,
+      where ``_leading_number`` correctly found no digit and dropped it, so a
+      structure whose questions were ALL unnumbered produced no gaps and no
+      duplicates, reported ``complete: True`` and returned confidence HIGH -
+      telling the teacher "no need to verify" about the exact incomplete
+      extraction this module exists to expose.
+
+    Two gates disagreeing about the same data, with the reassuring one winning,
+    is the failure mode. This function is the single answer to "what number does
+    this question have", so both gates agree.
+    """
+    if not isinstance(question, dict):
+        return ""
+    value = question.get("question_number")
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def validate(blueprint: Any) -> bool:
     """A blueprint is usable only with a non-empty list of sane questions."""
     if not isinstance(blueprint, dict):
@@ -197,7 +230,7 @@ def validate(blueprint: Any) -> bool:
     for q in questions:
         if not isinstance(q, dict):
             return False
-        number = str(q.get("question_number", "")).strip()
+        number = _question_number(q)
         try:
             max_marks = int(q.get("max_marks"))
         except (TypeError, ValueError):
@@ -230,16 +263,31 @@ def structure_report(blueprint: dict | None) -> dict:
     per-question sanity problems. No AI, no network — safe to call anywhere.
     """
     questions = (blueprint or {}).get("questions") or []
-    numbers = [str(q.get("question_number")) for q in questions]
+    # Numbers come from ONE helper so an unnumbered question is reported as
+    # unnumbered instead of as the string "None" (see ``_question_number``).
+    numbers = [_question_number(q) for q in questions]
+    unnumbered = [n for n in numbers if not n]
     seq = [n for n in (_leading_number(x) for x in numbers) if n is not None]
     unique = sorted(set(seq))
     gaps: list[str] = []
     if unique:
         present = set(unique)
         gaps = [str(n) for n in range(unique[0], unique[-1] + 1) if n not in present]
-    duplicate_numbers = sorted({n for n in numbers if numbers.count(n) > 1})
-    missing_marks = [str(q.get("question_number")) for q in questions
+    duplicate_numbers = sorted({n for n in numbers
+                                if n and numbers.count(n) > 1})
+    missing_marks = [numbers[idx] or f"#{(idx + 1)}"
+                     for idx, q in enumerate(questions)
                      if int(q.get("max_marks", 0) or 0) <= 0]
+
+    # Subquestion structure (§2/§8). Only reported when the scheme actually
+    # declares sub-parts: a flat scheme of whole questions has nothing to say
+    # here, and blanket findings would bury the real ones.
+    from . import scheme_structure as st
+    struct = st.build_structure(questions)
+    sub_report = st.validate_structure(struct["questions"])
+    sub_anomalies = [a for a in sub_report["anomalies"]
+                     if a.get("severity") == st.SEVERITY_REVIEW]
+    descends = bool(struct["subquestions"])
     return {
         "question_count": len(questions),
         "total_marks": sum(int(q.get("max_marks", 0) or 0) for q in questions),
@@ -249,9 +297,25 @@ def structure_report(blueprint: dict | None) -> dict:
         "gaps": gaps,
         "duplicate_numbers": duplicate_numbers,
         "missing_max_marks": missing_marks,
+        #: How many questions carry no usable number at all. Non-zero means the
+        #: numbering cannot be checked, which is itself an extraction defect.
+        "unnumbered_questions": len(unnumbered),
         "has_gaps": bool(gaps),
         "complete": bool(questions) and not gaps and not duplicate_numbers \
-                    and not missing_marks,
+                    and not missing_marks and not unnumbered,
+        # --- subquestion structure ---------------------------------------
+        "has_subquestions": descends,
+        "subquestion_count": len(struct["subquestions"]),
+        "subquestions": [{
+            "id": s["id"], "label": s["label"],
+            "question": s["parent_id"], "max_marks": s["max_marks"],
+            "answers": s["answers"],
+            "mark_codes": (s.get("marks") or {}).get("codes") or [],
+            "validation": s.get("validation"),
+            "confidence": s.get("confidence"),
+        } for s in struct["subquestions"]],
+        "subquestion_anomalies": sub_anomalies if descends else [],
+        "subquestions_complete": (not sub_anomalies) if descends else None,
     }
 
 
@@ -299,9 +363,19 @@ def mark_scheme_confidence(report: dict, *, declared_total: int | None = None,
     if report.get("duplicate_numbers"):
         reasons.append("Duplicate question numbers: "
                        + ", ".join(report["duplicate_numbers"]) + ".")
+    if report.get("unnumbered_questions"):
+        reasons.append(
+            f"{report['unnumbered_questions']} question(s) carry no question "
+            "number — the numbering cannot be checked and the paper is "
+            "probably incomplete.")
     if report.get("missing_max_marks"):
         reasons.append("Questions with no mark allocation: "
                        + ", ".join(report["missing_max_marks"]) + ".")
+    # Subquestion-level findings (§2/§8): a subquestion with no answer, two
+    # marking points sharing one identity, or sub-part marks that do not add up
+    # all make the extraction unreliable for the affected question only.
+    for issue in (report.get("subquestion_anomalies") or []):
+        reasons.append(str(issue.get("message") or issue))
     if declared_total is not None and int(declared_total or 0) > 0 \
             and int(declared_total) != total:
         reasons.append(
@@ -331,9 +405,16 @@ def validation_warnings(report: dict, *, expected_count: int | None = None,
     if report.get("duplicate_numbers"):
         warnings.append("Duplicate question numbers: "
                         + ", ".join(report["duplicate_numbers"]) + ".")
+    if report.get("unnumbered_questions"):
+        warnings.append(
+            f"{report['unnumbered_questions']} question(s) have no question "
+            "number, so the numbering cannot be checked. The extraction is "
+            "probably incomplete.")
     if report.get("missing_max_marks"):
         warnings.append("Questions with no mark allocation: "
                         + ", ".join(report["missing_max_marks"]) + ".")
+    for issue in (report.get("subquestion_anomalies") or []):
+        warnings.append(str(issue.get("message") or issue))
     if expected_count is not None and report["question_count"] != expected_count:
         warnings.append(
             f"The mark scheme has {report['question_count']} question(s) but "
@@ -542,9 +623,105 @@ def get_blueprint(client, mark_scheme_path: str | Path, *,
     return blueprint, meta
 
 
-def _clean_questions(raw: Any) -> list[dict]:
+def _clean_parts(raw: Any) -> list[dict]:
+    """Normalise a question's sub-parts, keeping each part's OWN evidence.
+
+    The extraction already asks the model for per-part criteria and answers,
+    but this function used to drop the whole ``parts`` field on the floor —
+    which is how every sub-part's answer, marking points and allocation were
+    left with nowhere to live except the parent's one free-text string.
+    """
     if not isinstance(raw, list):
         return []
+    parts: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        number = str(item.get("number") or item.get("question_number")
+                     or item.get("label") or "").strip()
+        try:
+            max_marks = int(item.get("max_marks"))
+        except (TypeError, ValueError):
+            continue
+        if not number or max_marks <= 0:
+            continue
+        part: dict[str, Any] = {"number": number, "max_marks": max_marks}
+        criteria = str(item.get("criteria", "") or "").strip()
+        if criteria:
+            part["criteria"] = criteria
+        answers = [str(a).strip() for a in (item.get("answers") or [])
+                   if str(a).strip()]
+        if answers:
+            part["answers"] = answers
+        try:
+            page = int(item.get("page"))
+        except (TypeError, ValueError):
+            page = 0
+        if page > 0:
+            part["page"] = page
+        if str(item.get("validation") or ""):
+            part["validation"] = str(item["validation"])
+        parts.append(part)
+    return parts
+
+
+def _declared_subquestion_for(label: str, target: str,
+                              sub_by_parent: dict[str, list[dict]]) -> tuple[str, bool]:
+    """Which declared subquestion of ``target`` a returned row label names.
+
+    Returns ``(subquestion_id, foreign)``. ``subquestion_id`` is the declared
+    marking point the label identifies — the identity is the FULL nested label,
+    which is what keeps ``4(b)(ii)`` from being read as ``4(b)(i)``. It is
+    ``""`` when the label names the question itself, when the scheme declares
+    no subquestions, or when the label is an ambiguous GROUPING label
+    (``4(b)`` while ``(b)(i)`` and ``(b)(ii)`` are declared).
+
+    ``foreign`` is True only when the label names something the question does
+    not have at all (``4(c)(iv)`` under a scheme with no (c)): that row is
+    flagged for review, never attached to a neighbouring marking point and
+    never silently summed into one.
+    """
+    from . import scheme_structure as st
+    declared = [str(s.get("id") or "") for s in sub_by_parent.get(target) or []]
+    if not declared:
+        return "", False
+    full_id = st.subquestion_id(label)
+    if not full_id or full_id == str(target):
+        return "", False
+    if full_id in declared:
+        return full_id, False
+    walked = st.parent_id(full_id)
+    while walked:
+        if walked in declared:
+            return walked, False
+        walked = st.parent_id(walked)
+    if any(d.startswith(full_id) or full_id.startswith(d) for d in declared):
+        return "", False      # ancestor / grouping label: ambiguous, not foreign
+    return "", True
+
+
+def _part_canonical(owner_number: str, part_number: Any) -> str:
+    """The canonical id of a part, whether it is printed locally or in full."""
+    from . import scheme_structure as st
+    text = str(part_number or "").strip()
+    if not text:
+        return ""
+    if st.parse_label(text)[0] is None:
+        return st.local_subquestion(owner_number, text)[0]
+    return st.subquestion_id(text)
+
+
+def _clean_questions(raw: Any) -> list[dict]:
+    """Normalise the extracted questions, keeping subquestion structure.
+
+    A row that labels a SUB-PART of a question the same structure already
+    declares is folded into that question as a sub-part rather than kept as a
+    second scored row: it stays available as evidence (its own criteria,
+    answers and allocation) without its marks being counted twice.
+    """
+    if not isinstance(raw, list):
+        return []
+    from . import scheme_structure as st
     cleaned: list[dict] = []
     seen: set[str] = set()
     for item in raw:
@@ -558,12 +735,59 @@ def _clean_questions(raw: Any) -> list[dict]:
         if not number or max_marks <= 0 or number in seen:
             continue
         seen.add(number)
-        cleaned.append({
+        entry: dict[str, Any] = {
             "question_number": number,
             "max_marks": max_marks,
             "criteria": str(item.get("criteria", "")).strip(),
-        })
-    return cleaned
+        }
+        parts = _clean_parts(item.get("parts") or item.get("subquestions"))
+        if parts:
+            entry["parts"] = parts
+        answers = [str(a).strip() for a in (item.get("answers") or [])
+                   if str(a).strip()]
+        if answers:
+            entry["answers"] = answers
+        try:
+            page = int(item.get("page"))
+        except (TypeError, ValueError):
+            page = 0
+        if page > 0:
+            entry["page"] = page
+        cleaned.append(entry)
+
+    # Fold a sub-part row into the question it belongs to when that question is
+    # declared: "4(a)" next to "4" is 4's part (a), not a second question.
+    by_number = {str(q["question_number"]): q for q in cleaned}
+    folded: list[dict] = []
+    for entry in cleaned:
+        canonical = st.subquestion_id(entry["question_number"])
+        parent = st.parent_id(canonical)
+        owner = None
+        while parent:
+            for candidate in by_number.values():
+                if st.subquestion_id(candidate["question_number"]) == parent:
+                    owner = candidate
+                    break
+            if owner is not None:
+                break
+            parent = st.parent_id(parent)
+        if owner is None or owner is entry:
+            folded.append(entry)
+            continue
+        part = {"number": entry["question_number"],
+                "max_marks": entry["max_marks"]}
+        if entry.get("criteria"):
+            part["criteria"] = entry["criteria"]
+        if entry.get("answers"):
+            part["answers"] = entry["answers"]
+        # Compared by IDENTITY, not by spelling: "4(a)" and "a" are the same
+        # subquestion, and an alias must not become a second copy of it.
+        known = {_part_canonical(str(owner["question_number"]), p.get("number"))
+                 for p in owner.get("parts") or []}
+        if st.subquestion_id(entry["question_number"]) not in known:
+            owner.setdefault("parts", []).append(part)
+        owner.setdefault("folded_rows", []).append(entry["question_number"])
+    return folded
 
 
 # ---------------------------------------------------------------- reconciliation
@@ -599,6 +823,20 @@ def apply_blueprint(result: dict, blueprint: dict | None) -> tuple[dict, dict]:
         "extra_questions": [],
         "merged_questions": [],
         "max_marks_corrected": [],
+        #: Subquestions the scheme declares that the marker returned nothing
+        #: for. Distinct from ``missing_questions``: the question itself came
+        #: back, one of its marking points did not.
+        "missing_subquestions": [],
+        #: Two returned rows claiming the SAME subquestion — never resolved by
+        #: guessing which one is real.
+        "subquestion_conflicts": [],
+        #: Returned rows whose identifier the scheme does not declare.
+        "unmatched_rows": [],
+        #: Rows whose awarded marks had to be clamped to the question maximum.
+        "award_clamped": [],
+        #: Returned rows that named no subquestion while the question declares
+        #: some: which marking point they cover cannot be established.
+        "unattributed_rows": [],
         #: Rows that exist but are still unresolved (a placeholder kept from an
         #: earlier pass, a split-question flag, a conflict). Distinct from
         #: ``missing_questions`` (no row at all) so callers can hold the
@@ -623,10 +861,22 @@ def apply_blueprint(result: dict, blueprint: dict | None) -> tuple[dict, dict]:
     # without letting "1" ever swallow "14". Structure-derived extra rows
     # (paper headers, stray marks values) are still treated as extras.
     from .question_inventory import canonical_question_id
-    from .batching import _question_sort_key
+    from . import scheme_structure as st
     canonical_ids: dict[str, str] = {}
     for bpn in bp_by_number:
         canonical_ids[canonical_question_id(bpn)] = bpn
+
+    # The declared subquestions, keyed both ways: which question owns each
+    # subquestion id, and which subquestions each question declares.
+    structure = st.build_structure(blueprint["questions"])
+    owner: dict[str, str] = {}
+    sub_by_parent: dict[str, list[dict]] = {}
+    for parent_row in structure["questions"]:
+        pnum = str(parent_row["question_number"])
+        owner[str(parent_row["id"])] = pnum
+        sub_by_parent[pnum] = parent_row.get("subquestions") or []
+        for sub in sub_by_parent[pnum]:
+            owner[str(sub["id"])] = pnum
 
     grouped: dict[str, list[dict]] = {}
     extras: list[dict] = []
@@ -639,15 +889,46 @@ def apply_blueprint(result: dict, blueprint: dict | None) -> tuple[dict, dict]:
             target = next(
                 (bpn for bpn in bp_by_number if _matches(number, bpn)), None)
         if target is None:
+            # Walk the label's own nesting to the deepest DECLARED node
+            # ("4(b)(ii)" -> its own subquestion, or its question).
+            walked = st.subquestion_id(number)
+            while walked:
+                if walked in owner:
+                    target = owner[walked]
+                    break
+                walked = st.parent_id(walked)
+        if target is None:
+            # Alias forms ("Q62(a)", " q14. ") through the canonical id.
             can = canonical_question_id(number)
             parent = can
-            while parent and parent not in canonical_ids and "a" <= parent[-1:] <= "z":
+            while parent and parent not in canonical_ids \
+                    and "a" <= parent[-1:] <= "z":
                 parent = parent[:-1]
             target = canonical_ids.get(parent) or canonical_ids.get(can)
+
         if target is None:
+            # Names nothing the scheme declares at all: the model's judgement is
+            # kept (a mark is never deleted) but it is flagged and can never
+            # count against a real question.
+            if st.subquestion_id(number) not in owner:
+                report["unmatched_rows"].append(
+                    {"question_number": number,
+                     "reason": "the mark scheme declares no such subquestion"})
             extras.append(q)
-        else:
-            grouped.setdefault(target, []).append(q)
+            continue
+
+        # Attribute the row to the DECLARED subquestion it names. A row that
+        # names a marking point the question does not have stays with the
+        # question as an unattributed row and is reported — never silently
+        # summed into whichever subquestion is processed first.
+        sub_id, foreign = _declared_subquestion_for(number, target,
+                                                    sub_by_parent)
+        q["_subquestion_id"] = sub_id
+        if foreign:
+            report["unmatched_rows"].append(
+                {"question_number": number,
+                 "reason": "the mark scheme declares no such subquestion"})
+        grouped.setdefault(target, []).append(q)
 
     merged_questions: list[dict] = []
     reconciled: list[dict] = []
@@ -668,16 +949,12 @@ def apply_blueprint(result: dict, blueprint: dict | None) -> tuple[dict, dict]:
                 "topic": "",
                 "student_answer": "",
                 "working_summary": "",
-                "loss_reason": "",
+                "loss_reason": UNMARKED_REASON,
                 "mark_breakdown": [],
                 "correct_method": "",
                 "full_mark_solution": "",
                 "status": STATUS_REVIEW,
-                "review_reason": (
-                    "The marker did not return an answer for this question. "
-                    "It is UNMARKED — do not treat this 0 as a confirmed "
-                    "score; review it manually."
-                ),
+                "review_reason": UNMARKED_REASON,
             })
             report["missing_questions"].append(number)
             continue
@@ -685,8 +962,57 @@ def apply_blueprint(result: dict, blueprint: dict | None) -> tuple[dict, dict]:
         if len(parts) > 1:
             report["merged_questions"].append(number)
 
-        awarded = sum(int(p.get("awarded_marks", 0)) for p in parts)
-        awarded = max(0, min(awarded, max_marks))
+        # ---- SUBQUESTION attribution (§4) -------------------------------
+        # Each returned row is attributed to the subquestion it NAMES. A row
+        # that names none is the question as a whole; with subquestions
+        # declared that is not enough to say which marking point it covers, so
+        # it is reported rather than guessed at.
+        declared_subs = sub_by_parent.get(number) or []
+        per_sub: dict[str, list[dict]] = {}
+        for row in parts:
+            key = str(row.pop("_subquestion_id", "") or "")
+            per_sub.setdefault(key, []).append(row)
+        unattributed = len(per_sub.pop("", []))
+        if declared_subs and unattributed:
+            report["unattributed_rows"].append(
+                {"question": number, "rows": unattributed})
+
+        breakdown: list[dict] = []
+        missing_subs: list[dict] = []
+        conflicted = 0
+        for sub in declared_subs:
+            rows_for_sub = per_sub.get(sub["id"], [])
+            sub_max = int(sub.get("max_marks") or 0)
+            got = sum(int(r.get("awarded_marks", 0) or 0) for r in rows_for_sub)
+            if rows_for_sub and sub_max:
+                got = max(0, min(got, sub_max))
+            if len(rows_for_sub) > 1:
+                conflicted += 1
+                report["subquestion_conflicts"].append(
+                    {"question": number, "subquestion": sub["id"],
+                     "rows": [str(r.get("question_number")) for r in rows_for_sub]})
+            if not rows_for_sub:
+                missing_subs.append({"question": number,
+                                     "subquestion": sub["id"],
+                                     "label": sub.get("label") or sub["id"]})
+            breakdown.append({
+                "id": sub["id"],
+                "label": sub.get("label") or sub["id"],
+                "parent_id": sub.get("parent_id") or number,
+                "max_marks": sub_max,
+                "awarded_marks": got,
+                "status": "MARKED" if rows_for_sub else "UNMARKED",
+                "rows": [str(r.get("question_number")) for r in rows_for_sub],
+                "answers": sub.get("answers") or [],
+                "mark_codes": (sub.get("marks") or {}).get("codes") or [],
+            })
+        report["missing_subquestions"].extend(missing_subs)
+
+        raw_awarded = sum(int(p.get("awarded_marks", 0)) for p in parts)
+        awarded = max(0, min(raw_awarded, max_marks))
+        if awarded != raw_awarded:
+            report["award_clamped"].append(
+                {"question": number, "awarded": raw_awarded, "max": max_marks})
 
         old_max = parts[0].get("max_marks")
         if len(parts) == 1 and int(old_max or max_marks) != max_marks:
@@ -698,6 +1024,44 @@ def apply_blueprint(result: dict, blueprint: dict | None) -> tuple[dict, dict]:
         primary["question_number"] = number   # blueprint numbering is official
         primary["max_marks"] = max_marks
         primary["awarded_marks"] = awarded
+        if breakdown:
+            # The per-subquestion result travels WITH the row, so a sub-part's
+            # marks are never only an unwritten part of a summed total.
+            primary["subquestions"] = breakdown
+            primary["subquestion_marks"] = sum(
+                int(b["awarded_marks"]) for b in breakdown)
+            if missing_subs:
+                primary["unmarked_subquestions"] = [
+                    s["label"] for s in missing_subs]
+        if declared_subs and (missing_subs or unattributed or conflicted) and \
+                str(primary.get("status") or "").upper() not in UNRESOLVED_STATUSES:
+            # A question whose sub-parts were only PARTLY assessed — or whose
+            # sub-part was claimed twice — must not read as complete: one
+            # subquestion's marks cannot stand in for another marking point that
+            # was never marked, and an ambiguous row cannot be trusted by
+            # picking whichever row happens to be first.
+            unresolved_because: list[str] = []
+            if missing_subs:
+                unresolved_because.append(
+                    "the marker returned nothing for "
+                    + ", ".join(s["label"] for s in missing_subs))
+            if unattributed:
+                unresolved_because.append(
+                    f"{unattributed} returned row(s) name no subquestion")
+            if conflicted:
+                unresolved_because.append(
+                    f"{conflicted} subquestion(s) were claimed by more than "
+                    "one returned row")
+            primary["status"] = STATUS_REVIEW
+            primary["review_reason"] = (
+                "This question's subquestions were not resolved cleanly ("
+                + "; ".join(unresolved_because)
+                + "). The missing or ambiguous marking points are UNMARKED, "
+                  "not a confirmed zero — review them before the grade is "
+                  "used.")
+            report["still_unresolved"].append(number)
+            reconciled.append(primary)
+            continue
         if str(primary.get("status") or "").upper() in UNRESOLVED_STATUSES:
             # An UNRESOLVED row (the missing-result placeholder this function
             # itself inserted on an earlier pass, a split-question flag from the
@@ -781,7 +1145,11 @@ def save_manual_blueprint(sha: str, questions: list[dict], *, total_marks: int |
     for item in questions:
         if not isinstance(item, dict):
             raise ValueError("Each question must be an object.")
-        number = str(item.get("question_number", "")).strip()
+        # ``str(None)`` is the string "None", so this used to ACCEPT a question
+        # whose number was null and save it as question "None" — through the
+        # very gate that exists to reject an unusable structure. Same rule as
+        # every other reader now.
+        number = _question_number(item)
         if not number:
             raise ValueError("Every question needs a question number.")
         try:

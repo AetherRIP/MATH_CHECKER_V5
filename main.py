@@ -163,6 +163,64 @@ def port_pids(port: int) -> list[int]:
     return sorted(set(pids))
 
 
+def _may_terminate(pid: int) -> bool:
+    """May THIS process ask the OS to terminate ``pid``?
+
+    Asked of the operating system rather than parsed out of a message, because
+    the answer the teacher needs must not depend on the display language. The
+    one refusal they can fix themselves is a copy started by another account —
+    the Windows boot task runs Math Checker as SYSTEM, and an ordinary window is
+    refused with "Access is denied".
+
+    True means "permission is NOT the problem", which includes the cases where
+    the answer cannot be established at all: ``OpenProcess`` also fails for a
+    process that no longer exists, and blaming SYSTEM for a dead PID would be
+    inventing a reason rather than reporting one. Only ``ERROR_ACCESS_DENIED``
+    is treated as a permission refusal.
+    """
+    import os
+
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+
+        PROCESS_TERMINATE = 0x0001
+        ERROR_ACCESS_DENIED = 5
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, int(pid))
+        if handle:
+            kernel32.CloseHandle(handle)
+            return True
+        return ctypes.get_last_error() != ERROR_ACCESS_DENIED
+    except Exception:  # noqa: BLE001 — cannot tell: say nothing rather than guess
+        return True
+
+
+def _report_stop_refused(pid: int, result) -> None:
+    """Explain a refused kill: the OS's own words, then what to do about it.
+
+    ``taskkill``'s output used to be captured and dropped, which turned a
+    permissions refusal into the vague "Port still answers after the stop
+    request" — the message a teacher cannot act on.
+    """
+    out = getattr(result, "stdout", "") or ""
+    err = getattr(result, "stderr", "") or ""
+    print(f"  ! The stop was refused for PID {pid} "
+          f"(taskkill exit {getattr(result, 'returncode', '?')}).")
+    for line in ((out + "\n" + err).splitlines()):
+        if line.strip():
+            print(f"    {line.strip()}")
+    if not _may_terminate(pid):
+        print("  ! That is a permissions refusal, not a broken stop command: this")
+        print("    copy was started by another account — typically the Windows")
+        print("    boot task, which runs Math Checker as SYSTEM.")
+        print("    Right-click Stop.bat and choose \"Run as administrator\"; an")
+        print("    ordinary window cannot stop a process owned by SYSTEM.")
+    else:
+        print("    Retry once: a copy that is mid-shutdown can refuse the kill.")
+
+
 def stop_running_instance(port: int) -> int:
     """Stop the Math Checker instance serving ``port`` (``main.py --stop``).
 
@@ -213,8 +271,13 @@ def stop_running_instance(port: int) -> int:
     for pid in pids:
         try:
             if os.name == "nt":
-                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                               capture_output=True, timeout=30)
+                result = subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                                        capture_output=True, timeout=30)
+                # A refused kill is reported with its reason: dropping the
+                # output is how "Run as administrator" became unknowable.
+                if getattr(result, "returncode", 0) != 0:
+                    _report_stop_refused(pid, result)
+                    return 5
             else:
                 os.kill(pid, signal.SIGTERM)
         except Exception as exc:  # noqa: BLE001

@@ -115,6 +115,38 @@ def verify_result(result: dict, blueprint_report: dict | None = None) -> dict:
                 f"Question {entry['question']} max marks corrected to the mark "
                 f"scheme value {entry['mark_scheme']} (model said {entry['model']})."
             )
+        # SUBQUESTION-level gaps (§4/§8/§9): the question came back, one of its
+        # marking points did not. That is NOT a zero, and it is not complete
+        # either — it needs a human look at THAT subquestion, not the paper.
+        for entry in blueprint_report.get("missing_subquestions", []):
+            anomalies.append(
+                f"Subquestion {entry.get('label') or entry.get('subquestion')} "
+                f"of question {entry.get('question')} is declared by the mark "
+                f"scheme but the marker returned nothing for it — it is "
+                f"UNMARKED (not a confirmed 0).")
+        for entry in blueprint_report.get("subquestion_conflicts", []):
+            anomalies.append(
+                f"{len(entry.get('rows') or [])} returned rows claim "
+                f"subquestion {entry.get('subquestion')} of question "
+                f"{entry.get('question')} "
+                f"({', '.join(str(r) for r in entry.get('rows') or [])}). "
+                f"Which row is real cannot be established from the result; "
+                f"review it rather than trusting either.")
+        for entry in blueprint_report.get("unattributed_rows", []):
+            warnings.append(
+                f"Question {entry.get('question')}: {entry.get('rows')} "
+                f"returned row(s) name no subquestion although the mark scheme "
+                f"declares them — the marking point each one covers is unknown.")
+        for entry in blueprint_report.get("unmatched_rows", []):
+            warnings.append(
+                f"The marker returned "
+                f"'{entry.get('question_number')}' but "
+                f"{entry.get('reason', 'the mark scheme does not declare it')}.")
+        for entry in blueprint_report.get("award_clamped", []):
+            warnings.append(
+                f"Awarded marks were clamped to the maximum for "
+                f"{entry.get('subquestion') or entry.get('question')} "
+                f"({entry.get('awarded')} > {entry.get('max')}).")
 
     # 5. Per-question status aggregation (absent status = legacy result = valid).
     for q in questions:
@@ -124,6 +156,19 @@ def verify_result(result: dict, blueprint_report: dict | None = None) -> dict:
             reason = q.get("review_reason")
             if reason:
                 warnings.append(f"Question {q.get('question_number')}: {reason}")
+
+    # A disagreement whose recommendation contradicts the actual award, or
+    # whose evidence is ambiguous, must reach the existing review gate. Do not
+    # silently rewrite marks from a self-reported confidence value.
+    from .scheme_audit import classify, STATE_UNCERTAIN
+    for q in questions:
+        check = classify(q.get("scheme_check"), max_marks=q.get("max_marks", 0),
+                         awarded=q.get("awarded_marks", 0))
+        if check and (check["state"] == STATE_UNCERTAIN or not check["reasoning"]
+                      or (check["justified_marks"] is not None and
+                          check["justified_marks"] != q.get("awarded_marks"))):
+            review_questions.append(str(q.get("question_number")))
+            warnings.append(f"Question {q.get('question_number')}: mathematical discrepancy needs a human marking decision.")
 
     # 6. Legacy uncertainties surface as warnings, not anomalies.
     for note in result.get("uncertainties", []) or []:

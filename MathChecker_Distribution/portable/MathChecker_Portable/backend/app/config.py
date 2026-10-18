@@ -121,9 +121,6 @@ def resolve_oauth_client_path() -> Path:
     # already hold a bound reference keep working.
     return OAUTH_CLIENT_PATH
 
-# The original Streamlit app (preserved under Friend code/) lives here.
-LEGACY_APP_DIR = PROJECT_ROOT / "Friend code" / "edexcel-maths-correctorv2-main"
-
 
 @dataclass
 class GeminiConfig:
@@ -184,6 +181,21 @@ class DoubleCheckConfig:
     #: first pass may have unfairly withheld. 0 disables the low branch.
     low_threshold_percentage: float = 10.0
     disagreement_points: float = 15.0    # larger gap -> REVIEW_REQUIRED
+
+
+@dataclass
+class SchemeAuditConfig:
+    """Mark-scheme error detection + approval-gated bulk correction.
+
+    When the marking engine has a defensible mathematical reason to disagree
+    with the supplied mark scheme it records a discrepancy. ``confirm_confidence``
+    is the model-confidence at or above which a mathematical disagreement is
+    labelled CONFIRMED rather than POSSIBLE. No previously graded submission is
+    ever changed without explicit human approval of a staged proposal - this
+    setting only controls how a disagreement is labelled.
+    """
+    enabled: bool = True
+    confirm_confidence: float = 0.85
 
 
 @dataclass
@@ -562,6 +574,7 @@ class AppConfig:
     classroom: ClassroomConfig = field(default_factory=ClassroomConfig)
     worker: WorkerConfig = field(default_factory=WorkerConfig)
     double_check: DoubleCheckConfig = field(default_factory=DoubleCheckConfig)
+    scheme_audit: SchemeAuditConfig = field(default_factory=SchemeAuditConfig)
     usage: UsageConfig = field(default_factory=UsageConfig)
     teacher: TeacherConfig = field(default_factory=TeacherConfig)
     reports: ReportConfig = field(default_factory=ReportConfig)
@@ -800,6 +813,16 @@ def get_config(reload: bool = False) -> AppConfig:
                     cfg.double_check.low_threshold_percentage = float(
                         double_check.get("low_threshold_percentage",
                                          cfg.double_check.low_threshold_percentage))
+                except (TypeError, ValueError):
+                    pass
+            scheme_audit = data.get("scheme_audit", {})
+            if isinstance(scheme_audit, dict):
+                cfg.scheme_audit.enabled = bool(scheme_audit.get(
+                    "enabled", cfg.scheme_audit.enabled))
+                try:
+                    cfg.scheme_audit.confirm_confidence = float(
+                        scheme_audit.get("confirm_confidence",
+                                         cfg.scheme_audit.confirm_confidence))
                 except (TypeError, ValueError):
                     pass
             usage = data.get("usage", {})
@@ -1062,6 +1085,10 @@ def save_config(cfg: AppConfig) -> None:
             "threshold_percentage": cfg.double_check.threshold_percentage,
             "low_threshold_percentage": cfg.double_check.low_threshold_percentage,
             "disagreement_points": cfg.double_check.disagreement_points,
+        },
+        "scheme_audit": {
+            "enabled": cfg.scheme_audit.enabled,
+            "confirm_confidence": cfg.scheme_audit.confirm_confidence,
         },
         "usage": {"hourly_mb": cfg.usage.hourly_mb, "daily_mb": cfg.usage.daily_mb},
         "grades": {

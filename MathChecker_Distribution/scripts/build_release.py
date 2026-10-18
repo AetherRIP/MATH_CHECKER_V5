@@ -209,7 +209,11 @@ def stage_sources(with_runtime: str | None) -> list[str]:
     # Recipient documentation, launcher, brand assets and the portable flag
     # are distribution-owned files (never taken from the private project).
     if DOCS_DIR.is_dir():
-        shutil.copytree(DOCS_DIR, STAGING / "documentation")
+        # Ship readable source documentation, not arbitrary binary documents:
+        # the independent privacy scanner deliberately forbids PDFs/student
+        # files. Keep the Markdown guide and preserve the source PDF locally.
+        shutil.copytree(DOCS_DIR, STAGING / "documentation",
+                        ignore=shutil.ignore_patterns("*.pdf", "*.docx", "*.xlsx", "*.csv", "*.log"))
         copied.append("documentation/")
     launcher = INSTALLER_DIR / "launcher.bat"
     if launcher.is_file():

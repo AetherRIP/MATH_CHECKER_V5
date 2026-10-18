@@ -287,7 +287,8 @@ class TestSingleAssignment:
         ).json()
         assert data["assignment_count"] == 1
         assert len(data["assignments"]) == 1
-        assert data["assignments"][0]["code"] == "L1"
+        # The code is the lesson's FULL identifier: chapter 1, lesson 1.
+        assert data["assignments"][0]["code"] == "CH1L1"
         assert "Chapter 1, Lesson 1" in data["assignments"][0]["detail"]
 
     def test_pdf_contains_only_l1_columns(self, client):
@@ -395,7 +396,8 @@ class TestMultipleAssignments:
         ).json()
         assert data["assignment_count"] == 3
         codes = {a["code"] for a in data["assignments"]}
-        assert codes == {"L1", "L2", "L3"}
+        # Chapter is part of the identifier: lesson 3 lives in chapter 2.
+        assert codes == {"CH1L1", "CH1L2", "CH2L3"}
 
     def test_pdf_has_three_assignment_columns(self, client):
         course_id, cw_ids = _seed_full_class(client)

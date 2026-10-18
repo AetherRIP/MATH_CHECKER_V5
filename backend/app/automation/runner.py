@@ -23,10 +23,11 @@ import json
 import logging
 import random
 import time
+import uuid
 
 from .. import db
 from ..logging_setup import log_event
-from . import grading, states, store
+from . import grading, operations, states, store
 
 log = logging.getLogger("automation.runner")
 
@@ -40,6 +41,24 @@ BACKOFF_CAP = 120.0
 #: log: 209 "failed permanently" attempts on ONE job). Only a teacher's
 #: retry()/retry_report() re-arms the job — both reset next_attempt_at.
 PARK_SECONDS = 10 * 365 * 24 * 3600
+
+#: Evidence that the report attached to a submission IS this attempt's own
+#: upload of THIS result, rather than a same-named file from another account.
+_OURS_EVIDENCE = ("attachment-record", "result-marker", "canonical")
+
+
+def _evidence_is_ours(evidence: dict | None) -> bool:
+    return bool(evidence) and evidence.get("matched") in _OURS_EVIDENCE
+
+
+#: Attach outcomes where Google may have ACCEPTED the write even though our
+#: own attempt could not confirm it (a timeout, a lost response, a "verify"
+#: that could not read the submission, a refused in-place replacement). Before
+#: any of these is reported as a failure the submission is re-read, because a
+#: report that is already there means the operation really succeeded.
+_AMBIGUOUS_REPORT_STATUSES = ("DRIVE_UPLOAD_FAILED", "DRIVE_VERIFY_FAILED",
+                              "RECONCILE_FAILED", "CLASSROOM_ATTACHMENT_FAILED",
+                              "ATTACHMENT_VERIFY_FAILED")
 
 #: Errors that a retry can never fix (must not be retried blindly, §40).
 _PERMANENT_CODES = {
@@ -105,7 +124,7 @@ class WorkflowRunner:
     def __init__(self, *, correction_service=None, attach=None, publish=None,
                  render_pdf=None, pdf_validate=None, drive_verify=None,
                  submission_reader=None, account_email=None, cleanup=None,
-                 config=None, token_fn=None):
+                 config=None, token_fn=None, drive_read=None):
         self._service = correction_service
         self._attach = attach
         self._publish = publish
@@ -117,7 +136,16 @@ class WorkflowRunner:
         self._cleanup = cleanup
         self._config = config
         self._token_fn = token_fn
+        #: Read a Drive file's metadata, used to prove an attached report is
+        #: OURS for this exact result rather than a same-named file from
+        #: another account. Injectable so tests make no live Drive call.
+        self._drive_read = drive_read
         self._worker = "automation-runner"
+        #: Unique per ADVANCE, so every status write made while this stretch of
+        #: work owns the job is conditional on this token still holding the
+        #: claim. An older worker whose job moved on cannot then write a stale
+        #: state over a newer successful one.
+        self._claim = self._worker
 
     # -- dependency accessors (lazy, so tests can inject) --------------------
 
@@ -163,6 +191,12 @@ class WorkflowRunner:
             self._drive_verify = verify_drive_report
         return self._drive_verify
 
+    def _drive_read_fn(self):
+        if self._drive_read is None:
+            from ..classroom import client as gc
+            self._drive_read = gc.get_drive_file
+        return self._drive_read
+
     def _read_submission(self, job: dict) -> dict:
         if self._submission_reader is not None:
             return self._submission_reader(job)
@@ -202,21 +236,27 @@ class WorkflowRunner:
             if not candidate:
                 return None
             job_id = candidate["id"]
-        job = store.claim(job_id, worker=self._worker)
+        # A unique claim token per advance: two workers can never both own the
+        # job, and a worker whose claim was taken over (or released by a retry)
+        # has every later write refused instead of overwriting newer state.
+        claim_token = f"{self._worker}:{uuid.uuid4().hex[:12]}"
+        job = store.claim(job_id, worker=claim_token)
         if job is None:
             return store.get(job_id)
+        self._claim = claim_token
         try:
-            while True:
-                job = store.get(job_id)
-                if job is None or job["status"] in states.TERMINAL:
-                    break
-                try:
-                    progressed = self._dispatch(job)
-                except Exception as exc:  # noqa: BLE001
-                    self._record_failure(job, exc)
-                    break
-                if not progressed:
-                    break
+            with store.claim_guard(claim_token):
+                while True:
+                    job = store.get(job_id)
+                    if job is None or job["status"] in states.TERMINAL:
+                        break
+                    try:
+                        progressed = self._dispatch(job)
+                    except Exception as exc:  # noqa: BLE001
+                        self._record_failure(job, exc)
+                        break
+                    if not progressed:
+                        break
             return store.get(job_id)
         finally:
             store.release(job_id)
@@ -434,6 +474,58 @@ class WorkflowRunner:
                               code="result_missing")
         result = self._decorate(result)
 
+        if operations.interrupted(job["id"], operations.REPORT):
+            # The last upload attempt was cut off (timeout, crash, restart), so
+            # its outcome is UNKNOWN. Establish it before uploading anything:
+            # a report that is already on the submission is a success, never a
+            # second upload (§3, §9).
+            evidence, readable = self._report_outcome_known(job, result)
+            if evidence:
+                store.set_status(
+                    job["id"], states.REPORT_UPLOADED,
+                    detail="Report already present on the submission",
+                    drive_file_id=evidence["drive_file_id"],
+                    report_filename=(evidence.get("report_filename")
+                                     or evidence.get("title")))
+                store.set_status(job["id"], states.REPORT_ATTACHED,
+                                 detail="Report found on the student's submission")
+                store.set_status(
+                    job["id"], states.ATTACHMENT_VERIFIED,
+                    detail="Verified by re-reading the submission")
+                operations.succeed(
+                    job["id"], operations.REPORT, verified=True, recovered=True,
+                    note=("Recovered after an interrupted attempt: the report was "
+                          "already on the submission "
+                          f"({evidence.get('matched')})"))
+                store.log_job(
+                    "success", "report_recovered",
+                    "Interrupted report upload verified: the report is already "
+                    "on the submission, so nothing was uploaded again",
+                    job_id=job["id"])
+                if not _evidence_is_ours(evidence):
+                    raise StepFailure(
+                        "A correction report for this student is already on the "
+                        "submission, so the interrupted upload is NOT a failure "
+                        "— but it is not this attempt's copy and Google offers "
+                        "no way to replace it. Approve to publish this "
+                        "correction's grade and return the work, or attach the "
+                        "newest report manually.",
+                        transient=False, state=states.ATTENTION_REQUIRED,
+                        code="report_content_uncertain")
+                return True
+            if not readable:
+                operations.fail(
+                    job["id"], operations.REPORT, code="report_outcome_unknown",
+                    message="The submission could not be read, so whether the "
+                            "interrupted upload reached Classroom is unknown.",
+                    ambiguous=True)
+                raise StepFailure(
+                    "The interrupted report upload could not be verified: the "
+                    "submission could not be read, so its outcome is unknown. "
+                    "Retry once Google Classroom is reachable again.",
+                    transient=True, state=states.REPORT_UPLOAD_FAILED,
+                    code="report_outcome_unknown")
+
         if getattr(cfg, "review_mode", False):
             # Await review: the report exists and is validated, but delivery
             # is held back together with the grade. No Classroom write has
@@ -476,10 +568,17 @@ class WorkflowRunner:
 
         Shared by the normal step and the report-only retry, so the two can
         never drift apart. Raises :class:`StepFailure` on any non-success.
+
+        An ambiguous failure is never reported as a failure on the strength of
+        our own attempt alone: the submission is re-read first, and a report
+        that is already there makes the operation SUCCEEDED (recovered) — which
+        is what stops a timed-out upload from parking a job as "Upload failed"
+        while the report sits on the student's submission.
         """
         from ..classroom import report_attachment as ra
         status = getattr(outcome, "status", None)
         extra = getattr(outcome, "extra", {}) or {}
+        operations.begin(job["id"], operations.REPORT)
         if status in ra.ATTACHED_STATUSES:
             # Verify the Drive file when it still exists (a retry keeps it).
             drive_file_id = extra.get("drive_file_id")
@@ -492,9 +591,84 @@ class WorkflowRunner:
                              detail="Report attached to the student's submission")
             store.set_status(job["id"], states.ATTACHMENT_VERIFIED,
                              detail="Attachment verified by re-reading the submission")
+            operations.succeed(
+                job["id"], operations.REPORT, verified=True,
+                note=(extra.get("report_filename")
+                      or "Report attached and verified"))
             store.log_job("success", "report_attached", "Report attached and verified",
                           job_id=job["id"])
             return
+
+        if status in _AMBIGUOUS_REPORT_STATUSES:
+            # The call failed or its response was lost — but Google may have
+            # accepted it. Establish the outcome BEFORE calling it a failure
+            # (spec §3): a report that is already on the submission means the
+            # upload succeeded, so it is recorded as recovered, not failed.
+            evidence, readable = self._report_outcome_known(job, result)
+            if evidence:
+                ours = _evidence_is_ours(evidence)
+                note = ("The report is already on the submission "
+                        f"({evidence.get('matched')}: "
+                        f"{evidence.get('report_filename') or evidence.get('title') or evidence['drive_file_id']}")
+                if not ours and getattr(outcome, "message", None):
+                    note += "; the newest copy could not be attached"
+                note += ")"
+                store.set_status(
+                    job["id"], states.REPORT_UPLOADED,
+                    detail="Report already present on the submission",
+                    drive_file_id=evidence["drive_file_id"],
+                    report_filename=(evidence.get("report_filename")
+                                     or evidence.get("title")))
+                store.set_status(
+                    job["id"], states.REPORT_ATTACHED,
+                    detail="Report found attached to the student's submission")
+                store.set_status(
+                    job["id"], states.ATTACHMENT_VERIFIED,
+                    detail=("Verified by re-reading the submission — the "
+                            "earlier attempt had already reached Classroom"))
+                operations.succeed(job["id"], operations.REPORT, verified=True,
+                                   recovered=True, note=note)
+                store.log_job(
+                    "success", "report_recovered",
+                    "Report upload outcome verified: the report is already on "
+                    f"the submission ({note})",
+                    job_id=job["id"])
+                log_event("automation", "report upload recovered by verification",
+                          job_id=job["id"], drive_file_id=evidence["drive_file_id"])
+                if not ours:
+                    # A report for THIS student and assignment is on the
+                    # submission, but it is not this attempt's copy and Google
+                    # offers no way to replace it. The upload is not a failure —
+                    # yet publishing another grade next to a report that does
+                    # not carry it would be wrong, so this needs the teacher.
+                    raise StepFailure(
+                        "A correction report for this student is already on the "
+                        "submission, so the upload is NOT a failure. It is not "
+                        "this attempt's copy though (Google only lets this app "
+                        "replace a report it owns), so nothing was replaced. "
+                        "Approve to publish this correction's grade and return "
+                        "the work, or attach the newest report manually.",
+                        transient=False, state=states.ATTENTION_REQUIRED,
+                        code="report_content_uncertain")
+                return
+            if not readable:
+                # The submission could not be read, so the outcome is genuinely
+                # UNKNOWN — never asserted as a failure (spec §3.6).
+                operations.fail(
+                    job["id"], operations.REPORT,
+                    message=getattr(outcome, "message", None) or str(outcome),
+                    code="report_outcome_unknown", ambiguous=True,
+                    note="Google never confirmed this upload and the submission "
+                         "could not be re-read, so the outcome is unknown — the "
+                         "next attempt checks before uploading again.")
+                raise StepFailure(
+                    ((getattr(outcome, "message", None) or str(outcome))
+                     + " Google has not confirmed the outcome and the submission "
+                       "could not be re-read, so this is NOT treated as a "
+                       "failure: the next attempt verifies the remote state "
+                       "before uploading again."),
+                    transient=False, state=states.ATTENTION_REQUIRED,
+                    code="needs_verification")
 
         if status == ra.STATUS_BLOCKED:
             raise StepFailure(
@@ -516,10 +690,14 @@ class WorkflowRunner:
                               state=states.ATTENTION_REQUIRED,
                               code="testing_only_blocked")
         if status == ra.STATUS_UPLOAD_FAILED:
+            operations.fail(job["id"], operations.REPORT, message=outcome.message,
+                            code="report_upload_failed")
             raise StepFailure(outcome.message, transient=True,
                               state=states.REPORT_UPLOAD_FAILED,
                               code="report_upload_failed")
         if status == ra.STATUS_DRIVE_VERIFY_FAILED:
+            operations.fail(job["id"], operations.REPORT, message=outcome.message,
+                            code="report_upload_not_verified")
             raise StepFailure(outcome.message, transient=True,
                               state=states.REPORT_UPLOAD_FAILED,
                               code="report_upload_not_verified")
@@ -527,15 +705,22 @@ class WorkflowRunner:
             # The prior Math Correct report could not be replaced, so NO second
             # report was added. Retryable: the next attempt re-renders and
             # retries the in-place replacement, still without duplicating.
+            operations.fail(job["id"], operations.REPORT, message=outcome.message,
+                            code="report_reconcile_failed")
             raise StepFailure(outcome.message, transient=True,
                               state=states.REPORT_UPLOAD_FAILED,
                               code="report_reconcile_failed")
         if status == ra.STATUS_OWNERSHIP_ERROR:
             # Permanent for that file: the retry re-creates it under the
             # current identity, so it is a real (non-transient) attach failure.
+            operations.fail(job["id"], operations.REPORT, message=outcome.message,
+                            code="report_ownership_error")
             raise StepFailure(outcome.message, transient=False,
                               state=states.ATTACHMENT_FAILED,
                               code="report_ownership_error")
+        operations.fail(job["id"], operations.REPORT,
+                        message=outcome.message or "The report could not be attached.",
+                        code="attachment_failed")
         raise StepFailure(outcome.message or "The report could not be attached.",
                           transient=True, state=states.ATTACHMENT_FAILED,
                           code="attachment_failed")
@@ -584,6 +769,7 @@ class WorkflowRunner:
         # job must not sit in Classroom as an unpublished draft. The teacher can
         # still choose draft-only mode explicitly (see ``_cfg().draft_only``).
         op = "draft_grade" if getattr(cfg, "draft_only", False) else "assign_grade"
+        operations.begin(job["id"], operations.GRADE)
         if self._grade_already_present(job, grade):
             # Google ALREADY holds this grade (e.g. a previous write whose
             # response timed out). Do NOT submit it again — a retry must read
@@ -599,6 +785,8 @@ class WorkflowRunner:
                              detail=f"Final grade {grade} posted to Classroom")
         # Verify by reading the submission back — a 200 is NOT proof (§34/§35).
         self._verify_grade(job, grade)
+        operations.succeed(job["id"], operations.GRADE, verified=True,
+                           note=f"Grade {grade} verified in Classroom")
         store.set_status(job["id"], states.GRADE_VERIFIED,
                          detail=f"Grade {grade} verified in Classroom")
         store.log_job("success", "grade_verified", f"Grade {grade} verified",
@@ -666,8 +854,25 @@ class WorkflowRunner:
                 code="return_disabled")
         store.set_status(job["id"], states.RETURNING,
                          detail="Returning the work to the student")
-        self._grade_op(job, "return", None)
+        operations.begin(job["id"], operations.RETURN)
+        # A previous attempt may already have returned the work (the response
+        # was lost, or the run was interrupted). Read the state BACK before
+        # sending another return — but ONLY skip it when the grade Google holds
+        # is already the one we wanted: if this attempt just published a NEW
+        # grade, the student must still be notified about it.
+        already_returned = bool(self._return_outcome_known(job))
+        grade_settled = already_returned and self._grade_already_present(
+            job, job.get("grade"))
+        if grade_settled:
+            store.log_job("info", "return_already_present",
+                          "Classroom reports this submission as RETURNED with "
+                          "this grade already in place; not returning it again",
+                          job_id=job["id"])
+        else:
+            self._grade_op(job, "return", None)
         self._verify_returned(job)
+        operations.succeed(job["id"], operations.RETURN, verified=True,
+                           note="Return verified in Classroom")
         store.set_status(job["id"], states.RETURNED,
                          detail="Return verified in Classroom")
         store.log_job("success", "returned", "Submission returned to the student",
@@ -802,9 +1007,8 @@ class WorkflowRunner:
 
         # ---- stage 4: finalise -------------------------------------------
         self._finalize_cleanup(job)
-        store.set_status(job["id"], states.COMPLETE,
-                         detail=f"Teacher-approved: grade {grade} published and "
-                                "work returned")
+        self._complete(job, f"Teacher-approved: grade {grade} published and "
+                            "work returned")
         store.log_job("success", "approved",
                       f"Teacher approved: grade {grade} published and returned",
                       job_id=job["id"])
@@ -816,14 +1020,31 @@ class WorkflowRunner:
 
     def _step_returned(self, job: dict) -> bool:
         self._finalize_cleanup(job)
-        store.set_status(job["id"], states.COMPLETE,
-                         detail="Automated correction complete")
+        self._complete(job, "Automated correction complete")
         store.log_job("success", "complete",
                       "COMPLETE — correction, report, grade and return verified",
                       job_id=job["id"])
         log_event("automation", "workflow complete", job_id=job["id"],
                   submission_id=job["submission_id"], grade=job.get("grade"))
         return False
+
+    def _complete(self, job: dict, detail: str) -> None:
+        """Finish a job, and retire the older parked jobs it supersedes.
+
+        One job exists per submission VERSION, so an earlier attempt that is
+        still parked in a failure/attention state describes work this job has
+        now done. Leaving it there is what made the dashboard show a "failed"
+        correction for a submission that was already corrected, graded and
+        returned — the earlier job is marked superseded (history) instead, and
+        nothing is deleted.
+        """
+        store.set_status(job["id"], states.COMPLETE, detail=detail)
+        for older in store.older_parked_jobs(job):
+            store.supersede(
+                older["id"], by_job_id=job["id"],
+                reason=("A newer attempt for this submission was corrected, "
+                        "graded and returned, so this earlier job is history "
+                        "rather than a failure."))
 
     def _step_cleanup_pending(self, job: dict) -> bool:
         return self._finalize_cleanup(job, resume_state=states.RETURNED)
@@ -905,6 +1126,141 @@ class WorkflowRunner:
             # accepting a report that names nobody at all.
             must.append("Student")
         return must, any_of
+
+    # -- verifying what ALREADY happened (never assumed) ---------------------
+
+    def _expected_report_name(self, job: dict, result: dict) -> str:
+        """The filename the attach path gives the report it uploads."""
+        from ..classroom.report_attachment import build_report_filename
+        return build_report_filename(
+            result.get("display_name") or result.get("student_name"),
+            job.get("assignment_title"))
+
+    def _attached_report(self, job: dict, result: dict) -> tuple[dict | None, bool]:
+        """``(evidence, readable)`` for a Math Correct report for THIS student
+        + assignment that is already attached to the submission.
+
+        Read-only, and matched by the app's own report filename (or by the
+        canonical report record for the submission), so a student's own files
+        can never be mistaken for a correction report. This is the evidence
+        that an upload whose RESPONSE was lost still succeeded: Google accepted
+        it, the report is on the submission, and reporting "upload failed"
+        would be false.
+
+        ``readable`` says whether the submission could be READ at all — the
+        difference between "the report is not there" (a real failure) and "we
+        could not find out" (an outcome that stays uncertain).
+        """
+        try:
+            submission = self._read_submission(job)
+        except Exception as exc:  # noqa: BLE001 — an unreadable submission
+            log.info("could not read submission for job %s: %s", job["id"], exc)
+            return None, False
+        expected = self._expected_report_name(job, result)
+        attached: list[dict] = []
+        for att in ((submission or {}).get("assignmentSubmission")
+                    or {}).get("attachments", []) or []:
+            drive = att.get("driveFile") or {}
+            if drive.get("id"):
+                attached.append({"id": drive["id"],
+                                 "drive_file_id": drive["id"],
+                                 "title": str(drive.get("title") or "")})
+        # STRONG evidence first: this app stamps every report it uploads with
+        # its own Drive appProperties (the result id it belongs to), so one
+        # read-only metadata call proves the attached file is OUR report for
+        # THIS result and not a same-named file from another account.
+        from ..classroom import client as gc
+        for entry in attached[:6]:
+            if not entry["title"].endswith("_Correction_Report.pdf"):
+                continue
+            try:
+                meta = self._drive_read_fn()(self._token(), entry["id"])
+            except Exception as exc:  # noqa: BLE001 — a read failure is not fatal
+                log.info("could not read Drive file %s: %s", entry["id"], exc)
+                continue
+            props = (meta or {}).get("appProperties") or {}
+            if str(props.get(gc.APP_PROP_TEMP)).lower() != "true":
+                continue
+            if str(props.get(gc.APP_PROP_RESULT) or "") == str(result.get("id")):
+                return {**entry, "matched": "result-marker"}, True
+        # Weaker, filename-based identity: a report for the SAME student and
+        # assignment is attached, but it is not proven to be this result's.
+        for entry in attached:
+            if entry["title"] == expected:
+                return {**entry, "matched": "filename"}, True
+        # The row that records which result's report is canonical for this
+        # submission is a second, independent piece of evidence.
+        try:
+            row = db.query_one(
+                "SELECT canonical_result_id, drive_file_id FROM canonical_reports "
+                "WHERE course_id = ? AND coursework_id = ? AND submission_id = ?",
+                (job.get("course_id"), job.get("coursework_id"),
+                 job.get("submission_id")))
+        except Exception:  # noqa: BLE001
+            row = None
+        if row and row["drive_file_id"]:
+            matched_own_result = (str(row["canonical_result_id"])
+                                  == str(result.get("id")))
+            for entry in attached:
+                if entry["id"] == row["drive_file_id"]:
+                    return ({**entry,
+                             "matched": "canonical" if matched_own_result
+                                        else "canonical-other-result"}, True)
+        return None, True
+
+    def _report_outcome_known(self, job: dict, result: dict
+                              ) -> tuple[dict | None, bool]:
+        """Was the intended report ALREADY accepted by Google?
+
+        Returns ``(evidence, readable)``: evidence when the report is on the
+        submission, and whether the submission could be read at all.
+        """
+        from ..classroom import report_attachment as ra
+        state = ra.get_state(str(result.get("id")))
+        if state.get("attached") and state.get("drive_file_id"):
+            return ({"drive_file_id": state["drive_file_id"],
+                     "report_filename": state.get("report_filename"),
+                     "matched": "attachment-record"}, True)
+        return self._attached_report(job, result)
+
+    def _grade_outcome_known(self, job: dict) -> dict | None:
+        """Does Google Classroom already hold THIS attempt's grade?"""
+        grade = job.get("grade")
+        if grade is None:
+            return None
+        try:
+            submission = self._read_submission(job)
+        except Exception as exc:  # noqa: BLE001
+            log.info("could not read submission for job %s: %s", job["id"], exc)
+            return None
+        held: list[float] = []
+        for field in ("assignedGrade", "draftGrade"):
+            value = (submission or {}).get(field)
+            if value is None:
+                continue
+            try:
+                held.append(float(value))
+            except (TypeError, ValueError):
+                continue
+        if not any(abs(value - float(grade)) <= 1e-6 for value in held):
+            return None
+        # Whether Classroom holds a DIFFERENT grade too is what lets the teacher
+        # be told that another (newer or manual) grade is in effect.
+        other = next((value for value in held
+                      if abs(value - float(grade)) > 1e-6), None)
+        return {"grade": float(grade), "conflicting": other}
+
+    def _return_outcome_known(self, job: dict) -> dict | None:
+        """Was the work already returned to the student?"""
+        try:
+            submission = self._read_submission(job)
+        except Exception as exc:  # noqa: BLE001
+            log.info("could not read submission for job %s: %s", job["id"], exc)
+            return None
+        state = str((submission or {}).get("state") or "").upper()
+        if state == "RETURNED":
+            return {"state": state}
+        return None
 
     def _verify_drive_if_present(self, job: dict, result: dict,
                                  drive_file_id: str | None) -> None:
@@ -1021,7 +1377,7 @@ class WorkflowRunner:
         except Exception as exc:  # noqa: BLE001
             raise classify_exception(exc, states.RETURN_FAILED)
         state = (submission.get("state") or "").upper()
-        if state != "RETURNED" and not submission.get("assignedGrade"):
+        if state != "RETURNED":
             raise StepFailure(
                 f"Classroom did not report the submission as returned (state="
                 f"{state or 'unknown'}).", transient=True,
@@ -1061,6 +1417,19 @@ class WorkflowRunner:
 
     def _record_failure(self, job: dict, exc: Exception) -> None:
         failure = classify_exception(exc, states.CORRECTION_FAILED)
+        # Attribute the failure to the OPERATION it belongs to, so the report
+        # upload, the grade and the return keep independent states and a retry
+        # resolves the one that actually failed. An operation whose remote
+        # outcome could not be established stays NEEDS VERIFICATION rather than
+        # being asserted as failed.
+        op_key = operations.key_for_status(failure.state)
+        if op_key:
+            current = operations.get(job["id"], op_key) or {}
+            ambiguous = (current.get("state") == operations.NEEDS_VERIFICATION
+                         or failure.code in ("report_outcome_unknown",
+                                             "needs_verification"))
+            operations.fail(job["id"], op_key, message=str(exc),
+                            code=failure.code, ambiguous=ambiguous)
         attempts = int(job.get("attempts") or 0) + 1
         max_attempts = int(job.get("max_attempts") or 3)
         if failure.state == states.CORRECTION_FAILED:
@@ -1121,18 +1490,27 @@ class WorkflowRunner:
         # A manual retry is an explicit human action on a job that had stopped
         # by itself, so making it due NOW is what makes the retry take effect
         # on the next tick instead of silently doing nothing until the stale
-        # claim expires. A claim is only dropped when it is STALE: a fresh one
-        # means another worker is genuinely advancing the job at this moment,
-        # and pulling the job out from under it would run the step twice.
-        now_ts = time.time()
-        db.execute(
-            "UPDATE automation_jobs SET attempts = 0, next_attempt_at = 0, "
-            "claimed_by = NULL, claimed_at = NULL, updated_at = ? "
-            "WHERE id = ? AND claimed_at IS NOT NULL AND claimed_at < ?",
-            (now_ts, job_id, now_ts - store.CLAIM_LEASE_SECONDS))
-        db.execute(
-            "UPDATE automation_jobs SET attempts = 0, next_attempt_at = 0, "
-            "updated_at = ? WHERE id = ?", (now_ts, job_id))
+        # claim expires. The move is a COMPARE-AND-SET on the state this call
+        # actually saw, so two concurrent retries cannot both restart the step:
+        # the second one loses the race, and a fresh claim (a live worker) is
+        # never pulled out from under it.
+        if not store.reset_for_retry(job_id, expected_status=job["status"],
+                                     resume_state=resume):
+            current = store.get(job_id) or job
+            if current["status"] == resume:
+                # Another request already started exactly this retry — the
+                # teacher's intent is satisfied, so report the real state.
+                store.log_job(
+                    "info", "retry_already_started",
+                    f"Retry from {states.label(resume)} was already requested",
+                    job_id=job_id)
+                return current
+            raise StepFailure(
+                "This correction changed to "
+                f"'{states.label(current['status'])}' while the retry was being "
+                "set up (another retry, a background run, or a reconciliation "
+                "reached it first), so nothing was restarted.",
+                transient=False, state=current["status"], code="retry_conflict")
         store.set_status(job_id, resume,
                          detail=f"Retrying from {states.label(resume)}")
         store.log_job("info", "retry_requested",
@@ -1155,6 +1533,9 @@ class WorkflowRunner:
                     "work.")
         if status == states.COMPLETE:
             return "This correction is already complete — there is nothing to retry."
+        if status == states.SUPERSEDED:
+            return ("A newer attempt for this submission finished this work, so "
+                    "this job is history — there is nothing to retry here.")
         if status == states.CANCELLED:
             return "This correction was cancelled — there is nothing to retry."
         if status in states.PENDING_STATES:
@@ -1221,6 +1602,273 @@ class WorkflowRunner:
             store.log_job("success", "report_repaired",
                           "Report uploaded, attached and verified", job_id=job_id)
         return store.get(job_id)
+
+    # -- reconciling persisted state with the REAL outcome (§3, §5) ---------
+
+    def reconcile(self, job_id: str) -> dict | None:
+        """Bring a job's recorded state in line with what Google really has.
+
+        The one operation that FIXES a stale failure rather than hiding it:
+
+        1. a LATER attempt that already finished this work makes this job
+           history (superseded), never a live failure;
+        2. the report, the grade and the return are each checked against the
+           submission/Drive — an operation that Google already accepted is
+           marked SUCCEEDED (recovered) and its old error is resolved;
+        3. when every operation is confirmed, the job becomes COMPLETE with the
+           old error cleared;
+        4. when one operation is still owed, the job is parked EXACTLY there —
+           the report is never re-attached, the grade is never re-written and
+           the work is never returned twice;
+        5. when an outcome cannot be established, it is reported as uncertain
+           instead of being asserted as a failure.
+
+        Only READ-ONLY Google calls are made, and only for the operations that
+        are not already confirmed, so a refresh never performs a write.
+        """
+        job = store.get(job_id)
+        if job is None:
+            return None
+        if job["status"] in (states.SUPERSEDED, states.CANCELLED):
+            return job
+
+        newer = store.newer_finished_job(job)
+        if newer:
+            store.log_job(
+                "info", "superseded",
+                "A newer attempt for this submission already completed, so this "
+                "job is history rather than a failure", job_id=job_id)
+            return store.supersede(
+                job_id, by_job_id=newer["id"],
+                reason=("Superseded: a newer attempt for this submission was "
+                        "corrected, graded and returned, so this older job is "
+                        "kept only as history."))
+
+        if not job.get("result_id"):
+            # Nothing has been produced yet, so there is no external outcome to
+            # reconcile: the job is still waiting for its correction.
+            return job
+        result = self.service().get_result(job["result_id"])
+        if result is None:
+            return job
+        result = self._decorate(result)
+
+        report = self._reconcile_report(job, result)
+        grade_state = self._reconcile_grade(job)
+        returned = self._reconcile_return(job)
+        log_event("automation", "job reconciled with Classroom",
+                  job_id=job_id, report=report, grade=grade_state,
+                  returned=returned)
+        store.log_job(
+            "info", "reconciled",
+            f"Checked against Google Classroom — report: {report}, grade: "
+            f"{grade_state}, return: {returned}", job_id=job_id)
+
+        if report in ("succeeded", "recovered_other") \
+                and grade_state == "succeeded" and returned == "succeeded":
+            # Everything the teacher cares about is confirmed by Google itself:
+            # a report for this student is attached, the grade is published and
+            # the work was returned. When the attached report is an earlier
+            # copy that could not be replaced, that is said plainly rather than
+            # left to look like a failure.
+            note = ("" if report == "succeeded" else
+                    " (the attached report is an earlier copy of this "
+                    "correction's report — Google only lets this app replace a "
+                    "report it owns, so the newest copy was not uploaded)")
+            self._complete(
+                job, "Reconciled with Google Classroom: the report is attached, "
+                     "the grade is published and the work was returned" + note)
+            store.log_job(
+                "success", "reconciled_complete",
+                "Reconciled with Google Classroom — report, grade and return all "
+                "verified; the earlier error is resolved", job_id=job_id)
+            return store.get(job_id)
+
+        if report == "unknown" or grade_state == "unknown" or returned == "unknown":
+            return store.set_status(
+                job_id, states.ATTENTION_REQUIRED,
+                detail=("Google Classroom could not be read, so the outcome of "
+                        "at least one operation is UNKNOWN. Nothing was "
+                        "re-sent — refresh again once Classroom is reachable."),
+                error_code="needs_verification")
+
+        if report == "recovered_other":
+            return store.set_status(
+                job_id, states.ATTENTION_REQUIRED,
+                detail=("A correction report for this student is on the "
+                        "submission, so the upload is not a failure — but it is "
+                        "not this attempt's copy and Google does not let this "
+                        "app replace a report it does not own. Approve to publish "
+                        "this correction's grade and return the work, or attach "
+                        "the newest report manually."),
+                error_code="report_content_uncertain")
+
+        if report == "failed":
+            if job["status"] in states.RETRYABLE_FAILURES:
+                # A genuine failure stays exactly where it was parked.
+                return store.get(job_id)
+            return store.set_status(
+                job_id, states.REPORT_UPLOAD_FAILED,
+                detail=("Google Classroom does not have this correction's "
+                        "report — retry the report upload."),
+                error_code="report_upload_failed")
+
+        if report == "succeeded" and grade_state == "succeeded" \
+                and returned in ("pending", "failed"):
+            return store.set_status(
+                job_id, states.GRADE_VERIFIED,
+                detail="Reconciled: grade published — returning the work next")
+
+        if report == "succeeded" and grade_state == "pending" \
+                and returned == "pending":
+            return store.set_status(
+                job_id, states.ATTACHMENT_VERIFIED,
+                detail="Reconciled: report attached — the grade is next")
+
+        if grade_state == "pending" and returned == "succeeded":
+            return store.set_status(
+                job_id, states.ATTENTION_REQUIRED,
+                detail=("This attempt's grade is NOT the one Google Classroom "
+                        "holds for this submission. Approve to publish it (and "
+                        "return the work) or leave the existing grade in place."),
+                error_code="grade_not_published")
+
+        if report == "succeeded" and grade_state == "succeeded":
+            return store.set_status(
+                job_id, states.GRADE_VERIFIED,
+                detail="Reconciled: report attached and grade published")
+        return store.get(job_id)
+
+    def _reconcile_report(self, job: dict, result: dict) -> str:
+        """The report's REAL state: succeeded / recovered_other / failed /
+        pending / unknown."""
+        from ..classroom import report_attachment as ra
+        state = ra.get_state(str(result.get("id")))
+        if state.get("attached") and state.get("drive_file_id"):
+            operations.succeed(
+                job["id"], operations.REPORT, verified=True, recovered=True,
+                note=("Reconciled: the report is attached to the submission "
+                      f"({state.get('report_filename') or state['drive_file_id']})"))
+            return "succeeded"
+        evidence, readable = self._report_outcome_known(job, result)
+        if evidence:
+            ours = _evidence_is_ours(evidence)
+            operations.succeed(
+                job["id"], operations.REPORT, verified=True, recovered=True,
+                note=("Reconciled: a report for this student and assignment is "
+                      f"already on the submission ({evidence.get('matched')})"))
+            return "succeeded" if ours else "recovered_other"
+        if not readable:
+            operations.fail(
+                job["id"], operations.REPORT, code="report_outcome_unknown",
+                message="The submission could not be read while reconciling.",
+                ambiguous=True,
+                note="The report's outcome could not be established.")
+            return "unknown"
+        op = operations.get(job["id"], operations.REPORT) or {}
+        if op.get("error") and not op.get("resolved"):
+            return "failed"
+        if state.get("status") in ra.FAILED_STATUSES:
+            return "failed"
+        return "pending"
+
+    def _reconcile_grade(self, job: dict) -> str:
+        """The grade's REAL state: succeeded / failed / pending / unknown."""
+        grade = job.get("grade")
+        if grade not in grading.VALID_GRADES:
+            return "pending"
+        known = self._grade_outcome_known(job)
+        if known:
+            note = f"Reconciled: grade {grade} is in Google Classroom"
+            if known.get("conflicting") is not None:
+                note += (f" (Classroom also holds "
+                         f"{known['conflicting']:g} from another correction)")
+            operations.succeed(job["id"], operations.GRADE, verified=True,
+                               recovered=True, note=note)
+            return "succeeded"
+        op = operations.get(job["id"], operations.GRADE) or {}
+        if op.get("state") == operations.NEEDS_VERIFICATION:
+            # We could not read the submission at all: unknown, not failed.
+            try:
+                self._read_submission(job)
+            except Exception:  # noqa: BLE001
+                return "unknown"
+        if op.get("state") == operations.FAILED and not op.get("resolved"):
+            return "failed"
+        return "pending"
+
+    def _reconcile_return(self, job: dict) -> str:
+        """The return's REAL state: succeeded / failed / pending / unknown."""
+        try:
+            submission = self._read_submission(job)
+        except Exception:  # noqa: BLE001
+            op = operations.get(job["id"], operations.RETURN) or {}
+            operations.fail(
+                job["id"], operations.RETURN, code="return_outcome_unknown",
+                message="The submission could not be read while reconciling.",
+                ambiguous=True)
+            return "unknown" if op.get("state") != operations.SUCCEEDED \
+                else "succeeded"
+        if str((submission or {}).get("state") or "").upper() == "RETURNED":
+            operations.succeed(job["id"], operations.RETURN, verified=True,
+                               recovered=True,
+                               note="Reconciled: Classroom reports the work as "
+                                    "returned")
+            return "succeeded"
+        op = operations.get(job["id"], operations.RETURN) or {}
+        if op.get("state") == operations.FAILED and not op.get("resolved"):
+            return "failed"
+        return "pending"
+
+    def reconcile_stale(self, *, limit: int = 25,
+                        min_age_seconds: float | None = None) -> dict:
+        """Reconcile the jobs whose recorded state may no longer be true.
+
+        Bounded (a fixed maximum per call), read-only, and skipped entirely for
+        jobs that are still progressing — so this can be offered as a refresh
+        button without turning into a background loop or a stream of Google
+        requests.
+
+        ``min_age_seconds`` narrows it further to jobs that have not been
+        touched recently, which is how the periodic pass avoids re-reading the
+        same parked job on every cycle.
+        """
+        statuses = tuple(states.RETRYABLE_FAILURES) + tuple(
+            states.UNRESOLVED_TERMINAL)
+        marks = ",".join("?" * len(statuses))
+        params: list = [*statuses]
+        age_clause = ""
+        if min_age_seconds:
+            age_clause = "AND updated_at <= ? "
+            params.append(time.time() - float(min_age_seconds))
+        params.append(max(1, min(int(limit or 25), 100)))
+        rows = db.query(
+            f"SELECT * FROM automation_jobs WHERE hidden_at IS NULL "
+            f"AND status IN ({marks}) {age_clause}ORDER BY updated_at DESC LIMIT ?",
+            params)
+        checked = superseded = completed = still_open = failed = 0
+        for row in rows:
+            job = dict(row)
+            try:
+                updated = self.reconcile(job["id"])
+            except Exception as exc:  # noqa: BLE001 — one job must not stop the rest
+                log.warning("reconcile failed for job %s: %s", job["id"], exc)
+                failed += 1
+                continue
+            checked += 1
+            status = (updated or job)["status"]
+            if status == states.SUPERSEDED:
+                superseded += 1
+            elif status == states.COMPLETE:
+                completed += 1
+            elif status in states.RETRYABLE_FAILURES \
+                    or status in states.UNRESOLVED_TERMINAL:
+                still_open += 1
+            else:
+                still_open += 1
+        return {"checked": checked, "completed": completed,
+                "superseded": superseded, "still_open": still_open,
+                "failed": failed}
 
 
 def _transient_publish(result: dict) -> bool:

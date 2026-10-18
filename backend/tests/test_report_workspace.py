@@ -183,7 +183,8 @@ class TestOptions:
     def test_options_decodes_assignment_codes(self, client):
         data = client.get("/api/reports/options").json()
         by_id = {a["id"]: a for a in data["assignments"]}
-        assert by_id["cw-ws-l4"]["code"] == "L4"
+        # Chapter 2's lesson 4 keeps its chapter in the identifier.
+        assert by_id["cw-ws-l4"]["code"] == "CH2L4"
         assert by_id["cw-ws-l4"]["chapter"] == "2"
         assert by_id["cw-ws-l4"]["lesson"] == "4"
 
@@ -216,11 +217,12 @@ class TestAssignmentFilter:
 
     def test_single_assignment(self, client):
         model = _build(client, assignments="cw-ws-l1")
-        assert [a["code"] for a in model["assignments"]] == ["L1"]
+        assert [a["code"] for a in model["assignments"]] == ["CH1L1"]
 
     def test_multiple_assignments_keep_their_order_and_codes(self, client):
         model = _build(client, assignments="cw-ws-l1,cw-ws-l4")
-        assert sorted(a["code"] for a in model["assignments"]) == ["L1", "L4"]
+        assert sorted(a["code"] for a in model["assignments"]) == [
+            "CH1L1", "CH2L4"]
 
     def test_all_assignments(self, client):
         model = _build(client, assignments="all")
@@ -451,7 +453,7 @@ class TestMissingOnlyMode:
                        assignments="cw-ws-l1")
         codes = {a["code"] for g in model["groups"]
                  for row in g["missing"] for a in row["assignments"]}
-        assert codes == {"L1"}
+        assert codes == {"CH1L1"}
 
     def test_missing_only_groups_by_class(self, client):
         model = _build(client, report_type="missing", statuses="missing")

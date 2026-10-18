@@ -23,8 +23,8 @@ APP_VERSION = "5.2.1"
 # Revision suffix: build 20261012 shipped first; "-2" is the same day with
 # the fixes from the 2026-10-12 audit (port-probe, job progress, runtime
 # packaging). A support conversation can tell the two apart by this.
-BUILD_NUMBER = "20261012-2"
-BUILD_DATE = "2026-10-12"
+BUILD_NUMBER = "20261013-rc1"
+BUILD_DATE = "2026-10-13"
 
 # Bump ONLY when a change requires migrating stored data. ``db._migrate``
 # records the version it has brought the database up to in ``app_meta``; an

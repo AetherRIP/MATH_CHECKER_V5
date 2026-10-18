@@ -232,3 +232,281 @@ class TestAuditApiIsReadOnlyAndPrivate:
             response = client.get(f"/api/audit/reports/{bad}")
             # Either the auth gate or the name check refuses it — never a file.
             assert response.status_code in (400, 401, 403, 404)
+
+
+class TestNoWritePathCanBypassTheGuard:
+    """Every route to Google Classroom / Drive is AUDITED, not promised.
+
+    A teacher can hide a button; a retry, a scheduled job, a background worker
+    or a direct API call does not care about buttons. A single unguarded
+    ``requests.post`` is enough to publish a grade or attach a report to a real
+    student's submission, so the coverage is established mechanically here:
+
+    * the SOURCE is parsed and every raw HTTP write in the app must sit inside a
+      ``_guarded_write``-decorated function (adding a new one breaks the build);
+    * the write VERBS are exercised and the HTTP transport is rigged to fail
+      loudly, so a bypass is a test failure rather than a silent upload;
+    * the WORKHORSE the job queue and the API both use (``attach_report``) is run
+      for real and must refuse with the honest testing-only reason;
+    * the HTTP ENDPOINT is called and must answer 403 with the testing-only code.
+
+    Scope, stated honestly: this covers the Classroom/Drive publication paths
+    reachable through ``requests``. The app's other ``urllib`` egress (the
+    tunnel, the update checker, the distributed agent heartbeat) does not touch
+    Classroom or a student's record and is deliberately out of scope here.
+    """
+
+    #: The only functions in the app that may call ``requests`` with a write
+    #: verb. Each is decorated with ``_guarded_write``; the AST audit below
+    #: proves it. Adding an entry here is a deliberate, reviewed change — which
+    #: is the point: it cannot happen by accident.
+    RAW_WRITE_FUNCTIONS = {
+        "upload_report_to_drive",
+        "replace_drive_file_content",
+        "delete_drive_file",
+    }
+    WRITE_VERBS = {"post", "patch", "put", "delete"}
+
+    @classmethod
+    def _raw_writes(cls, path: Path) -> dict[str, tuple[set, bool]]:
+        """Map every function in ``path`` that writes over HTTP to whether it
+        is guarded. Read from the source, so it cannot drift from the code."""
+        import ast
+
+        found: dict[str, tuple[set, bool]] = {}
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            verbs = set()
+            for inner in ast.walk(node):
+                if (isinstance(inner, ast.Call)
+                        and isinstance(inner.func, ast.Attribute)
+                        and inner.func.attr in cls.WRITE_VERBS
+                        and isinstance(inner.func.value, ast.Name)
+                        and inner.func.value.id in ("requests", "httpx")):
+                    verbs.add(inner.func.attr)
+            if not verbs:
+                continue
+            names = set()
+            for dec in node.decorator_list:
+                if isinstance(dec, ast.Name):
+                    names.add(dec.id)
+                elif isinstance(dec, ast.Attribute):
+                    names.add(dec.attr)
+                elif isinstance(dec, ast.Call):
+                    target = dec.func
+                    names.add(target.id if isinstance(target, ast.Name)
+                              else getattr(target, "attr", ""))
+            found[node.name] = (verbs, "_guarded_write" in names)
+        return found
+
+    @staticmethod
+    def _app_sources() -> list[Path]:
+        from pathlib import Path
+
+        from app import __file__ as app_init
+
+        root = Path(app_init).resolve().parent
+        return [p for p in root.rglob("*.py") if "__pycache__" not in p.parts]
+
+    @staticmethod
+    def _seed_result(result_id: str, *, coursework_id: str = "cw-1",
+                     course_id: str = "course-1", submission_id: str = "sub-1",
+                     student_id: str = "stu-1") -> None:
+        """Real rows: report_attachments has FOREIGN KEYs to results, so an
+        attachment state can only exist for a correction that really does."""
+        from app import db
+
+        db.execute("INSERT OR IGNORE INTO courses(id, name, fetched_at) "
+                   "VALUES(?,?,?)", (course_id, "Guard course", 1.0))
+        db.execute("INSERT OR IGNORE INTO correction_jobs(id, status, "
+                   "created_at, updated_at) VALUES(?,?,?,?)",
+                   (f"job-{result_id}", "COMPLETED", 1.0, 1.0))
+        db.execute("INSERT OR IGNORE INTO coursework(id, course_id, title, "
+                   "classroom_title, sync_state, allowlisted, fetched_at) "
+                   "VALUES(?,?,?,?,?,?,?)",
+                   (coursework_id, course_id, "Guard fixture", "Guard fixture",
+                    "ACTIVE", 0, 1.0))
+        db.execute("INSERT OR IGNORE INTO results(id, job_id, coursework_id, "
+                   "submission_id, student_id, student_name, earned, available, "
+                   "percentage, result_json, created_at) "
+                   "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                   (result_id, f"job-{result_id}", coursework_id, submission_id,
+                    student_id, "Fixture", 0, 0, 0.0, '{"questions": []}', 1.0))
+
+    @staticmethod
+    def _modifiable_submission() -> dict:
+        """What Classroom returns for a submission this app may modify.
+
+        Without ``associatedWithDeveloper`` the attach path correctly refuses
+        with BLOCKED_NOT_MODIFIABLE - long before the testing-only gate - and
+        the test would then be measuring the wrong refusal.
+        """
+        return {"id": "sub-1", "userId": "stu-1", "state": "TURNED_IN",
+                "associatedWithDeveloper": True,
+                "assignmentSubmission": {"attachments": []}}
+
+    @staticmethod
+    def _rig_transport(monkeypatch, module, read_body: dict | None = None) -> list:
+        """Make every HTTP write a recorded, hard failure; keep reads offline.
+
+        Called BEFORE the code under test. If the guard lets a write through,
+        the request lands here instead of at Google and the test fails with an
+        explicit message - the transport is the last line of defence, so a
+        promise cannot reach it unnoticed.
+
+        Reads are answered locally rather than blocked, because testing-only
+        mode deliberately still permits them (a reviewer has to see the real
+        submissions), and a unit test must not depend on the network either way.
+        """
+        reached: list = []
+
+        class _Stub:
+            status_code = 200
+            content = b"{}"
+            text = "{}"
+
+            @staticmethod
+            def json():
+                return read_body if read_body is not None else {}
+
+        def tripwire(*args, **kwargs):
+            reached.append((args, kwargs))
+            raise AssertionError(
+                "a Google write reached the HTTP transport while testing-only "
+                "mode was ON - the guard was bypassed")
+
+        def fake_request(method, url=None, *args, **kwargs):
+            if str(method or "GET").upper() in ("GET", "HEAD", "OPTIONS"):
+                return _Stub()
+            return tripwire(method, url, *args, **kwargs)
+
+        monkeypatch.setattr(module.requests, "request", fake_request)
+        for name in ("get", "head"):
+            monkeypatch.setattr(module.requests, name, lambda *a, **k: _Stub())
+        for name in ("post", "patch", "put", "delete"):
+            monkeypatch.setattr(module.requests, name, tripwire)
+        return reached
+
+    def test_the_only_raw_drive_writes_are_the_reviewed_three(self):
+        from pathlib import Path
+
+        from app.classroom import client as gc
+
+        audited = self._raw_writes(Path(gc.__file__))
+        assert set(audited) == self.RAW_WRITE_FUNCTIONS, (
+            "a raw HTTP write was added or removed in classroom/client.py; "
+            "review it for the testing-only guard and update "
+            f"RAW_WRITE_FUNCTIONS. Found: {sorted(audited)}")
+        unguarded = sorted(name for name, (_, guarded) in audited.items()
+                           if not guarded)
+        assert unguarded == [], (
+            f"{unguarded} can reach Google with a raw write while testing-only "
+            "mode is on - decorate it with @_guarded_write")
+
+    def test_no_other_module_in_the_app_can_write_over_http(self):
+        """A new module is the easiest place for a bypass to appear."""
+        from pathlib import Path
+
+        from app.classroom import client as gc
+
+        client_path = Path(gc.__file__).resolve()
+        offenders = {}
+        for path in self._app_sources():
+            if path.resolve() == client_path:
+                continue                    # audited by the test above
+            audited = self._raw_writes(path)
+            if audited:
+                offenders[path.name] = sorted(audited)
+        assert offenders == {}, (
+            f"HTTP writes outside classroom/client.py: {offenders}. Route them "
+            "through the guarded client so testing-only mode can stop them.")
+
+    def test_the_app_does_not_use_a_session_that_would_evade_the_audit(self):
+        """``requests.Session().post(...)`` hides the receiver from the AST
+        audit above, so its absence is asserted instead of assumed."""
+        offenders = [p.name for p in self._app_sources()
+                     if "requests.Session(" in p.read_text(encoding="utf-8")]
+        assert offenders == [], (
+            f"{offenders} build a requests.Session; a session-based write would "
+            "not pass through the guarded client")
+
+    @pytest.mark.parametrize("verb", ["POST", "PATCH", "PUT", "DELETE"])
+    def test_every_mutating_verb_is_refused_before_the_transport(
+            self, testing_only, monkeypatch, verb):
+        from app.classroom import client as gc
+
+        reached = self._rig_transport(monkeypatch, gc)
+        with pytest.raises(PublicationBlocked):
+            gc.classroom_request(verb, f"{gc.CLASSROOM_BASE}/courses/1", "tok",
+                                 json={"draftGrade": 9})
+        assert reached == [], "nothing may be sent to Google in testing mode"
+
+    def test_the_shared_job_and_api_path_attach_report_is_held_back(
+            self, testing_only, monkeypatch):
+        """``attach_report`` is what the API route, the retry queue and the
+        scheduler all call, so it is the one that must refuse on its own."""
+        from app.classroom import client as gc
+        from app.classroom import report_attachment as ra
+
+        self._seed_result("result-guard-1", coursework_id="cw-1",
+                          course_id="course-1")
+        reached = self._rig_transport(monkeypatch, gc,
+                                      read_body=self._modifiable_submission())
+        # Rendering and PDF validation are LOCAL work and cannot publish
+        # anything, so they are pinned here to measure the guard rather than
+        # the PDF generator.
+        monkeypatch.setattr(ra, "render_report_pdf",
+                            lambda *a, **k: b"%PDF-1.4 local-only")
+        monkeypatch.setattr(ra, "_validate_pdf", lambda *a, **k: {"ok": True})
+
+        outcome = ra.attach_report("unused-token", {
+            "id": "result-guard-1", "coursework_id": "cw-1",
+            "submission_id": "sub-1", "student_id": "stu-1",
+            "student_name": "Fixture", "result_json": {"questions": []},
+        }, course_id="course-1")
+
+        assert reached == [], "attach_report must not touch Drive"
+        assert outcome.status == ra.STATUS_TESTING_BLOCKED, outcome.message
+        assert "TESTING" in outcome.message.upper()
+        assert "Settings" in outcome.message
+
+    def test_the_attach_endpoint_answers_403_with_the_testing_only_code(
+            self, testing_only, fresh_state, monkeypatch):
+        """The HTTP path a scheduler or a stray curl would take is gated too."""
+        import os
+        import types as _types
+
+        os.environ.setdefault("MC5_LOGIN_REQUIRED", "0")
+        from fastapi.testclient import TestClient
+
+        from app import db
+        from app.api import routes_all
+        from app.classroom import report_attachment as ra
+        from app.main import app
+
+        # A real correction row: the endpoint refuses nothing for an unknown id,
+        # and a fake id would make this test pass for the wrong reason.
+        self._seed_result("result-guard-api", coursework_id="cw-guard-api",
+                          course_id="course-guard-api")
+
+        # Connected on paper only. The guard trips before any Google call, so no
+        # token is ever minted - this asserts the ORDER, not a lucky failure.
+        monkeypatch.setattr(routes_all, "auth_state", lambda: _types.SimpleNamespace(
+            connected=True, problem=None))
+        monkeypatch.setattr(routes_all, "get_access_token", lambda: "unused")
+        monkeypatch.setattr(ra, "render_report_pdf",
+                            lambda *a, **k: b"%PDF-1.4 local-only")
+        monkeypatch.setattr(ra, "_validate_pdf", lambda *a, **k: {"ok": True})
+        # The endpoint must not reach Drive even once.
+        from app.classroom import client as gc
+        reached = self._rig_transport(monkeypatch, gc,
+                                      read_body=self._modifiable_submission())
+
+        with TestClient(app) as client:
+            response = client.post("/api/results/result-guard-api/attach-report")
+
+        assert reached == [], "the API published something with testing on"
+        assert response.status_code == 403, response.text
+        assert response.json().get("code") == ra.ERROR_TESTING_ONLY, response.text

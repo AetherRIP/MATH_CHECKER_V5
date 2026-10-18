@@ -71,14 +71,14 @@ def main(argv: list[str]) -> int:
     D.add(story, D.group_divider(theme, styles, "Class 10A", meta="6 students"))
     D.add(story, D.data_table(
         theme, styles, ["Student", "Missing homework"],
-        [["Abdulrahman Mohammed-Ali", "L1 / L2 / L3"],
-         ["Tala", "L4"],
-         ["Menatullah", "L2 / L5"]],
+        [["Abdulrahman Mohammed-Ali", "CH1L1 / CH1L2 / CH1L3"],
+         ["Tala", "CH1L4"],
+         ["Menatullah", "CH1L2 / CH2L1"]],
         widths=[theme.width * 0.45, theme.width * 0.55]))
     # Enough rows to force a page break, so the running header, the repeated
     # column header and "Page X of Y" are all exercised.
     long_rows = [
-        [f"Student {i}", f"{i % 7 + 1} / Lesson {i % 12 + 1} Homework",
+        [f"Student {i}", f"CH{i % 7 + 1}L{i % 12 + 1} Homework",
          f"{i * 3 % 9 + 1} / {i * 7 % 13 + 1}"]
         for i in range(1, 46)
     ]

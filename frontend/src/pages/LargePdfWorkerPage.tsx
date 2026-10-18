@@ -8,6 +8,7 @@ import {
   Badge, Button, DataTable, Empty, PageHeader, Progress, Stat, useToast,
 } from "../components";
 import { useAdaptivePoll } from "../useAdaptivePoll";
+import { isLargeJobTerminal } from "../largePdfPolling";
 
 function statusTone(status: string): "ok" | "err" | "warn" | "info" | "mute" {
   if (status === "COMPLETED") return "ok";
@@ -66,8 +67,7 @@ export default function LargePdfWorkerPage({
     load();
   }, [load]);
 
-  const busyJob = Boolean(listing && listing.jobs.some((j) =>
-    !["COMPLETED", "FAILED", "CANCELLED", "ERROR"].includes(j.status)));
+  const busyJob = Boolean(listing && listing.jobs.some((j) => !isLargeJobTerminal(j.status)));
   useAdaptivePoll(load, { active: busyJob, fast: 2500, idle: 20_000, immediate: false });
 
   async function submit() {

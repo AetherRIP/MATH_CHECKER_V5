@@ -263,7 +263,8 @@ python -m pytest backend/tests/test_lifecycle_end_to_end.py -q   # real backend,
   no cloud dependency. The relay is a child of the same console window the app
   has always run in: closing that window still stops everything.
 * **The install must keep the relay running** for the on-demand start to work.
-  The existing autostart/boot task (`setup.bat` → `install_autostart.py`) now
+  The autostart/boot task (`setup.bat /autostart` → `install_autostart.py`;
+  startup is opt-in — a plain `setup.bat` registers nothing) now
   supervises the relay instead of a backend that exits when idle, which is what
   you want — but it does mean a small process is resident after an idle stop.
   Set `supervisor = false` if you would rather have no resident process.

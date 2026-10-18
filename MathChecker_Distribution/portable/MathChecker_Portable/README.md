@@ -1,9 +1,9 @@
 # Math Checker V5
 
 Production Edexcel IGCSE 4MA1 homework correction system. **Built around the
-proven correction engine** from `Friend code/edexcel-maths-correctorv2-main`
-(preserved untouched as the reference implementation), wrapped in a reliable
-multi-key, job-based, local-first application.
+proven correction engine**, preserved verbatim in
+`backend/app/engine/legacy_marking.py`, wrapped in a reliable multi-key,
+job-based, local-first application.
 
 > **New in 5.1 (productisation pass):** first-run setup wizard, configurable
 grade boundaries, deterministic result guard (a valid mark can never be
@@ -45,10 +45,10 @@ start.bat
 # or directly (Python 3.12+)
 python main.py
 
-# Frontend (only needed when changing UI code; a build ships in frontend/dist)
+# Frontend (only needed when changing UI code)
 cd frontend
-npm install             # must be run on the OS that runs the app
-npm run build
+npm ci                  # reproducible install from package-lock.json
+npm run build            # generates frontend/dist for the backend to serve
 ```
 
 On first launch the app opens a **setup wizard** (teacher name, AI keys, Google
@@ -89,13 +89,12 @@ backend/app/
   workers/   pool.py · adapter.py · child.py (isolated correction process)
   classroom/ auth.py · client.py · sync.py · submissions.py · tracking_routes.py
   api/       routes_all.py (REST + SSE) · student_routes.py (profiles/nicknames)
-backend/tests/          271 tests (engine, blueprint, keys, jobs, tracking, reports, API,
-                               retry/failover — all provider failures mocked, no quota)
+backend/tests/          pytest regression suite (engine, blueprint, keys, jobs, tracking,
+                        reports, API, retry/failover; provider calls are mocked)
 backend/scripts/        compare_legacy.py · repeatability.py (same PDF, N runs)
 frontend/               React glass UI (built dist served by the backend)
 agent/                  tiny-agent source (shipped, disabled in this version)
 scripts/                build_portable.py · install_autostart.py · two_env_e2e.py
-Friend code/            original Streamlit app — untouched reference
 data/                   git-ignored: app.db, secrets.toml, secrets/, blueprints/, logs/
 docs/                   reports, results, logs and evidence from the build work
                         (never shipped) — start at docs/README.md
@@ -137,8 +136,7 @@ away, and the cleanup policy — is in
   cd backend
   python scripts/compare_legacy.py --student work.pdf --scheme scheme.pdf
   ```
-  Run the same PDFs through the original Streamlit app and diff the printed
-  question marks — they come from the identical preserved code path.
+  When the separate original Streamlit reference app is available, run the same PDFs through it and diff the printed question marks — V5 retains the marking code path in `backend/app/engine/legacy_marking.py`. The reference copy is not part of this checkout.
 - Repeatability (the property V5 exists to guarantee):
   ```bash
   cd backend
@@ -146,9 +144,7 @@ away, and the cleanup policy — is in
   # runs the SAME student PDF + SAME mark scheme N times and prints a
   # per-question matrix, totals, models, key fingerprints and a VERDICT.
   ```
-  Measured on `data/fixtures/real/` (3 configured keys): 5 runs produced
-  4×75/103 and 1×74/103 with an identical question set, identical maximum
-  marks (blueprint), and all three keys used.
+  Historical measured results on private `data/fixtures/real/` are recorded in the audit reports under `docs/reports/`; those real-student fixtures are intentionally not included in source or release artifacts.
 
 ## Honest limitations
 
@@ -185,7 +181,7 @@ Everything below is additive; the correction pipeline is untouched.
 | Retention (§19) | `[retention]` config actually enforced: `never` / `until_complete` / `days` / `always`; retained originals expire and are reclaimed at startup. Mark schemes are never retained |
 | Network access (§26) | `[network] access_mode = local \| lan`. Local (127.0.0.1) is the default; LAN is an explicit opt-in. Public exposure is deliberately not offered |
 | Versioning (§44/§45) | `app/version.py` is the single source of truth (app + schema version). `db._migrate` records the schema version and refuses to migrate a newer database backwards |
-| Portable build | `scripts/build_portable.py` assembles a shareable folder and refuses to ship credential files. `start.bat`/`start.sh` support portable mode (`portable.flag`) and a bundled `runtime/` |
+| Legacy portable helper | `scripts/build_portable.py` is retained for older workflows; the canonical distributable is built by `MathChecker_Distribution/build_release.bat` and its allowlist/privacy scanner. `start.bat`/`start.sh` support portable mode (`portable.flag`) and a bundled `runtime/` |
 
 ## Teacher experience & Classroom honesty (5.2)
 
@@ -261,7 +257,7 @@ modules (`*.pyd`) — a runtime like that looks complete but cannot import
 See `MathChecker_Distribution/README.md` for the details.
 
 Privacy is solved by **not distributing** private material, never by hiding it:
-`Friend code/`, `data/`, credentials, tokens, databases, PDFs, logs, `.git/`
+`data/`, credentials, tokens, databases, PDFs, logs, `.git/`
 and development caches are refused by both the allowlist and the independent
 scan. See `MathChecker_Distribution/documentation/PRIVACY.md`.
 
@@ -283,3 +279,101 @@ and reinstalls never destroy it.
 - Keys/secrets only in `data/secrets.toml` + `data/secrets/` (git-ignored, chmod 600)
 - API never returns key material; logs pass a redaction filter
 - Keys are referenced everywhere by SHA-256 fingerprint prefix
+
+## Developer quick reference
+
+### Clean Windows setup and launch
+
+1. Install Python 3.12 or later and enable **Add Python to PATH**.
+2. From the project folder, run `setup.bat` once. It creates a native `.venv`,
+   installs `backend/requirements.txt`, and configures startup (Windows may
+   show UAC; if declined, setup uses the per-user startup option).
+3. Run `start.bat` from the project folder. It serves the built UI at
+   `http://127.0.0.1:8642`; use `start.bat 9000` to select a port.
+4. Complete the first-run setup in the UI. Add Gemini keys and optionally
+   connect Classroom there; do not put credentials in source or documentation.
+
+For local UI development, install Node.js/npm, then from `frontend/` run
+`npm ci`, `npm run build`, or `npm run dev`. The checked-in package lockfile
+pins the dependency tree. `start.bat` serves `frontend/dist`, not the Vite dev
+server.
+
+### Tests and diagnostics
+
+From the project root, run the backend regression suite with:
+
+```bat
+python -m pytest backend\tests -q
+```
+
+From `frontend/`, run the TypeScript/production build with `npm run build` and
+the dependency-free frontend regression test with:
+
+```bat
+node --test --experimental-strip-types tests\largePdfPolling.test.ts
+```
+
+There is intentionally no `npm test` script. If the UI appears stale after a
+build, restart the existing backend with `start.bat` and confirm the displayed
+port is the one being served. For focused startup, scheme-review, and release
+checks, use the corresponding tests under `backend/tests/`; lifecycle runbook
+and commands are in [docs/SERVER_LIFECYCLE.md](docs/SERVER_LIFECYCLE.md).
+
+### Configuration and generated/runtime files
+
+This app is configured through its first-run wizard and Settings, not `.env`.
+The source checkout's persistent state defaults to `data/`; the portable
+package uses its adjacent `Data/` folder, while an installed Windows build
+keeps user data under `%LOCALAPPDATA%\\MathChecker\\`. `MC5_DATA_DIR` can
+select an isolated data root for development and tests. The SQLite database,
+TOML settings/secrets, Classroom OAuth files, blueprints, cached mark schemes,
+retained submissions, logs, and temporary job inputs live under that selected
+root. In particular, runtime logs are under `data/logs/` in a source checkout;
+transient correction inputs are under `data/tmp/` and are cleaned as jobs
+finish. Do not manually remove these directories while the application is
+running or while retaining records is enabled.
+
+| Edit this | For this purpose |
+|---|---|
+| `backend/app/` | FastAPI routes and application services; the subsystems and boundaries are mapped in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| `backend/app/engine/legacy_marking.py` | Preserved mathematical-marking implementation; scoring changes require separate review and regression tests |
+| `backend/app/schema.sql` | SQLite schema and migrations (keep existing data compatibility) |
+| `frontend/src/` | React/TypeScript interface |
+| `backend/tests/`, `frontend/tests/` | Regression tests and fixtures (keep private real records out) |
+| `MathChecker_Distribution/scripts/` and `installer/` | Allowlist, privacy scan, package assembly, and installer inputs |
+
+`frontend/dist/` is built from `frontend/src/`. The distribution's `build/`,
+`release_staging/`, `portable/`, and `release/` are pipeline outputs; do not
+edit them by hand. Older packages in `previous_builds/` are retained rollback
+material. Release builds read source and application data is kept outside the
+release staging tree; the pipeline cleans its generated package folders and
+archives the previous release before replacing it.
+
+### Build a distributable
+
+On Windows, run `MathChecker_Distribution\\build_release.bat` from the project
+root (or change into `MathChecker_Distribution/` and run `build_release.bat`).
+It builds the frontend, assembles from the explicit allowlist, scans for secrets
+and personal data, validates the bundled runtime and writes outputs under
+`MathChecker_Distribution/release/`. Inno Setup 6 is needed on the build
+computer to produce the installer. Check the generated manifest and hashes and
+run `python scripts\\verify_portable.py --zip release\\MathChecker_Portable.zip`
+from `MathChecker_Distribution/` before sharing.
+
+The packaging verifiers run in Demo mode, where the engine is mocked: they prove
+the pipeline, never the marking. Certify live marking accuracy separately and
+deliberately with `python scripts\verify_live_marking.py --live` — opt-in, so it
+sends nothing without the flag; with it, it sends one real correction to Gemini
+using the configured key, works in a throwaway data folder with Testing-only
+mode on, and compares the model's marks with ground truth. Exit 0 only when
+accuracy is certified.
+
+Do not distribute `build/`,
+`release_staging/`, `portable/`, test data, or previous-build folders.
+
+## Architecture overview
+
+Start with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the correction
+pipeline, API/UI boundaries, persistence and integration relationships. The
+full folder and artifact inventory is in
+[docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md).

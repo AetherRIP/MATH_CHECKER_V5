@@ -83,17 +83,28 @@ class RecoveryPlan:
 
 
 def build_narrow_blueprint(mark_scheme_path: str | None,
-                           missing: list[str]) -> dict | None:
-    """Blueprint for ONLY the missing questions (no AI extraction call)."""
-    if not mark_scheme_path or not missing:
+                           missing: list[str],
+                           *, blueprint: dict | None = None) -> dict | None:
+    """Blueprint for ONLY the missing questions (no AI extraction call).
+
+    ``blueprint`` is the reconciled structure the caller already holds. Passing
+    it removes the dependency on a cached mark-scheme FILE, which is what made
+    the retry impossible for a scheme that arrived from Classroom/Drive: the
+    omitted question kept its placeholder 0 instead of being re-marked.
+    """
+    if not missing:
         return None
-    return qi.narrow_blueprint(mark_scheme_path, missing[:MAXMISS_IN_PROMPT])
+    if blueprint is None and not mark_scheme_path:
+        return None
+    return qi.narrow_blueprint(mark_scheme_path, missing[:MAXMISS_IN_PROMPT],
+                               blueprint=blueprint)
 
 
 def run_recovery_round(*, client, missing: list[str],
                        student_remote, mark_scheme_remote,
                        question_remote=None,
                        mark_scheme_path: str | None = None,
+                       blueprint: dict | None = None,
                        context_note: str = "") -> RecoveryOutcome:
     """ONE recovery pass: re-mark ONLY the still-missing questions.
 
@@ -106,6 +117,10 @@ def run_recovery_round(*, client, missing: list[str],
     ``still_missing`` lists questions that remain unaccounted for, in the
     order they should be retried next round (a partial retry's progress is
     never lost).
+
+    ``blueprint`` is the caller's reconciled in-memory structure; passing it
+    lets the retry build its narrow prompt without a cached mark-scheme file
+    (see :func:`build_narrow_blueprint`).
     """
     still_missing = list(missing)
     recovered: dict[str, dict] = {}
@@ -113,7 +128,8 @@ def run_recovery_round(*, client, missing: list[str],
         return RecoveryOutcome(ok=True, recovered=recovered,
                                still_missing=still_missing)
 
-    narrow = build_narrow_blueprint(mark_scheme_path, missing)
+    narrow = build_narrow_blueprint(mark_scheme_path, missing,
+                                    blueprint=blueprint)
     if narrow is None:
         # No reliable narrower (e.g. no cached blueprint for this mark
         # scheme). Bounded escalation: leave the gap UNRESOLVED rather than

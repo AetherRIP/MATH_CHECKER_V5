@@ -1,0 +1,41 @@
+{
+  "testing_only_armed": true,
+  "helpers_driven": 6,
+  "helpers_blocked": 6,
+  "write_egress_attempts": 0,
+  "read_egress_attempts": 1,
+  "read_still_allowed": true,
+  "read_error": null,
+  "results": [
+    {
+      "helper": "upload_report_to_drive",
+      "outcome": "BLOCKED",
+      "message": "TESTING ONLY: 'upload report to Drive' was blocked and nothing was sent to Google Classroom or Drive. Testing only mode is ON: results from this run are private"
+    },
+    {
+      "helper": "replace_drive_file_content",
+      "outcome": "BLOCKED",
+      "message": "TESTING ONLY: 'replace a Drive file' was blocked and nothing was sent to Google Classroom or Drive. Testing only mode is ON: results from this run are private t"
+    },
+    {
+      "helper": "share_drive_file",
+      "outcome": "BLOCKED",
+      "message": "TESTING ONLY: 'share a Drive file' was blocked and nothing was sent to Google Classroom or Drive. Testing only mode is ON: results from this run are private to "
+    },
+    {
+      "helper": "delete_drive_file",
+      "outcome": "BLOCKED",
+      "message": "TESTING ONLY: 'delete a Drive file' was blocked and nothing was sent to Google Classroom or Drive. Testing only mode is ON: results from this run are private to"
+    },
+    {
+      "helper": "classroom_request POST (return work)",
+      "outcome": "BLOCKED",
+      "message": "TESTING ONLY: 'POST https://classroom.googleapis.com/v1/courses/1/courseWork/2/studentSubmissions/3:return' was blocked and nothing was sent to Google Classroom"
+    },
+    {
+      "helper": "classroom_request PATCH (grade)",
+      "outcome": "BLOCKED",
+      "message": "TESTING ONLY: 'PATCH https://classroom.googleapis.com/v1/courses/1/courseWork/2/studentSubmissions/3' was blocked and nothing was sent to Google Classroom or Dr"
+    }
+  ]
+}

@@ -107,7 +107,7 @@ def http(method: str, url: str, *, data: bytes | None = None,
             return resp.status, _lower(resp.headers), resp.read()
     except urllib.error.HTTPError as exc:
         return exc.code, _lower(exc.headers), exc.read()
-    except urllib.error.URLError:
+    except (urllib.error.URLError, TimeoutError, ConnectionError):
         return 0, {}, b""          # nothing listening yet, or it went away
 
 
@@ -574,6 +574,12 @@ def sign_in(port: int, data_dir: Path, label: str = "verifier") -> tuple[str, st
 
     # First-run configuration: the same call the sign-in screen makes.
     password = f"portable-verify-{label}-2026"
+    # On restart the host account already exists. Try the test's existing
+    # credential before requesting first-run setup (which correctly refuses
+    # account replacement without the current password).
+    existing = attempt(label, password)
+    if existing:
+        return existing
     status, _, _ = http("POST", f"http://127.0.0.1:{port}/api/auth/setup",
                         data=json.dumps({"username": label,
                                          "password": password}).encode(),
@@ -586,10 +592,13 @@ def sign_in(port: int, data_dir: Path, label: str = "verifier") -> tuple[str, st
 
 def check_auth(report: Report, instance: Instance, data_dir: Path) -> tuple[str, str] | None:
     report.note("\n== sign-in ==")
+    # A fresh LOCAL installation intentionally permits first-run setup until
+    # its first account is created. Verify protection after configuring it;
+    # do not mistake that documented bootstrap phase for an existing session.
+    session = sign_in(instance.port, data_dir)
     status, _, _ = http("GET", f"http://127.0.0.1:{instance.port}/api/data/inventory")
     report.check("protected API refuses an anonymous caller", status == 401,
-                 f"GET /api/data/inventory without a session → {status}")
-    session = sign_in(instance.port, data_dir)
+                 f"GET /api/data/inventory after account setup without a session → {status}")
     report.check("the credentials this copy generated work", session is not None,
                  "signed in as the bootstrap developer account"
                  if session else "login failed")

@@ -41,13 +41,25 @@ LAST = ["Shady", "Ahmed", "Mohamed", "Fawzy", "Ozo", "Ihab", "Sameh",
         "Ibrahim", "Mahmoud", "El Abyad", "Yasier", "Fahmy", "Essam"]
 
 
+#: Real schemes restart lesson numbering inside every chapter, so the review
+#: sample has to as well - overlapping lesson numbers are exactly the case a
+#: lesson-only code collapsed into one another.
+LESSONS_PER_CHAPTER = 4
+
+
 def _codes(count: int) -> list[CR.AssignmentCode]:
-    return [CR.AssignmentCode(
-        code=f"L{lesson}", chapter=str((lesson - 1) // 4 + 1),
-        lesson=str(lesson), topic=f"Topic {lesson}",
-        title=f"Chapter {(lesson - 1) // 4 + 1} Lesson {lesson}",
-        coursework_id=f"cw-l{lesson}", max_points=20)
-        for lesson in range(1, count + 1)]
+    """``count`` assignments spread over chapters, L1 restarting each chapter."""
+    codes: list[CR.AssignmentCode] = []
+    for index in range(count):
+        chapter, lesson = divmod(index, LESSONS_PER_CHAPTER)
+        chapter, lesson = chapter + 1, lesson + 1
+        codes.append(CR.AssignmentCode(
+            code=CR.lesson_code(str(chapter), str(lesson)),
+            chapter=str(chapter), lesson=str(lesson),
+            topic=f"Topic {lesson}",
+            title=f"Chapter {chapter} Lesson {lesson}",
+            coursework_id=f"cw-ch{chapter}l{lesson}", max_points=20))
+    return codes
 
 
 def build_data(student_count: int, lesson_count: int, seed: int = 7) -> CR.ClassReportData:

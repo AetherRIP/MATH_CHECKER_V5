@@ -351,9 +351,26 @@ class TestLikelyCause:
     def test_image_only_names_the_missing_text_layer(self, pdfs):
         evidence = ms.analyse_document(pdfs["image_only"])
         structure = msv.canonicalize({"questions": [{"question_number": "1", "max_marks": 5}]})
-        cause = msv.likely_cause(msv.cross_validate(structure, evidence))
+        # WITH a discrepancy to explain: the absence of a text layer is the
+        # probable cause of it.
+        inventory = {"expected_count": 5, "detected_count": 1,
+                     "missing_indices": [2, 3, 4, 5], "unresolved": True}
+        result = msv.cross_validate(structure, evidence, inventory)
+        assert result["discrepancies"]
+        cause = msv.likely_cause(result)
         assert cause and "no text layer" in cause
         assert "AI verification failed" not in cause
+
+    def test_a_clean_visual_read_has_nothing_to_explain(self, pdfs):
+        """Nothing contradicts the structure, so there is no cause to name —
+        "no text layer" is how it was read, not what went wrong."""
+        evidence = ms.analyse_document(pdfs["image_only"])
+        structure = msv.canonicalize({"questions": [{"question_number": "1", "max_marks": 5}]})
+        clean = msv.cross_validate(structure, evidence, {
+            "expected_count": 1, "detected_count": 1, "missing_indices": [],
+            "unresolved": False})
+        assert clean["verified"] is True
+        assert msv.likely_cause(clean) is None
 
     def test_a_lost_block_is_blamed_on_extraction(self):
         cause = msv.likely_cause({

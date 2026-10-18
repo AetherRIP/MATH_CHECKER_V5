@@ -1,0 +1,1539 @@
+{
+  "checks": [
+    {
+      "route": "dashboard",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Dashboard",
+        "Marking queue",
+        "What needs my attention?",
+        "Current activity live",
+        "System health"
+      ],
+      "buttons": 39,
+      "scroll": 800
+    },
+    {
+      "route": "ai",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "AI",
+        "API Keys"
+      ],
+      "buttons": 30,
+      "scroll": 800
+    },
+    {
+      "route": "tasks",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Task Manager",
+        "Tasks 8 record(s)"
+      ],
+      "buttons": 37,
+      "scroll": 800
+    },
+    {
+      "route": "correct",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Correct a PDF30-page single-pass limit \u00b7 larger documents are batched",
+        "Job log live via SSE"
+      ],
+      "buttons": 29,
+      "scroll": 800
+    },
+    {
+      "route": "assignments",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Assignments"
+      ],
+      "buttons": 31,
+      "scroll": 800
+    },
+    {
+      "route": "results",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Results"
+      ],
+      "buttons": 38,
+      "scroll": 800
+    },
+    {
+      "route": "review",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Review Queue"
+      ],
+      "buttons": 26,
+      "scroll": 800
+    },
+    {
+      "route": "scheme-review",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Mark-Scheme Review"
+      ],
+      "buttons": 25,
+      "scroll": 800
+    },
+    {
+      "route": "largepdf",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Large PDF Worker",
+        "Add a long document",
+        "Submission queue"
+      ],
+      "buttons": 25,
+      "scroll": 800
+    },
+    {
+      "route": "automation",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Automatic Correction",
+        "Live pipeline",
+        "Live students",
+        "System activity",
+        "Polling interval",
+        "Assignments monitored",
+        "Recent jobs ",
+        "Recent activity"
+      ],
+      "buttons": 49,
+      "scroll": 800
+    },
+    {
+      "route": "classroom",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Google Classroom"
+      ],
+      "buttons": 24,
+      "scroll": 800
+    },
+    {
+      "route": "classes",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Classes"
+      ],
+      "buttons": 28,
+      "scroll": 800
+    },
+    {
+      "route": "students",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Students"
+      ],
+      "buttons": 27,
+      "scroll": 800
+    },
+    {
+      "route": "reports",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Reports",
+        " Report builder",
+        "CLASS REPORT"
+      ],
+      "buttons": 32,
+      "scroll": 800
+    },
+    {
+      "route": "storage",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Storage",
+        "Storage statusapp v5.2.1 \u00b7 schema 5",
+        "Export dataformat mathchecker.transfer v1",
+        "Import datafrom another installation",
+        "Stored corrections8 total \u00b7 showing 8"
+      ],
+      "buttons": 27,
+      "scroll": 800
+    },
+    {
+      "route": "usage",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Internet Usage",
+        "Limits 0 = unlimited \u00b7 applies to rolling hour / UTC day",
+        "API requests & retries counted locally from requests already being made \u2014 never an extra API call",
+        "Today by category",
+        "Last 24 hours total MB per hour (up + down)"
+      ],
+      "buttons": 25,
+      "scroll": 800
+    },
+    {
+      "route": "privacy",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Privacy & Data",
+        "Your local data",
+        "Factory Reset",
+        "About"
+      ],
+      "buttons": 26,
+      "scroll": 800
+    },
+    {
+      "route": "settings",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Settings",
+        "Public Addressthe app-managed endpoint",
+        "Host accountthis installation's own sign-in",
+        "Multi-Account Modetemporary switch",
+        "Remote Accessmeasured, never assumed",
+        "Connection",
+        "Background workers",
+        "Student file retention",
+        "Grade boundaries1\u20139 scale, looked up \u2014 never invented",
+        "Offline demo (mock mode)",
+        "Testing only modeoff",
+        "Server lifecycleon demand + idle stop",
+        "Gemini model chainpreserved from the original engine",
+        "Data portabilitymove records between computers",
+        "Network access",
+        "Teacher & school",
+        "Report brandingpermanent letterhead",
+        "Roleread-only"
+      ],
+      "buttons": 28,
+      "scroll": 800
+    },
+    {
+      "route": "distributed",
+      "width": 800,
+      "height": 600,
+      "overflow": false,
+      "headings": [
+        "Multi-School \u2014 Work in Progress"
+      ],
+      "buttons": 24,
+      "scroll": 800
+    },
+    {
+      "route": "dashboard",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Dashboard",
+        "Marking queue",
+        "What needs my attention?",
+        "Current activity live",
+        "System health"
+      ],
+      "buttons": 39,
+      "scroll": 1024
+    },
+    {
+      "route": "ai",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "AI",
+        "API Keys"
+      ],
+      "buttons": 30,
+      "scroll": 1024
+    },
+    {
+      "route": "tasks",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Task Manager",
+        "Tasks 8 record(s)"
+      ],
+      "buttons": 37,
+      "scroll": 1024
+    },
+    {
+      "route": "correct",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Correct a PDF30-page single-pass limit \u00b7 larger documents are batched",
+        "Job log live via SSE"
+      ],
+      "buttons": 29,
+      "scroll": 1024
+    },
+    {
+      "route": "assignments",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Assignments"
+      ],
+      "buttons": 31,
+      "scroll": 1024
+    },
+    {
+      "route": "results",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Results"
+      ],
+      "buttons": 38,
+      "scroll": 1024
+    },
+    {
+      "route": "review",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Review Queue"
+      ],
+      "buttons": 26,
+      "scroll": 1024
+    },
+    {
+      "route": "scheme-review",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Mark-Scheme Review"
+      ],
+      "buttons": 25,
+      "scroll": 1024
+    },
+    {
+      "route": "largepdf",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Large PDF Worker",
+        "Add a long document",
+        "Submission queue"
+      ],
+      "buttons": 25,
+      "scroll": 1024
+    },
+    {
+      "route": "automation",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Automatic Correction",
+        "Live pipeline",
+        "Live students",
+        "System activity",
+        "Polling interval",
+        "Assignments monitored",
+        "Recent jobs ",
+        "Recent activity"
+      ],
+      "buttons": 49,
+      "scroll": 1024
+    },
+    {
+      "route": "classroom",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Google Classroom"
+      ],
+      "buttons": 24,
+      "scroll": 1024
+    },
+    {
+      "route": "classes",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Classes"
+      ],
+      "buttons": 28,
+      "scroll": 1024
+    },
+    {
+      "route": "students",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Students"
+      ],
+      "buttons": 27,
+      "scroll": 1024
+    },
+    {
+      "route": "reports",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Reports",
+        " Report builder",
+        "CLASS REPORT"
+      ],
+      "buttons": 32,
+      "scroll": 1024
+    },
+    {
+      "route": "storage",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Storage",
+        "Storage statusapp v5.2.1 \u00b7 schema 5",
+        "Export dataformat mathchecker.transfer v1",
+        "Import datafrom another installation",
+        "Stored corrections8 total \u00b7 showing 8"
+      ],
+      "buttons": 27,
+      "scroll": 1024
+    },
+    {
+      "route": "usage",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Internet Usage",
+        "Limits 0 = unlimited \u00b7 applies to rolling hour / UTC day",
+        "API requests & retries counted locally from requests already being made \u2014 never an extra API call",
+        "Today by category",
+        "Last 24 hours total MB per hour (up + down)"
+      ],
+      "buttons": 25,
+      "scroll": 1024
+    },
+    {
+      "route": "privacy",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Privacy & Data",
+        "Your local data",
+        "Factory Reset",
+        "About"
+      ],
+      "buttons": 26,
+      "scroll": 1024
+    },
+    {
+      "route": "settings",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Settings",
+        "Public Addressthe app-managed endpoint",
+        "Host accountthis installation's own sign-in",
+        "Multi-Account Modetemporary switch",
+        "Remote Accessmeasured, never assumed",
+        "Connection",
+        "Background workers",
+        "Student file retention",
+        "Grade boundaries1\u20139 scale, looked up \u2014 never invented",
+        "Offline demo (mock mode)",
+        "Testing only modeoff",
+        "Server lifecycleon demand + idle stop",
+        "Gemini model chainpreserved from the original engine",
+        "Data portabilitymove records between computers",
+        "Network access",
+        "Teacher & school",
+        "Report brandingpermanent letterhead",
+        "Roleread-only"
+      ],
+      "buttons": 28,
+      "scroll": 1024
+    },
+    {
+      "route": "distributed",
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Multi-School \u2014 Work in Progress"
+      ],
+      "buttons": 24,
+      "scroll": 1024
+    },
+    {
+      "route": "dashboard",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Dashboard",
+        "Marking queue",
+        "What needs my attention?",
+        "Current activity live",
+        "System health"
+      ],
+      "buttons": 39,
+      "scroll": 1280
+    },
+    {
+      "route": "ai",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "AI",
+        "API Keys"
+      ],
+      "buttons": 30,
+      "scroll": 1280
+    },
+    {
+      "route": "tasks",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Task Manager",
+        "Tasks 8 record(s)"
+      ],
+      "buttons": 37,
+      "scroll": 1280
+    },
+    {
+      "route": "correct",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Correct a PDF30-page single-pass limit \u00b7 larger documents are batched",
+        "Job log live via SSE"
+      ],
+      "buttons": 29,
+      "scroll": 1280
+    },
+    {
+      "route": "assignments",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Assignments"
+      ],
+      "buttons": 31,
+      "scroll": 1280
+    },
+    {
+      "route": "results",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Results"
+      ],
+      "buttons": 38,
+      "scroll": 1280
+    },
+    {
+      "route": "review",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Review Queue"
+      ],
+      "buttons": 26,
+      "scroll": 1280
+    },
+    {
+      "route": "scheme-review",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Mark-Scheme Review"
+      ],
+      "buttons": 25,
+      "scroll": 1280
+    },
+    {
+      "route": "largepdf",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Large PDF Worker",
+        "Add a long document",
+        "Submission queue"
+      ],
+      "buttons": 25,
+      "scroll": 1280
+    },
+    {
+      "route": "automation",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Automatic Correction",
+        "Live pipeline",
+        "Live students",
+        "System activity",
+        "Polling interval",
+        "Assignments monitored",
+        "Recent jobs ",
+        "Recent activity"
+      ],
+      "buttons": 49,
+      "scroll": 1280
+    },
+    {
+      "route": "classroom",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Google Classroom"
+      ],
+      "buttons": 24,
+      "scroll": 1280
+    },
+    {
+      "route": "classes",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Classes"
+      ],
+      "buttons": 28,
+      "scroll": 1280
+    },
+    {
+      "route": "students",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Students"
+      ],
+      "buttons": 27,
+      "scroll": 1280
+    },
+    {
+      "route": "reports",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Reports",
+        " Report builder",
+        "CLASS REPORT"
+      ],
+      "buttons": 32,
+      "scroll": 1280
+    },
+    {
+      "route": "storage",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Storage",
+        "Storage statusapp v5.2.1 \u00b7 schema 5",
+        "Export dataformat mathchecker.transfer v1",
+        "Import datafrom another installation",
+        "Stored corrections8 total \u00b7 showing 8"
+      ],
+      "buttons": 27,
+      "scroll": 1280
+    },
+    {
+      "route": "usage",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Internet Usage",
+        "Limits 0 = unlimited \u00b7 applies to rolling hour / UTC day",
+        "API requests & retries counted locally from requests already being made \u2014 never an extra API call",
+        "Today by category",
+        "Last 24 hours total MB per hour (up + down)"
+      ],
+      "buttons": 25,
+      "scroll": 1280
+    },
+    {
+      "route": "privacy",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Privacy & Data",
+        "Your local data",
+        "Factory Reset",
+        "About"
+      ],
+      "buttons": 26,
+      "scroll": 1280
+    },
+    {
+      "route": "settings",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Settings",
+        "Public Addressthe app-managed endpoint",
+        "Host accountthis installation's own sign-in",
+        "Multi-Account Modetemporary switch",
+        "Remote Accessmeasured, never assumed",
+        "Connection",
+        "Background workers",
+        "Student file retention",
+        "Grade boundaries1\u20139 scale, looked up \u2014 never invented",
+        "Offline demo (mock mode)",
+        "Testing only modeoff",
+        "Server lifecycleon demand + idle stop",
+        "Gemini model chainpreserved from the original engine",
+        "Data portabilitymove records between computers",
+        "Network access",
+        "Teacher & school",
+        "Report brandingpermanent letterhead",
+        "Roleread-only"
+      ],
+      "buttons": 28,
+      "scroll": 1280
+    },
+    {
+      "route": "distributed",
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "headings": [
+        "Multi-School \u2014 Work in Progress"
+      ],
+      "buttons": 24,
+      "scroll": 1280
+    },
+    {
+      "route": "dashboard",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Dashboard",
+        "Marking queue",
+        "What needs my attention?",
+        "Current activity live",
+        "System health"
+      ],
+      "buttons": 39,
+      "scroll": 1366
+    },
+    {
+      "route": "ai",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "AI",
+        "API Keys"
+      ],
+      "buttons": 30,
+      "scroll": 1366
+    },
+    {
+      "route": "tasks",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Task Manager",
+        "Tasks 8 record(s)"
+      ],
+      "buttons": 37,
+      "scroll": 1366
+    },
+    {
+      "route": "correct",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Correct a PDF30-page single-pass limit \u00b7 larger documents are batched",
+        "Job log live via SSE"
+      ],
+      "buttons": 29,
+      "scroll": 1366
+    },
+    {
+      "route": "assignments",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Assignments"
+      ],
+      "buttons": 31,
+      "scroll": 1366
+    },
+    {
+      "route": "results",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Results"
+      ],
+      "buttons": 38,
+      "scroll": 1366
+    },
+    {
+      "route": "review",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Review Queue"
+      ],
+      "buttons": 26,
+      "scroll": 1366
+    },
+    {
+      "route": "scheme-review",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Mark-Scheme Review"
+      ],
+      "buttons": 25,
+      "scroll": 1366
+    },
+    {
+      "route": "largepdf",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Large PDF Worker",
+        "Add a long document",
+        "Submission queue"
+      ],
+      "buttons": 25,
+      "scroll": 1366
+    },
+    {
+      "route": "automation",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Automatic Correction",
+        "Live pipeline",
+        "Live students",
+        "System activity",
+        "Polling interval",
+        "Assignments monitored",
+        "Recent jobs ",
+        "Recent activity"
+      ],
+      "buttons": 49,
+      "scroll": 1366
+    },
+    {
+      "route": "classroom",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Google Classroom"
+      ],
+      "buttons": 24,
+      "scroll": 1366
+    },
+    {
+      "route": "classes",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Classes"
+      ],
+      "buttons": 28,
+      "scroll": 1366
+    },
+    {
+      "route": "students",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Students"
+      ],
+      "buttons": 27,
+      "scroll": 1366
+    },
+    {
+      "route": "reports",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Reports",
+        " Report builder",
+        "CLASS REPORT"
+      ],
+      "buttons": 32,
+      "scroll": 1366
+    },
+    {
+      "route": "storage",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Storage",
+        "Storage statusapp v5.2.1 \u00b7 schema 5",
+        "Export dataformat mathchecker.transfer v1",
+        "Import datafrom another installation",
+        "Stored corrections8 total \u00b7 showing 8"
+      ],
+      "buttons": 27,
+      "scroll": 1366
+    },
+    {
+      "route": "usage",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Internet Usage",
+        "Limits 0 = unlimited \u00b7 applies to rolling hour / UTC day",
+        "API requests & retries counted locally from requests already being made \u2014 never an extra API call",
+        "Today by category",
+        "Last 24 hours total MB per hour (up + down)"
+      ],
+      "buttons": 25,
+      "scroll": 1366
+    },
+    {
+      "route": "privacy",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Privacy & Data",
+        "Your local data",
+        "Factory Reset",
+        "About"
+      ],
+      "buttons": 26,
+      "scroll": 1366
+    },
+    {
+      "route": "settings",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Settings",
+        "Public Addressthe app-managed endpoint",
+        "Host accountthis installation's own sign-in",
+        "Multi-Account Modetemporary switch",
+        "Remote Accessmeasured, never assumed",
+        "Connection",
+        "Background workers",
+        "Student file retention",
+        "Grade boundaries1\u20139 scale, looked up \u2014 never invented",
+        "Offline demo (mock mode)",
+        "Testing only modeoff",
+        "Server lifecycleon demand + idle stop",
+        "Gemini model chainpreserved from the original engine",
+        "Data portabilitymove records between computers",
+        "Network access",
+        "Teacher & school",
+        "Report brandingpermanent letterhead",
+        "Roleread-only"
+      ],
+      "buttons": 28,
+      "scroll": 1366
+    },
+    {
+      "route": "distributed",
+      "width": 1366,
+      "height": 768,
+      "overflow": false,
+      "headings": [
+        "Multi-School \u2014 Work in Progress"
+      ],
+      "buttons": 24,
+      "scroll": 1366
+    },
+    {
+      "route": "dashboard",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Dashboard",
+        "Marking queue",
+        "What needs my attention?",
+        "Current activity live",
+        "System health"
+      ],
+      "buttons": 39,
+      "scroll": 1600
+    },
+    {
+      "route": "ai",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "AI",
+        "API Keys"
+      ],
+      "buttons": 30,
+      "scroll": 1600
+    },
+    {
+      "route": "tasks",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Task Manager",
+        "Tasks 8 record(s)"
+      ],
+      "buttons": 37,
+      "scroll": 1600
+    },
+    {
+      "route": "correct",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Correct a PDF30-page single-pass limit \u00b7 larger documents are batched",
+        "Job log live via SSE"
+      ],
+      "buttons": 29,
+      "scroll": 1600
+    },
+    {
+      "route": "assignments",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Assignments"
+      ],
+      "buttons": 31,
+      "scroll": 1600
+    },
+    {
+      "route": "results",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Results"
+      ],
+      "buttons": 38,
+      "scroll": 1600
+    },
+    {
+      "route": "review",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Review Queue"
+      ],
+      "buttons": 26,
+      "scroll": 1600
+    },
+    {
+      "route": "scheme-review",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Mark-Scheme Review"
+      ],
+      "buttons": 25,
+      "scroll": 1600
+    },
+    {
+      "route": "largepdf",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Large PDF Worker",
+        "Add a long document",
+        "Submission queue"
+      ],
+      "buttons": 25,
+      "scroll": 1600
+    },
+    {
+      "route": "automation",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Automatic Correction",
+        "Live pipeline",
+        "Live students",
+        "System activity",
+        "Polling interval",
+        "Assignments monitored",
+        "Recent jobs ",
+        "Recent activity"
+      ],
+      "buttons": 49,
+      "scroll": 1600
+    },
+    {
+      "route": "classroom",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Google Classroom"
+      ],
+      "buttons": 24,
+      "scroll": 1600
+    },
+    {
+      "route": "classes",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Classes"
+      ],
+      "buttons": 28,
+      "scroll": 1600
+    },
+    {
+      "route": "students",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Students"
+      ],
+      "buttons": 27,
+      "scroll": 1600
+    },
+    {
+      "route": "reports",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Reports",
+        " Report builder",
+        "CLASS REPORT"
+      ],
+      "buttons": 32,
+      "scroll": 1600
+    },
+    {
+      "route": "storage",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Storage",
+        "Storage statusapp v5.2.1 \u00b7 schema 5",
+        "Export dataformat mathchecker.transfer v1",
+        "Import datafrom another installation",
+        "Stored corrections8 total \u00b7 showing 8"
+      ],
+      "buttons": 27,
+      "scroll": 1600
+    },
+    {
+      "route": "usage",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Internet Usage",
+        "Limits 0 = unlimited \u00b7 applies to rolling hour / UTC day",
+        "API requests & retries counted locally from requests already being made \u2014 never an extra API call",
+        "Today by category",
+        "Last 24 hours total MB per hour (up + down)"
+      ],
+      "buttons": 25,
+      "scroll": 1600
+    },
+    {
+      "route": "privacy",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Privacy & Data",
+        "Your local data",
+        "Factory Reset",
+        "About"
+      ],
+      "buttons": 26,
+      "scroll": 1600
+    },
+    {
+      "route": "settings",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Settings",
+        "Public Addressthe app-managed endpoint",
+        "Host accountthis installation's own sign-in",
+        "Multi-Account Modetemporary switch",
+        "Remote Accessmeasured, never assumed",
+        "Connection",
+        "Background workers",
+        "Student file retention",
+        "Grade boundaries1\u20139 scale, looked up \u2014 never invented",
+        "Offline demo (mock mode)",
+        "Testing only modeoff",
+        "Server lifecycleon demand + idle stop",
+        "Gemini model chainpreserved from the original engine",
+        "Data portabilitymove records between computers",
+        "Network access",
+        "Teacher & school",
+        "Report brandingpermanent letterhead",
+        "Roleread-only"
+      ],
+      "buttons": 28,
+      "scroll": 1600
+    },
+    {
+      "route": "distributed",
+      "width": 1600,
+      "height": 900,
+      "overflow": false,
+      "headings": [
+        "Multi-School \u2014 Work in Progress"
+      ],
+      "buttons": 24,
+      "scroll": 1600
+    },
+    {
+      "route": "dashboard",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Dashboard",
+        "Marking queue",
+        "What needs my attention?",
+        "Current activity live",
+        "System health"
+      ],
+      "buttons": 39,
+      "scroll": 1920
+    },
+    {
+      "route": "ai",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "AI",
+        "API Keys"
+      ],
+      "buttons": 30,
+      "scroll": 1920
+    },
+    {
+      "route": "tasks",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Task Manager",
+        "Tasks 8 record(s)"
+      ],
+      "buttons": 37,
+      "scroll": 1920
+    },
+    {
+      "route": "correct",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Correct a PDF30-page single-pass limit \u00b7 larger documents are batched",
+        "Job log live via SSE"
+      ],
+      "buttons": 29,
+      "scroll": 1920
+    },
+    {
+      "route": "assignments",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Assignments"
+      ],
+      "buttons": 31,
+      "scroll": 1920
+    },
+    {
+      "route": "results",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Results"
+      ],
+      "buttons": 38,
+      "scroll": 1920
+    },
+    {
+      "route": "review",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Review Queue"
+      ],
+      "buttons": 26,
+      "scroll": 1920
+    },
+    {
+      "route": "scheme-review",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Mark-Scheme Review"
+      ],
+      "buttons": 25,
+      "scroll": 1920
+    },
+    {
+      "route": "largepdf",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Large PDF Worker",
+        "Add a long document",
+        "Submission queue"
+      ],
+      "buttons": 25,
+      "scroll": 1920
+    },
+    {
+      "route": "automation",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Automatic Correction",
+        "Live pipeline",
+        "Live students",
+        "System activity",
+        "Polling interval",
+        "Assignments monitored",
+        "Recent jobs ",
+        "Recent activity"
+      ],
+      "buttons": 49,
+      "scroll": 1920
+    },
+    {
+      "route": "classroom",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Google Classroom"
+      ],
+      "buttons": 24,
+      "scroll": 1920
+    },
+    {
+      "route": "classes",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Classes"
+      ],
+      "buttons": 28,
+      "scroll": 1920
+    },
+    {
+      "route": "students",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Students"
+      ],
+      "buttons": 27,
+      "scroll": 1920
+    },
+    {
+      "route": "reports",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Reports",
+        " Report builder",
+        "CLASS REPORT"
+      ],
+      "buttons": 32,
+      "scroll": 1920
+    },
+    {
+      "route": "storage",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Storage",
+        "Storage statusapp v5.2.1 \u00b7 schema 5",
+        "Export dataformat mathchecker.transfer v1",
+        "Import datafrom another installation",
+        "Stored corrections8 total \u00b7 showing 8"
+      ],
+      "buttons": 27,
+      "scroll": 1920
+    },
+    {
+      "route": "usage",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Internet Usage",
+        "Limits 0 = unlimited \u00b7 applies to rolling hour / UTC day",
+        "API requests & retries counted locally from requests already being made \u2014 never an extra API call",
+        "Today by category",
+        "Last 24 hours total MB per hour (up + down)"
+      ],
+      "buttons": 25,
+      "scroll": 1920
+    },
+    {
+      "route": "privacy",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Privacy & Data",
+        "Your local data",
+        "Factory Reset",
+        "About"
+      ],
+      "buttons": 26,
+      "scroll": 1920
+    },
+    {
+      "route": "settings",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Settings",
+        "Public Addressthe app-managed endpoint",
+        "Host accountthis installation's own sign-in",
+        "Multi-Account Modetemporary switch",
+        "Remote Accessmeasured, never assumed",
+        "Connection",
+        "Background workers",
+        "Student file retention",
+        "Grade boundaries1\u20139 scale, looked up \u2014 never invented",
+        "Offline demo (mock mode)",
+        "Testing only modeoff",
+        "Server lifecycleon demand + idle stop",
+        "Gemini model chainpreserved from the original engine",
+        "Data portabilitymove records between computers",
+        "Network access",
+        "Teacher & school",
+        "Report brandingpermanent letterhead",
+        "Roleread-only"
+      ],
+      "buttons": 28,
+      "scroll": 1920
+    },
+    {
+      "route": "distributed",
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "headings": [
+        "Multi-School \u2014 Work in Progress"
+      ],
+      "buttons": 24,
+      "scroll": 1920
+    }
+  ],
+  "page_errors": [],
+  "wip_cover": true,
+  "review_count_matches": true,
+  "clear_dialog_workflow": true,
+  "failures": []
+}

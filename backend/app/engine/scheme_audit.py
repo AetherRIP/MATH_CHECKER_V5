@@ -218,7 +218,10 @@ def classify(check: Any, *, max_marks: int, awarded: int) -> dict | None:
         state, recommended = STATE_UNCERTAIN, True
     elif valid_student and dtype in MATH_ERROR_TYPES:
         if confidence >= threshold and reason:
-            state, recommended = STATE_CONFIRMED, True
+            # Self-reported model confidence is not independent proof. Keep
+            # the mathematical recommendation, but reserve confirmation for a
+            # recorded human decision rather than laundering prose into fact.
+            state, recommended = STATE_POSSIBLE, True
         else:
             # A defensible-looking disagreement that is not yet strong enough
             # to call confirmed. Human verification is requested.
@@ -349,7 +352,9 @@ def record_from_result(conn, *, job: dict, result_id: str, result: dict,
         if existing:
             # Preserve a completed human review: only refresh evidence.
             conn.execute(_UPDATE_SQL, (
-                course_id, title, c["state"], c["scheme_answer"],
+                course_id, title,
+                existing["state"] if existing["review_status"] == REVIEW_COMPLETED else c["state"],
+                c["scheme_answer"],
                 c["verified_answer"], c["reasoning"], c["reasoning"], suspicion,
                 c["confidence"], c["max_marks"], result_id,
                 job.get("submission_id"), job.get("student_id"),
@@ -431,36 +436,65 @@ def _decorate(row: dict) -> dict:
     return row
 
 
-def notifications(*, limit: int = 50) -> list[dict]:
-    """Open discrepancies as notification items, grouped per class+question.
+#: Lower rank = more severe. Used to pick the headline state of a group.
+_STATE_RANK = {STATE_CONFIRMED: 0, STATE_POSSIBLE: 1, STATE_UNCERTAIN: 2,
+               STATE_VALID_ALTERNATIVE: 3}
 
-    One item per live discrepancy row means duplicate notifications are
-    structurally impossible: re-detection updates the row instead of adding
-    another, and a completed human review removes it from this feed.
+
+def notifications(*, limit: int = 50) -> list[dict]:
+    """Open discrepancies as notification items, grouped per assignment+question.
+
+    Duplicate notifications are structurally impossible at two levels:
+
+    * re-detecting the same (class + assignment + question + type) UPDATES the
+      existing row instead of adding another, and a completed human review
+      removes the row from this feed; and
+    * several records for the SAME assignment and question (e.g. the marker
+      labelled one student's case ``incorrect_answer`` and another's
+      ``arithmetic_error``) fold into ONE notification, so the teacher is asked
+      to review a question once - not once per discrepancy label.
     """
     if not enabled():
         return []
+    # Pull more rows than ``limit`` because several records per question can
+    # collapse into a single notification.
     rows = db.query(
         "SELECT * FROM scheme_discrepancies WHERE review_status = ? "
         "AND review_required = 1 ORDER BY updated_at DESC LIMIT ?",
-        (REVIEW_AWAITING, limit))
-    items: list[dict] = []
+        (REVIEW_AWAITING, max(limit * 10, 200)))
+    groups: dict[tuple, list[dict]] = {}
+    order: list[tuple] = []
     for r in rows:
         row = dict(r)
-        confirmed = row["state"] == STATE_CONFIRMED
-        detail = (f"Q{row['question_number']}: {row.get('suspicion') or ''}")
+        key = (row.get("course_id"), row.get("coursework_id") or row.get("student_result_id"),
+               str(row.get("question_number")))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(row)
+    items: list[dict] = []
+    for key in order[:limit]:
+        group = groups[key]
+        rep = min(group, key=lambda g: _STATE_RANK.get(g["state"], 9))
+        confirmed = rep["state"] == STATE_CONFIRMED
+        others = len(group) - 1
+        detail = f"Q{rep['question_number']}: {rep.get('suspicion') or ''}"
+        if others:
+            detail += (f" ({others} more related record(s) on this "
+                       "question)")
         items.append({
             "type": "mark_scheme_discrepancy",
             "tone": "err" if confirmed else "warn",
             "icon": "alert",
             "title": ("Confirmed mark-scheme error" if confirmed
                       else "Possible mark-scheme error")
-                     + f" - {row.get('assignment_title') or 'assignment'}",
+                     + f" - {rep.get('assignment_title') or 'assignment'}",
             "detail": detail[:200],
-            "route": f"#/scheme-review/{row['id']}",
+            "route": f"#/scheme-review/{rep['id']}",
             "count": 1,
-            "discrepancy_id": row["id"],
-            "state": row["state"],
+            "discrepancy_id": rep["id"],
+            "state": rep["state"],
+            "related_count": others,
         })
     return items
 
@@ -478,10 +512,14 @@ def build_proposal(discrepancy_id: str) -> dict:
     discrepancy = get_discrepancy(discrepancy_id)
     if discrepancy is None:
         raise LookupError("That discrepancy does not exist.")
+    # Re-staging returns the SAME proposal - including one already applied (or
+    # mid-recovery), so a second staging can never produce a duplicate batch
+    # that could be approved twice.
     existing = db.query_one(
         "SELECT * FROM bulk_correction_proposals WHERE discrepancy_id = ? "
-        "AND status IN (?,?,?) ORDER BY created_at DESC LIMIT 1",
-        (discrepancy_id, PROPOSAL_PROPOSED, PROPOSAL_APPROVED, PROPOSAL_PARTIAL))
+        "AND status IN (?,?,?,?) ORDER BY created_at DESC LIMIT 1",
+        (discrepancy_id, PROPOSAL_PROPOSED, PROPOSAL_APPROVED, PROPOSAL_PARTIAL,
+         PROPOSAL_APPLIED))
     if existing:
         return proposal_detail(existing["id"])
 
@@ -503,8 +541,16 @@ def build_proposal(discrepancy_id: str) -> dict:
         awarded = _as_int(question.get("awarded_marks"), 0) or 0
         max_marks = _as_int(question.get("max_marks"), 0) or 0
         check = question.get("scheme_check")
-        proposed = _clamp(check.get("justified_marks"), max_marks) \
-            if isinstance(check, dict) else None
+        assessment = classify(check, max_marks=max_marks, awarded=awarded)
+        proposed = assessment["justified_marks"] if assessment and \
+            assessment["student_answer_valid"] and assessment["reasoning"] and \
+            assessment["verified_answer"] and assessment["confidence"] >= confirm_confidence() and \
+            assessment["state"] != STATE_UNCERTAIN else None
+        # A submission the teacher already decided by hand holds a deliberate
+        # human mark ("teacher override wins"): NEVER overwrite it from a bulk
+        # batch. It stays visible as requiring an individual re-mark instead.
+        if int(r.get("manual_override") or 0):
+            proposed = None
         # No independently justified mark for THIS submission => no automatic
         # change is proposed. It is shown to the teacher as requiring a re-mark,
         # never silently adjusted.
@@ -589,7 +635,8 @@ def proposal_detail(proposal_id: str) -> dict:
 
 def apply_approved(proposal_id: str, *, approved_by: str,
                    note: str = "", publish: bool = False,
-                   publish_fn: Callable[[list[dict]], dict] | None = None) -> dict:
+                   publish_fn: Callable[[list[dict]], dict] | None = None,
+                   retry_failed: bool = False) -> dict:
     """Apply a staged proposal AFTER explicit human approval.
 
     Safety properties (all tested):
@@ -604,34 +651,37 @@ def apply_approved(proposal_id: str, *, approved_by: str,
       and the batch is reported ``PARTIAL`` (never "successful") if any failed;
     * the mark scheme itself is never touched.
     """
-    found = db.query_one("SELECT * FROM bulk_correction_proposals WHERE id = ?",
-                         (proposal_id,))
-    if not found:
-        raise LookupError("That proposal does not exist.")
-    row = dict(found)
-    status = row["status"]
-    # Idempotency: an approved/applied/partial proposal is never applied again.
-    if status in (PROPOSAL_APPLIED, PROPOSAL_PARTIAL, PROPOSAL_APPROVED):
-        return proposal_detail(proposal_id)
-    if status == PROPOSAL_REJECTED:
-        raise ValueError("This proposal was rejected and cannot be applied.")
-
     from . import legacy_marking as legacy
     from . import versions
 
     now_ts = time.time()
-    items = db.query(
-        "SELECT * FROM bulk_correction_items WHERE proposal_id = ?",
-        (proposal_id,))
     applied = failed = skipped = 0
     with db.transaction() as conn:
-        conn.execute(
-            "UPDATE bulk_correction_proposals SET status = ?, decided_by = ?, "
-            "decided_at = ?, note = ? WHERE id = ?",
-            (PROPOSAL_APPROVED, approved_by, now_ts, note[:500], proposal_id))
+        # Read and claim under BEGIN IMMEDIATE, not before the transaction:
+        # concurrent approvals cannot both apply the same pending item.
+        found = conn.execute("SELECT * FROM bulk_correction_proposals WHERE id = ?",
+                             (proposal_id,)).fetchone()
+        if not found:
+            raise LookupError("That proposal does not exist.")
+        row = dict(found)
+        status = row["status"]
+        if status in (PROPOSAL_APPLIED, PROPOSAL_APPROVED) or \
+                (status == PROPOSAL_PARTIAL and not retry_failed):
+            return proposal_detail(proposal_id)
+        if status == PROPOSAL_REJECTED:
+            raise ValueError("This proposal was rejected and cannot be applied.")
+        if retry_failed and (status != PROPOSAL_PARTIAL or not row.get("decided_at")):
+            raise ValueError("Only failed items of an explicitly approved batch may be retried.")
+        items = conn.execute("SELECT * FROM bulk_correction_items WHERE proposal_id = ?",
+                             (proposal_id,)).fetchall()
+        if not retry_failed:
+            conn.execute(
+                "UPDATE bulk_correction_proposals SET status = ?, decided_by = ?, "
+                "decided_at = ?, note = ? WHERE id = ?",
+                (PROPOSAL_APPROVED, approved_by, now_ts, note[:500], proposal_id))
         for item in items:
             item = dict(item)
-            if item["status"] != ITEM_PENDING:
+            if item["status"] != (ITEM_FAILED if retry_failed else ITEM_PENDING):
                 continue
             after = item.get("question_awarded_after")
             if after is None or item.get("delta_points") in (0, None):
@@ -640,26 +690,35 @@ def apply_approved(proposal_id: str, *, approved_by: str,
                     (ITEM_SKIPPED, item["id"]))
                 skipped += 1
                 continue
+            conn.execute("SAVEPOINT scheme_item")
             try:
                 _apply_item(conn, item, after, now_ts, legacy, versions,
-                            approved_by, proposal_id, row["question_number"])
+                            row.get("decided_by") if retry_failed else approved_by,
+                            proposal_id, row["question_number"])
+                conn.execute("RELEASE scheme_item")
                 applied += 1
             except Exception as exc:  # noqa: BLE001 - per-item, must be recorded
+                conn.execute("ROLLBACK TO scheme_item")
+                conn.execute("RELEASE scheme_item")
                 conn.execute(
                     "UPDATE bulk_correction_items SET status = ?, error = ?, "
                     "applied_at = ? WHERE id = ?",
                     (ITEM_FAILED, str(exc)[:500], now_ts, item["id"]))
                 failed += 1
+        counts = {r["status"]: r["n"] for r in conn.execute(
+            "SELECT status, COUNT(*) AS n FROM bulk_correction_items WHERE proposal_id = ? GROUP BY status",
+            (proposal_id,)).fetchall()}
+        applied, failed = counts.get(ITEM_APPLIED, 0), counts.get(ITEM_FAILED, 0)
         final_status = (PROPOSAL_APPLIED if failed == 0 else PROPOSAL_PARTIAL)
         conn.execute(
             "UPDATE bulk_correction_proposals SET status = ?, applied_at = ?, "
             "applied_count = ?, failed_count = ?, note = ? WHERE id = ?",
             (final_status, now_ts, applied, failed, note[:500], proposal_id))
-        # Audit the human decision on the discrepancy too.
+        # Approval and recovery are distinct audit events.
         conn.execute(
             "INSERT INTO scheme_discrepancy_reviews(discrepancy_id, decision, "
             "decided_by, note, ai_recommendation, created_at) VALUES(?,?,?,?,?,?)",
-            (row["discrepancy_id"], DECISION_CONFIRM_SCHEME_WRONG, approved_by,
+            (row["discrepancy_id"], "RETRY_APPROVED_FAILED_ITEMS" if retry_failed else "APPROVE_BULK_CORRECTION", approved_by,
              note[:500], row.get("reason"), now_ts))
         conn.execute(
             "UPDATE scheme_discrepancies SET review_status = ?, updated_at = ? "
@@ -672,12 +731,7 @@ def apply_approved(proposal_id: str, *, approved_by: str,
             report = publish_fn(publishable) or {}
         except Exception as exc:  # noqa: BLE001 - must be reported, never hidden
             report = {"error": str(exc)[:500]}
-        if report.get("error"):
-            state = "failed"
-        elif report.get("failed"):
-            state = "partial"
-        else:
-            state = "published"
+        state = classroom_publish_state(report)
         db.execute(
             "UPDATE bulk_correction_proposals SET classroom_publish_state = ? "
             "WHERE id = ?", (state, proposal_id))
@@ -686,10 +740,40 @@ def apply_approved(proposal_id: str, *, approved_by: str,
     return result
 
 
+def classroom_publish_state(report: Any) -> str:
+    """Map a Classroom write-back report to an honest state string.
+
+    Accepts the normalised report the route builds AND a raw provider report
+    with a nested ``summary`` so a partial (or fully failed) provider response
+    can never be displayed as a clean success. Never invents success.
+    """
+    if not isinstance(report, dict):
+        return "failed"
+    if report.get("error"):
+        return "failed"
+    inner = report.get("summary")
+    summary = inner if isinstance(inner, dict) else report
+    failed = _as_int(summary.get("failed"), 0) or 0
+    auth = _as_int(summary.get("requires_auth"), 0) or 0
+    unsupported = _as_int(summary.get("not_supported"), 0) or 0
+    published = _as_int(summary.get("published"), 0) or 0
+    total = _as_int(summary.get("total"), 0) or 0
+    if failed:
+        return "partial" if published else "failed"
+    if auth:
+        return "requires_auth"
+    if unsupported:
+        return "not_supported"
+    if published == 0 and total <= 0:
+        return "nothing_to_publish"
+    return "published" if published and (not total or published == total) else "failed"
+
+
 def _apply_item(conn, item: dict, after: int, now_ts: float, legacy, versions,
                 approved_by: str, proposal_id: str, question_number: str) -> bool:
     """Update ONE result row from a proposal item. Returns True if it changed."""
     import json
+    from ..automation.grading import compute_grade
 
     row = conn.execute("SELECT * FROM results WHERE id = ?",
                        (item["result_id"],)).fetchone()
@@ -702,7 +786,14 @@ def _apply_item(conn, item: dict, after: int, now_ts: float, legacy, versions,
         raise RuntimeError("The question is missing from the stored result.")
     before_q = _as_int(target.get("awarded_marks"), 0) or 0
     max_marks = _as_int(target.get("max_marks"), 0) or 0
-    target["awarded_marks"] = max(0, min(int(after), max_marks))
+    if int(row["manual_override"] or 0):
+        raise RuntimeError("A teacher override was recorded after staging. Prepare a new individual review.")
+    if (before_q != item["question_awarded_before"] or max_marks != item["max_marks"]
+            or row["earned"] != item["original_earned"]):
+        raise RuntimeError("The result changed after staging. Review the new marks before applying.")
+    if not 0 <= int(after) <= max_marks:
+        raise RuntimeError("The proposed mark exceeds the current question maximum.")
+    target["awarded_marks"] = int(after)
 
     earned, available, percentage = legacy.calculate_totals(payload)
     # Preserve the ORIGINAL marks for auditing BEFORE overwriting the row.
@@ -723,13 +814,22 @@ def _apply_item(conn, item: dict, after: int, now_ts: float, legacy, versions,
             review_required = 0, confidence_reasons = ? WHERE id = ?
         """,
         (earned, available, percentage,
-         legacy.percentage_band_grade(percentage),
+         compute_grade(
+             earned, available, coursework_id=row["coursework_id"]).grade,
          json.dumps(payload, ensure_ascii=False),
          json.dumps([f"Approved mark-scheme correction by {approved_by} "
                      f"(proposal {proposal_id})"], ensure_ascii=False),
          row["id"]))
+    current = conn.execute("SELECT * FROM results WHERE id = ?", (row["id"],)).fetchone()
+    versions.record(
+        conn, result_id=current["id"], earned=current["earned"], available=current["available"],
+        percentage=current["percentage"], provisional_grade=current["provisional_grade"],
+        marking_model=current["marking_model"], key_fingerprint=current["key_fingerprint"],
+        confidence=current["confidence"], confidence_reasons=current["confidence_reasons"],
+        verification=current["verification_json"], result=current["result_json"], created_at=now_ts,
+        note=f"Approved bulk correction {proposal_id} by {approved_by}")
     conn.execute(
-        "UPDATE bulk_correction_items SET status = ?, applied_at = ?, "
+        "UPDATE bulk_correction_items SET status = ?, error = NULL, applied_at = ?, "
         "question_awarded_before = ?, question_awarded_after = ? WHERE id = ?",
         (ITEM_APPLIED, now_ts, before_q, target["awarded_marks"], item["id"]))
     return before_q != target["awarded_marks"]
@@ -746,6 +846,10 @@ def reject_proposal(proposal_id: str, *, rejected_by: str, note: str = "") -> di
         raise ValueError("This proposal has already been applied.")
     now_ts = time.time()
     with db.transaction() as conn:
+        current = conn.execute("SELECT status FROM bulk_correction_proposals WHERE id=?",
+                               (proposal_id,)).fetchone()
+        if current["status"] in (PROPOSAL_APPLIED, PROPOSAL_PARTIAL, PROPOSAL_APPROVED):
+            raise ValueError("This proposal has already been approved or applied.")
         conn.execute(
             "UPDATE bulk_correction_proposals SET status = ?, decided_by = ?, "
             "decided_at = ?, note = ? WHERE id = ?",
@@ -785,7 +889,13 @@ def record_decision(discrepancy_id: str, *, decision: str, decided_by: str,
         conn.execute(
             "UPDATE scheme_discrepancies SET review_status = ?, review_required "
             "= 0, updated_at = ? WHERE id = ?",
-            (REVIEW_COMPLETED, now_ts, discrepancy_id))
+            (REVIEW_AWAITING if decision == DECISION_REQUEST_INVESTIGATION else REVIEW_COMPLETED,
+             now_ts, discrepancy_id))
+        conn.execute("UPDATE scheme_discrepancies SET review_required = ?, state = ? WHERE id = ?",
+                     (1 if decision == DECISION_REQUEST_INVESTIGATION else 0,
+                      STATE_CONFIRMED if decision == DECISION_CONFIRM_SCHEME_WRONG else
+                      (row["state"] if decision == DECISION_REQUEST_INVESTIGATION else STATE_HUMAN_REVIEWED),
+                      discrepancy_id))
     return get_discrepancy(discrepancy_id) or {}
 
 

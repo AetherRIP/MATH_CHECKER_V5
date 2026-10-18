@@ -3,7 +3,7 @@
 // action below can change previously graded marks.
 import { useCallback, useEffect, useState } from "react";
 import {
-  approveSchemeProposal, decideSchemeDiscrepancy,
+  api, approveSchemeProposal, decideSchemeDiscrepancy,
   fetchSchemeDiscrepancies, fetchSchemeDiscrepancy,
   proposeSchemeCorrection, rejectSchemeProposal, timeAgo,
   type ProposalItem, type SchemeDiscrepancy, type SchemeProposal,
@@ -60,7 +60,8 @@ export default function SchemeReviewPage({ discrepancyId }: { discrepancyId?: st
       .then((r) => {
         setSelected(r.discrepancy);
         setHistory(r.review_history);
-        setProposal(null);
+        const latest = r.proposals.sort((a, b) => b.created_at - a.created_at)[0];
+        setProposal(latest ?? null);
       })
       .catch((e) => setError((e as Error).message));
   }, []);
@@ -95,6 +96,18 @@ export default function SchemeReviewPage({ discrepancyId }: { discrepancyId?: st
           ? `Applied ${r.applied_count}, ${r.failed_count} failed — recoverable per item.`
           : `Approved and applied to ${r.applied_count} submission(s).`);
       loadList();
+    } catch (e) { toast("err", (e as Error).message); }
+    finally { setBusy(null); }
+  }
+
+  async function recover() {
+    if (!proposal) return;
+    setBusy("retry");
+    try {
+      const r = await api<SchemeProposal>(`/scheme/proposals/${encodeURIComponent(proposal.id)}/retry`,
+        { method: "POST", body: JSON.stringify({ confirm: true }) });
+      setProposal(r);
+      toast(r.failed_count ? "warn" : "ok", `Applied ${r.applied_count}; ${r.failed_count} still failed.`);
     } catch (e) { toast("err", (e as Error).message); }
     finally { setBusy(null); }
   }
@@ -206,8 +219,7 @@ export default function SchemeReviewPage({ discrepancyId }: { discrepancyId?: st
 
           <div className="row wrap" style={{ gap: 8, marginTop: 16 }}>
             <Button variant="primary" icon="wand" onClick={prepare}
-              loading={busy === "propose"}
-              disabled={selected.state === "VALID_ALTERNATIVE" && false}>
+              loading={busy === "propose"}>
               Prepare bulk correction
             </Button>
             <span className="muted small">
@@ -241,6 +253,11 @@ export default function SchemeReviewPage({ discrepancyId }: { discrepancyId?: st
             ))}
           </DataTable>
 
+          {proposal.status === "PARTIAL" && (
+            <Button variant="secondary" loading={busy === "retry"} onClick={recover}>
+              Retry failed items only ({proposal.failed_count})
+            </Button>
+          )}
           {proposal.status === "PROPOSED" && (
             <div className="row wrap" style={{ gap: 8, marginTop: 12 }}>
               <Button variant="primary" icon="check-circle"

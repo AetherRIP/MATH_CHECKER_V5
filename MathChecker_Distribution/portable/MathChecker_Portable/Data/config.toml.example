@@ -211,6 +211,12 @@ multi_account = false
 only = false
 
 
+[scheme_audit]
+# Disagreement records and teacher review; never authorizes bulk changes.
+enabled = true
+# Minimum confidence for staging supported recommendations, NOT proof of truth.
+confirm_confidence = 0.85
+
 [lifecycle]
 # Start on demand and stop when nobody is using the app.
 # ``enabled`` is the STOP half: the backend stops itself once no browser

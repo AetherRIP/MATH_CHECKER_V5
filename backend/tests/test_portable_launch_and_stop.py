@@ -200,6 +200,98 @@ def test_stop_names_the_instance_before_taking_it_down(main_entry, idle_instance
         assert calls[0][2] == signal.SIGTERM
 
 
+def test_a_refused_kill_says_why_and_points_at_the_administrator_fix(
+        main_entry, idle_instance, capsys, monkeypatch):
+    """A copy owned by another account must produce an actionable message.
+
+    Regression: taskkill's output was captured and thrown away, so a
+    permissions refusal surfaced as "Port still answers after the stop
+    request". That says nothing about the case it actually describes — the
+    Windows boot task runs the app as SYSTEM, and an ordinary window is refused
+    with "Access is denied" — which is the ONE stop failure a teacher can fix
+    themselves, by running Stop.bat as administrator.
+    """
+    if os.name != "nt":
+        pytest.skip("taskkill is the Windows stop path")
+    real_run = subprocess.run
+
+    class _Refused:
+        returncode = 1
+        stdout = ""
+        stderr = ("ERROR: The process with PID 1234 could not be terminated.\r\n"
+                  "Reason: Access is denied.\r\n")
+
+    def fake_run(argv, **kwargs):
+        if (isinstance(argv, (list, tuple)) and argv
+                and str(argv[0]).lower().endswith("taskkill")):
+            return _Refused()
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(main_entry, "_may_terminate", lambda pid: False)
+
+    assert main_entry.stop_running_instance(idle_instance.port) == 5
+    out = capsys.readouterr().out
+    # the operating system's own reason is shown, not swallowed
+    assert "could not be terminated" in out
+    assert "Access is denied." in out
+    # and the fix a teacher can actually apply
+    assert "Run as administrator" in out
+    assert "SYSTEM" in out
+    # nothing was killed, and the instance is still reported as running
+    assert main_entry.probe_port(idle_instance.port) == "ours"
+
+
+def test_a_refused_kill_that_is_not_permissions_never_blames_system(
+        main_entry, idle_instance, capsys, monkeypatch):
+    """The administrator hint is earned, never guessed.
+
+    When the process CAN be opened for termination (a copy mid-shutdown, for
+    example), the message must not send the teacher to UAC. Reporting and
+    inventing an explanation are different things.
+    """
+    if os.name != "nt":
+        pytest.skip("taskkill is the Windows stop path")
+    real_run = subprocess.run
+
+    class _Refused:
+        returncode = 1
+        stdout = ""
+        stderr = "ERROR: The process with PID 1234 could not be terminated."
+
+    def fake_run(argv, **kwargs):
+        if (isinstance(argv, (list, tuple)) and argv
+                and str(argv[0]).lower().endswith("taskkill")):
+            return _Refused()
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(main_entry, "_may_terminate", lambda pid: True)
+
+    assert main_entry.stop_running_instance(idle_instance.port) == 5
+    out = capsys.readouterr().out
+    assert "could not be terminated" in out
+    assert "Retry once" in out
+    assert "Run as administrator" not in out
+
+
+def test_the_permission_probe_asks_the_os_rather_than_guessing(main_entry):
+    """``_may_terminate`` is a real OS check with an honest fallback.
+
+    A process this test owns is terminable by definition; a probe that always
+    answered False would turn every refusal into a bogus "run as administrator",
+    and one that always answered True would hide the one refusal that matters.
+
+    Only ``ERROR_ACCESS_DENIED`` counts as a permission refusal: ``OpenProcess``
+    fails just as hard for a PID that no longer exists, and a dead process must
+    never be reported as a copy owned by SYSTEM.
+    """
+    assert main_entry._may_terminate(os.getpid()) is True
+    if os.name == "nt":
+        for impossible in (0, 0xFFFFFF):
+            assert main_entry._may_terminate(impossible) is True
+
+
 def test_stop_port_uses_the_recorded_instance_port(main_entry, idle_instance,
                                                    tmp_path, monkeypatch):
     """``--stop`` must find an instance launched on a non-default port.

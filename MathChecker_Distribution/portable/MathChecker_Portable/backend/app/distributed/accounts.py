@@ -476,7 +476,9 @@ def scoped_ids(account: dict) -> tuple[set[str], set[str]]:
 def can_see_class(account: dict, school_id: str, class_id: str | None) -> bool:
     schools, classes = scoped_ids(account)
     if not schools and not classes:
-        return True
+        # Empty scope is unrestricted ONLY for roles that grant global access.
+        # A newly created assistant with no assignments must see no classes.
+        return bool(set(account_roles(account)) & {"DEVELOPER", "TEACHER"})
     if class_id and class_id in classes:
         return True
     return bool(school_id and school_id in schools)

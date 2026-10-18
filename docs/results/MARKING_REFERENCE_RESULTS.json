@@ -1,0 +1,232 @@
+{
+  "manifest": "E:\\MATH_CHECKER_V5\\docs\\reference-marking\\manifest.json",
+  "review": {
+    "required": true,
+    "verified_by": null,
+    "verified_on": null,
+    "instructions": "A competent maths teacher must confirm every expected mark in REVIEW_SHEET.md against the scheme, then record their name and the date here. Until then the harness reports NOT CERTIFIED."
+  },
+  "papers": [
+    {
+      "paper": "paper-a",
+      "title": "Reference Paper A - Algebra, Number and Ratio (O Level style)",
+      "exit_code": 0,
+      "seconds": 68.2,
+      "unverified_in_harness": false,
+      "model": "gemini-3.8-flash",
+      "app_earned": 22.0,
+      "app_available": 29.0,
+      "app_percentage": 75.86206896551724,
+      "app_grade": "7",
+      "harness_verdict": "CERTIFIED",
+      "result_id": "b3d624fdb26e4e5b83960a7da35f232d",
+      "stdout_tail": "ash | 64s | result b3d624fdb26e4e5b83960a7da35f232d\n  marks       : Q1 3/3, Q2 2/2, Q3 3/3, Q4 0/2, Q5 2/2, Q6 3/3, Q7 0/2, Q8 3/3, Q9 1/2, Q10 2/2, Q11 1/2, Q12 2/3\n  total       : 22/29 = 75.8621% | provisional grade 7\n    Q4: The question was left blank.\n    Q7: Incorrect signs used in factorising x^2 + 7x + 12.\n    Q9: Arithmetic error in evaluating 1/2 * 12 * 9 (calculated as 108 instead of 54).\n    Q11: A single unambiguous answer was required by the mark scheme; candidate provided 'x = 4 or 12'.\n    Q12: Missing units 'km/h'.\n\n== accuracy against ground truth ==\n  source      : docs/reference-marking/manifest.json#paper-a (derived from the printed scheme; see REVIEW_SHEET.md)\n  expected    : Q1 3, Q2 2, Q3 3, Q4 0, Q5 2, Q6 3, Q7 0, Q8 3, Q9 1, Q10 2, Q11 1, Q12 2\n  expected total: 22\n  verdict     : CERTIFIED\n\nLocal evidence only: the per-question reasons are the model's own words about this paper.\noutcome JSON: C:\\Users\\Rudransha011_\\AppData\\Local\\Temp\\mc5-reference-psz4z3cr\\paper-a-outcome.json\n\n== stop and clean up ==\n  [PASS] the app stops cleanly \u2014 port 49388 free afterwards\n  [PASS] the real installation's config and secrets are untouched \u2014 byte-identical\n  [PASS] the throwaway data (and its copy of the key) is deleted \u2014 C:\\Users\\Rudransha011_\\AppData\\Local\\MC5-Live-Marking-20261016-210002 removed\n\n========================================================================\n15/15 checks passed\n========================================================================\n",
+      "stderr_tail": "",
+      "harness_report": "C:\\Users\\RUDRAN~1\\AppData\\Local\\Temp\\mc5-reference-psz4z3cr\\paper-a-harness.txt",
+      "comparison": {
+        "items_in_reference": 12,
+        "items_compared": 12,
+        "exact_agreement": 12,
+        "mean_absolute_error": 0,
+        "over_marked": [],
+        "under_marked": [],
+        "rejected_valid_alternatives": [],
+        "wrong_because_scheme_wrong": [],
+        "mark_allocation_disagreements": [],
+        "matching_errors": {
+          "unmatched_model": [],
+          "unmatched_manifest": []
+        },
+        "rows": [
+          {
+            "question": "1",
+            "model_label": "1",
+            "matched_by": "exact",
+            "expected": 3,
+            "awarded": 3,
+            "difference": 0,
+            "marks_available": 3,
+            "categories": [
+              "fully-correct",
+              "method-and-accuracy"
+            ]
+          },
+          {
+            "question": "2",
+            "model_label": "2",
+            "matched_by": "exact",
+            "expected": 2,
+            "awarded": 2,
+            "difference": 0,
+            "marks_available": 2,
+            "categories": [
+              "fully-correct",
+              "equivalent-expression"
+            ]
+          },
+          {
+            "question": "3",
+            "model_label": "3",
+            "matched_by": "exact",
+            "expected": 3,
+            "awarded": 3,
+            "difference": 0,
+            "marks_available": 3,
+            "categories": [
+              "nested-subquestion",
+              "fully-correct"
+            ]
+          },
+          {
+            "question": "4",
+            "model_label": "4",
+            "matched_by": "exact",
+            "expected": 0,
+            "awarded": 0,
+            "difference": 0,
+            "marks_available": 2,
+            "categories": [
+              "missing-answer"
+            ]
+          },
+          {
+            "question": "5",
+            "model_label": "5",
+            "matched_by": "exact",
+            "expected": 2,
+            "awarded": 2,
+            "difference": 0,
+            "marks_available": 2,
+            "categories": [
+              "alternative-method",
+              "fully-correct"
+            ]
+          },
+          {
+            "question": "6",
+            "model_label": "6",
+            "matched_by": "exact",
+            "expected": 3,
+            "awarded": 3,
+            "difference": 0,
+            "marks_available": 3,
+            "categories": [
+              "equivalent-expression",
+              "fully-correct"
+            ]
+          },
+          {
+            "question": "7",
+            "model_label": "7",
+            "matched_by": "exact",
+            "expected": 0,
+            "awarded": 0,
+            "difference": 0,
+            "marks_available": 2,
+            "categories": [
+              "incorrect"
+            ]
+          },
+          {
+            "question": "8",
+            "model_label": "8",
+            "matched_by": "exact",
+            "expected": 3,
+            "awarded": 3,
+            "difference": 0,
+            "marks_available": 3,
+            "categories": [
+              "fully-correct",
+              "method-and-accuracy"
+            ]
+          },
+          {
+            "question": "9",
+            "model_label": "9",
+            "matched_by": "exact",
+            "expected": 1,
+            "awarded": 1,
+            "difference": 0,
+            "marks_available": 2,
+            "categories": [
+              "partial-credit",
+              "method-and-accuracy"
+            ]
+          },
+          {
+            "question": "10",
+            "model_label": "10",
+            "matched_by": "exact",
+            "expected": 2,
+            "awarded": 2,
+            "difference": 0,
+            "marks_available": 2,
+            "categories": [
+              "follow-through"
+            ]
+          },
+          {
+            "question": "11",
+            "model_label": "11",
+            "matched_by": "exact",
+            "expected": 1,
+            "awarded": 1,
+            "difference": 0,
+            "marks_available": 2,
+            "categories": [
+              "ambiguous"
+            ]
+          },
+          {
+            "question": "12",
+            "model_label": "12",
+            "matched_by": "exact",
+            "expected": 2,
+            "awarded": 2,
+            "difference": 0,
+            "marks_available": 3,
+            "categories": [
+              "partial-credit",
+              "method-and-accuracy"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "paper": "paper-b",
+      "title": "Reference Paper B - Nested subquestions, repeated lesson id and a defective scheme header",
+      "exit_code": 1,
+      "seconds": 905.6,
+      "unverified_in_harness": true,
+      "model": null,
+      "app_earned": null,
+      "app_available": null,
+      "app_percentage": null,
+      "app_grade": null,
+      "harness_verdict": null,
+      "result_id": null,
+      "stdout_tail": "sers\\RUDRAN~1\\AppData\\Local\\Temp\\mc5-reference-psz4z3cr\\paper-b-expected.json\ntolerance  : \u00b10 mark(s) per question\nreport     : C:\\Users\\Rudransha011_\\AppData\\Local\\Temp\\mc5-reference-psz4z3cr\\paper-b-harness.txt\n\n== isolated run ==\n  [PASS] the run works in its own throwaway data directory \u2014 C:\\Users\\Rudransha011_\\AppData\\Local\\MC5-Live-Marking-20261016-210110\\Data (settings copied from E:\\MATH_CHECKER_V5\\data)\n  [PASS] Testing-only mode is forced ON for the run \u2014 every Classroom/Drive write is blocked while certifying\n\n== start the app (live, not demo) ==\n  [PASS] the app starts and answers /api/health \u2014 http://127.0.0.1:56388\n  [PASS] the copy signs in \u2014 signed in through /api/auth/login\n  [PASS] the app reports its engine state \u2014 GET /api/settings \u2192 200\n  [PASS] the app is NOT in mock mode \u2014 the marking is live \u2014 mock_mode=False, models=['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite']\n  [PASS] Testing-only is ON in the running app \u2014 Testing only mode is ON: results from this run are private to this machine and must not be released.\n\n== live correction ==\n  [PASS] the app accepts a real PDF and mark scheme \u2014 pipeline=standard pages=1 job=c065344367d348c2872dd31a65621492\n  [FAIL] the live model completes the correction \u2014 job c065344367d348c2872dd31a65621492 \u2192 WAITING_FOR_API\n  [PASS] the throwaway data (and its copy of the key) is deleted \u2014 C:\\Users\\Rudransha011_\\AppData\\Local\\MC5-Live-Marking-20261016-210110 removed\n",
+      "stderr_tail": "",
+      "harness_report": "C:\\Users\\RUDRAN~1\\AppData\\Local\\Temp\\mc5-reference-psz4z3cr\\paper-b-harness.txt"
+    }
+  ],
+  "aggregate": {
+    "papers_run": 2,
+    "papers_with_a_usable_outcome": 1,
+    "items_compared": 12,
+    "exact_agreement": 12,
+    "over": 0,
+    "under": 0,
+    "rejected_alternatives": 0,
+    "matching_errors": 0,
+    "allocation_disagreements": 0,
+    "exact_agreement_rate": 1.0,
+    "mean_absolute_error_per_item": 0,
+    "mean_absolute_error_overall": 0.0,
+    "human_verified_by": null,
+    "failures": [
+      "paper-b: no usable outcome (harness exit 1)"
+    ]
+  }
+}

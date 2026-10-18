@@ -1091,11 +1091,29 @@ class LargePdfRunner:
             existing = None
             if job["coursework_id"] and job["submission_id"]:
                 existing = conn.execute(
-                    "SELECT id FROM results WHERE coursework_id = ? "
+                    "SELECT * FROM results WHERE coursework_id = ? "
                     "AND submission_id = ?",
                     (job["coursework_id"], job["submission_id"])).fetchone()
             if existing:
                 result_id = existing["id"]
+                from ..engine import versions
+                # The same teacher-override invariant as standard correction:
+                # preserve the candidate for review, never replace a human mark.
+                if existing["manual_override"]:
+                    versions.record_pending(
+                        conn, result_id=result_id, earned=earned, available=available,
+                        percentage=percentage, provisional_grade=provisional,
+                        marking_model=None, key_fingerprint=None, confidence="REVIEW",
+                        confidence_reasons=["Teacher override preserved"], verification=verification,
+                        result=result, created_at=now_ts, note="Large-PDF candidate; teacher override preserved")
+                    return result_id
+                versions.record(
+                    conn, result_id=result_id, earned=existing["earned"], available=existing["available"],
+                    percentage=existing["percentage"], provisional_grade=existing["provisional_grade"],
+                    marking_model=existing["marking_model"], key_fingerprint=existing["key_fingerprint"],
+                    confidence=existing["confidence"], confidence_reasons=existing["confidence_reasons"],
+                    verification=existing["verification_json"], result=existing["result_json"],
+                    created_at=now_ts, note="Original before large-PDF correction")
                 conn.execute(
                     """
                     UPDATE results SET
@@ -1139,6 +1157,15 @@ class LargePdfRunner:
                                 ensure_ascii=False),
                      review_flag, now_ts),
                 )
+            from ..engine import scheme_audit, versions
+            scheme_audit.record_from_result(conn, job=job, result_id=result_id,
+                                            result=result, now_ts=now_ts)
+            versions.record(
+                conn, result_id=result_id, earned=earned, available=available,
+                percentage=percentage, provisional_grade=provisional,
+                marking_model=None, key_fingerprint=None, confidence=None,
+                confidence_reasons=["Large PDF Worker"], verification=verification,
+                result=result, created_at=now_ts, note="Large-PDF merged correction")
         return result_id
 
 

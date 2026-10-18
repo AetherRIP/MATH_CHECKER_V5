@@ -187,14 +187,42 @@ interface DoubleCheckDifference {
   question_number: string; first_awarded: number; second_awarded: number;
   max_marks: number; first_loss_reason: string; second_loss_reason: string;
 }
+// A per-question mark-scheme verification result. Present ONLY when the engine
+// had a defensible mathematical reason to disagree with the supplied mark
+// scheme; ordinary questions carry none. Teacher-facing only, and deliberately
+// factual: it never states a provider, model or prompt detail.
+interface SchemeCheck {
+  disagrees_with_scheme: boolean;
+  student_answer_valid: boolean;
+  scheme_answer: string;
+  independently_verified_answer: string;
+  discrepancy_type: string;
+  evidence: string;
+  confidence: number;
+  justified_marks: number | null;
+}
 interface Question {
   question_number: string; max_marks: number; awarded_marks: number; topic: string;
   student_answer: string; working_summary: string; loss_reason: string;
   mark_breakdown: { code: string; awarded: boolean; reason: string }[];
   correct_method: string; full_mark_solution: string;
+  scheme_check?: SchemeCheck;
   status?: "VALID" | "REVIEW";
   review_reason?: string;
   teacher_mark?: number;
+  /** §4: the per-subquestion breakdown. Present only when the mark scheme
+   *  declares sub-parts, and each entry carries ITS OWN marks, answers and
+   *  M/A/B codes — never another part's. */
+  subquestions?: {
+    id: string; label: string; parent_id?: string;
+    max_marks: number; awarded_marks: number;
+    /** MARKED, or UNMARKED when the marker returned nothing for this part. */
+    status: string;
+    answers?: string[]; mark_codes?: string[];
+  }[];
+  subquestion_marks?: number;
+  /** Labels of the declared marking points the marker did not return. */
+  unmarked_subquestions?: string[];
 }
 interface ResultDetail extends ResultSummary {
   student_id: string | null; submission_id: string | null; processing_seconds: number | null;
@@ -232,6 +260,7 @@ function QuestionCard({ q, resultId, onChanged }: {
 }) {
   const toast = useToast();
   const needsReview = q.status === "REVIEW";
+  const flag = q.scheme_check;
   const [draft, setDraft] = useState(String(q.awarded_marks));
   const [busy, setBusy] = useState(false);
 
@@ -254,6 +283,8 @@ function QuestionCard({ q, resultId, onChanged }: {
         </span>
         <QuestionTone awarded={q.awarded_marks} max={q.max_marks} />
         {needsReview && <Badge tone="warn">⚠ REVIEW — unmarked</Badge>}
+        {flag && <Badge tone={flag.student_answer_valid ? "warn" : "info"}>
+          ⚠ Mark-scheme check</Badge>}
         <span className="faint small" style={{ marginLeft: "auto", paddingLeft: 8 }}>
           {q.topic}
         </span>
@@ -264,6 +295,39 @@ function QuestionCard({ q, resultId, onChanged }: {
             {q.review_reason || "This question could not be marked — treat the 0 as "
               + "unknown, not as a confirmed score."}
           </div>
+        )}
+        {/* §4/§9: which marking point earned what — including the ones the
+            marker never returned, which are UNMARKED (not a confirmed 0). */}
+        {(q.subquestions?.length ?? 0) > 0 && (
+          <table className="table small" style={{ marginBottom: 12 }}>
+            <thead>
+              <tr><th>Subquestion</th><th className="num">Marks</th>
+                <th>Expected answer(s)</th><th>Marking points</th><th /></tr>
+            </thead>
+            <tbody>
+              {q.subquestions!.map((s) => {
+                const unmarked = (s.status ?? "").toUpperCase() !== "MARKED";
+                return (
+                  <tr key={s.id} style={unmarked ? { opacity: 0.75 } : undefined}>
+                    <td><strong>{s.label || s.id}</strong></td>
+                    <td className="num">
+                      {unmarked ? <span className="muted">—</span>
+                        : `${s.awarded_marks}/${s.max_marks}`}
+                    </td>
+                    <td>{(s.answers ?? []).length
+                      ? s.answers!.join(" or ")
+                      : <span className="muted">not stated</span>}</td>
+                    <td>{(s.mark_codes ?? []).length
+                      ? s.mark_codes!.join(", ")
+                      : <span className="muted">none stated</span>}</td>
+                    <td>{unmarked
+                      ? <Badge tone="warn">UNMARKED</Badge>
+                      : <Icon name="check" size={13} style={{ color: "var(--ok)" }} />}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
         {/* mark checklist first — the headline result */}
         {q.mark_breakdown.length > 0 && (
@@ -281,6 +345,25 @@ function QuestionCard({ q, resultId, onChanged }: {
         {q.loss_reason && (
           <div className="notice warn small" style={{ marginBottom: 10 }}>
             <strong>Marks lost:</strong> {q.loss_reason}
+          </div>
+        )}
+        {flag && (
+          <div className="notice warn small" style={{ marginBottom: 10 }}>
+            <strong>Mark-scheme check.</strong> The supplied mark scheme gives{" "}
+            <span className="mono">{flag.scheme_answer || "no reference answer"}</span>;{" "}
+            independent verification gives{" "}
+            <span className="mono">{flag.independently_verified_answer || "—"}</span>.{" "}
+            <em>{flag.discrepancy_type.replace(/_/g, " ")}</em>
+            {flag.confidence != null &&
+              <> · confidence {Math.round(flag.confidence * 100)}%</>}.
+            {flag.evidence ? ` ${flag.evidence}` : ""}
+            {flag.justified_marks != null && flag.student_answer_valid && (
+              <> The mathematical recommendation is
+                {" "}{flag.justified_marks}/{q.max_marks}; the recorded award is
+                {" "}{q.awarded_marks}/{q.max_marks}.</>
+            )}{" "}
+            A suspected error is reviewed before it can affect other students&apos;
+            grades.
           </div>
         )}
         <div className="grid grid-2">

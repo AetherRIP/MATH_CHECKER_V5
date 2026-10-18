@@ -354,6 +354,9 @@ def get_schools(authorization: str | None = Header(None),
     account = _account_from_header(authorization, x_device_id)
     schools = org.list_schools(include_inactive=True)
     schools_ids, class_ids = accounts.scoped_ids(account)
+    if not schools_ids and not class_ids and not (
+            set(accounts.account_roles(account)) & {"TEACHER", "DEVELOPER"}):
+        return {"schools": [], "classes": []}
     if schools_ids or class_ids:
         schools = [s for s in schools
                    if s["id"] in schools_ids

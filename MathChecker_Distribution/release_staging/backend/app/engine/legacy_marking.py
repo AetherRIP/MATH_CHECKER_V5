@@ -1,7 +1,9 @@
 """LEGACY CORRECTION ENGINE — preserved from the friend's working app.
 
-Source: ``Friend code/edexcel-maths-correctorv2-main/app5_1_automated.py``
-(commit of record: the version audited before V5 development started).
+Source: ``app5_1_automated.py``, the friend's original Streamlit app — kept as
+an untouched reference copy under ``Friend code/`` until that folder was removed
+on 2026-10-15 (commit of record: the version audited before V5 development
+started).
 
 PRESERVATION CONTRACT (V5 rule #0 — do not break the working engine):
 
@@ -224,6 +226,44 @@ def clamp_mark(value, max_marks):
     return max(0, min(value, max_marks))
 
 
+def _clean_scheme_check(raw: Any, max_marks: int) -> dict | None:
+    """Sanitise the optional per-question mark-scheme verification block.
+
+    Nothing here is trusted blindly: the confidence is bounded, the justified
+    mark is clamped to the question maximum, and an unknown discrepancy type is
+    kept as a short string so the audit layer can classify it. A block that
+    does not actually claim a disagreement is dropped entirely so ordinary
+    results are byte-identical to before.
+    """
+    if not isinstance(raw, dict):
+        return None
+    if not bool(raw.get("disagrees_with_scheme")):
+        return None
+    try:
+        confidence = float(raw.get("confidence"))
+    except (TypeError, ValueError):
+        confidence = 0.5
+    confidence = min(1.0, max(0.0, confidence))
+    justified = None
+    if raw.get("justified_marks") is not None:
+        try:
+            justified = max(0, min(int(raw.get("justified_marks")), max_marks))
+        except (TypeError, ValueError):
+            justified = None
+    return {
+        "disagrees_with_scheme": True,
+        "student_answer_valid": bool(raw.get("student_answer_valid")),
+        "scheme_answer": str(raw.get("scheme_answer") or "").strip()[:2000],
+        "independently_verified_answer": str(
+            raw.get("independently_verified_answer")
+            or raw.get("verified_answer") or "").strip()[:2000],
+        "discrepancy_type": str(raw.get("discrepancy_type") or "").strip()[:80],
+        "evidence": str(raw.get("evidence") or "").strip()[:4000],
+        "confidence": round(confidence, 3),
+        "justified_marks": justified,
+    }
+
+
 def normalise_result(data: dict) -> dict:
     """Clean and validate model output before anything is displayed."""
     questions = data.get("questions", [])
@@ -260,20 +300,22 @@ def normalise_result(data: dict) -> dict:
                     }
                 )
 
-        cleaned.append(
-            {
-                "question_number": number,
-                "max_marks": max_marks,
-                "awarded_marks": awarded,
-                "topic": str(q.get("topic", "Unclassified")).strip(),
-                "student_answer": str(q.get("student_answer", "")).strip(),
-                "working_summary": str(q.get("working_summary", "")).strip(),
-                "loss_reason": str(q.get("loss_reason", "")).strip(),
-                "mark_breakdown": cleaned_breakdown,
-                "correct_method": str(q.get("correct_method", "")).strip(),
-                "full_mark_solution": str(q.get("full_mark_solution", "")).strip(),
-            }
-        )
+        entry = {
+            "question_number": number,
+            "max_marks": max_marks,
+            "awarded_marks": awarded,
+            "topic": str(q.get("topic", "Unclassified")).strip(),
+            "student_answer": str(q.get("student_answer", "")).strip(),
+            "working_summary": str(q.get("working_summary", "")).strip(),
+            "loss_reason": str(q.get("loss_reason", "")).strip(),
+            "mark_breakdown": cleaned_breakdown,
+            "correct_method": str(q.get("correct_method", "")).strip(),
+            "full_mark_solution": str(q.get("full_mark_solution", "")).strip(),
+        }
+        check = _clean_scheme_check(q.get("scheme_check"), max_marks)
+        if check is not None:
+            entry["scheme_check"] = check
+        cleaned.append(entry)
 
     cleaned.sort(key=lambda q: q["question_number"])
 
@@ -452,6 +494,18 @@ CORE RULES
    assigning marks.
 2. Match each student question to the corresponding mark-scheme question.
 3. Award marks using the supplied mark scheme, not generic intuition.
+3a. Independently verify the mathematics BEFORE relying on the mark scheme.
+   The mark scheme is an important reference, NOT an infallible source of
+   mathematical truth. Solve the question yourself (or verify the student's
+   working) and compare your answer with the reference answer.
+3b. NEVER award zero, or withhold marks, solely because a mathematically
+   correct student answer differs from an incorrect or incomplete reference
+   answer. If your independent solution shows the student is right, award the
+   marks justified by the question and the applicable marking rules.
+3c. Do NOT conclude the mark scheme is wrong merely because your own answer
+   differs. You must have a defensible mathematical reason before recording a
+   discrepancy (a demonstrable arithmetic/algebraic/sign error, a wrong value,
+   an equivalent form, or a valid alternative method).
 4. Respect method (M), accuracy (A), independent/basis (B), error-carried-forward
    (ECF), follow-through, implied answers, and "ignore subsequent working" (ISW)
    where the mark scheme supports them.
@@ -471,6 +525,22 @@ CORE RULES
 14. For each lost mark, explain the precise mathematical/mark-scheme reason.
 15. Give a correct full-mark solution that a student can study.
 16. Keep the output factual and concise. Do not give a fake "official" grade.
+17. For every question, verify the answer independently using a reliable
+    method, and record the result in the optional "scheme_check" object.
+18. Set "scheme_check.disagrees_with_scheme" to true ONLY when you have a
+    defensible mathematical reason to disagree with the supplied mark scheme.
+19. In "scheme_check" record: the mark-scheme answer, your independently
+    verified answer, the discrepancy type, your evidence/working, your
+    confidence (0-1), whether the student's answer is mathematically valid,
+    and - when the student is right - the integer "justified_marks" the work
+    deserves. Never exceed the question's maximum.
+20. Preserve every existing rule: method (M), accuracy (A), basis (B), ECF,
+    follow-through, ISW, required working, rounding, units, answer formats and
+    any explicitly required method must still be applied exactly as stated.
+21. If the question is ambiguous, or the evidence is insufficient, use the
+    discrepancy type "ambiguous_question" (or leave confidence low) so the
+    case goes to human review instead of a confident wrong decision.
+22. Never change a question's maximum marks and never invent marks.
 
 VERY IMPORTANT
 The application's Python code will calculate the total score and percentage.
@@ -514,6 +584,33 @@ OUTPUT_SCHEMA: dict[str, Any] = {
                             },
                             "required": ["code", "awarded", "reason"],
                         },
+                    },
+                    "scheme_check": {
+                        "type": "object",
+                        "properties": {
+                            "disagrees_with_scheme": {"type": "boolean"},
+                            "student_answer_valid": {"type": "boolean"},
+                            "scheme_answer": {"type": "string"},
+                            "independently_verified_answer": {"type": "string"},
+                            "discrepancy_type": {
+                                "type": "string",
+                                "enum": [
+                                    "incorrect_answer",
+                                    "arithmetic_error",
+                                    "sign_error",
+                                    "equivalent_expression",
+                                    "alternative_method",
+                                    "question_scheme_mismatch",
+                                    "internal_inconsistency",
+                                    "ambiguous_question",
+                                    "other",
+                                ],
+                            },
+                            "evidence": {"type": "string"},
+                            "confidence": {"type": "number"},
+                            "justified_marks": {"type": "integer"},
+                        },
+                        "required": ["disagrees_with_scheme"],
                     },
                     "correct_method": {"type": "string"},
                     "full_mark_solution": {"type": "string"},
@@ -574,7 +671,10 @@ Before returning:
 - record M/A/B-style evidence where available,
 - explain lost marks,
 - provide a full-mark solution,
-- flag any unreadable or genuinely ambiguous evidence.
+- flag any unreadable or genuinely ambiguous evidence,
+- independently verify each answer and fill in "scheme_check" when (and only
+  when) you have a defensible mathematical reason to disagree with the
+  supplied mark scheme, awarding the marks the mathematics justifies.
 
 Do not calculate the final total as a free-form narrative. The application will calculate it from the individual question marks.
 """

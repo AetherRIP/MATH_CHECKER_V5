@@ -1,0 +1,303 @@
+# Final release inventory and checklist
+
+Production root: `E:\MATH_CHECKER_V5`; launcher: `main.py`; distribution: `MathChecker_Distribution`.
+Private backup: `dev_local/release_audit_backup` (never shipped); SQLite backup uses online backup API. No production migrations or tests.
+
+## UI inventory (source controls; manual verification tracked separately)
+- `frontend/src/App.tsx`: 1 control/dialog declarations.
+- `frontend/src/distributed/DistributedPage.tsx`: 26 control/dialog declarations.
+- `frontend/src/distributed/panels.tsx`: 44 control/dialog declarations.
+- `frontend/src/distributed/SyncMonitor.tsx`: 2 control/dialog declarations.
+- `frontend/src/distributed/UpdatesPage.tsx`: 34 control/dialog declarations.
+- `frontend/src/pages/AiPage.tsx`: 0 control/dialog declarations.
+- `frontend/src/pages/AssignmentsPage.tsx`: 51 control/dialog declarations.
+- `frontend/src/pages/AuditPage.tsx`: 4 control/dialog declarations.
+- `frontend/src/pages/AutomationPage.tsx`: 13 control/dialog declarations.
+- `frontend/src/pages/ClassesPage.tsx`: 4 control/dialog declarations.
+- `frontend/src/pages/ClassroomPage.tsx`: 6 control/dialog declarations.
+- `frontend/src/pages/CorrectionsPage.tsx`: 3 control/dialog declarations.
+- `frontend/src/pages/DashboardPage.tsx`: 8 control/dialog declarations.
+- `frontend/src/pages/DiagnosticsPage.tsx`: 0 control/dialog declarations.
+- `frontend/src/pages/KeysPage.tsx`: 2 control/dialog declarations.
+- `frontend/src/pages/LargePdfWorkerPage.tsx`: 11 control/dialog declarations.
+- `frontend/src/pages/NetworkPanel.tsx`: 5 control/dialog declarations.
+- `frontend/src/pages/PdfCorrectionPage.tsx`: 5 control/dialog declarations.
+- `frontend/src/pages/PrivacyPage.tsx`: 6 control/dialog declarations.
+- `frontend/src/pages/PromptsPage.tsx`: 1 control/dialog declarations.
+- `frontend/src/pages/ReportPage.tsx`: 17 control/dialog declarations.
+- `frontend/src/pages/ResultsPage.tsx`: 20 control/dialog declarations.
+- `frontend/src/pages/ReviewPage.tsx`: 12 control/dialog declarations.
+- `frontend/src/pages/SchemeReviewPage.tsx`: 12 control/dialog declarations.
+- `frontend/src/pages/SettingsPage.tsx`: 29 control/dialog declarations.
+- `frontend/src/pages/SetupWizard.tsx`: 6 control/dialog declarations.
+- `frontend/src/pages/StoragePage.tsx`: 5 control/dialog declarations.
+- `frontend/src/pages/StudentsPage.tsx`: 10 control/dialog declarations.
+- `frontend/src/pages/TaskManagerPage.tsx`: 4 control/dialog declarations.
+- `frontend/src/pages/UsagePage.tsx`: 2 control/dialog declarations.
+- `frontend/src/SignIn.tsx`: 6 control/dialog declarations.
+
+## Backend route inventory
+- `backend/app/api/access_routes.py`: GET `/access/state` → `access_state`
+- `backend/app/api/access_routes.py`: POST `/access/public-address` → `set_public_address`
+- `backend/app/api/access_routes.py`: POST `/access/multi-account` → `set_multi_account`
+- `backend/app/api/access_routes.py`: POST `/access/public-address/recheck` → `recheck_public_address`
+- `backend/app/api/auth_routes.py`: GET `/health` → `health`
+- `backend/app/api/auth_routes.py`: GET `/remote/status` → `remote_status`
+- `backend/app/api/auth_routes.py`: GET `/auth/status` → `status`
+- `backend/app/api/auth_routes.py`: POST `/auth/login` → `login`
+- `backend/app/api/auth_routes.py`: POST `/auth/logout` → `logout`
+- `backend/app/api/auth_routes.py`: POST `/auth/setup` → `setup`
+- `backend/app/api/auth_routes.py`: GET `/auth/me` → `me`
+- `backend/app/api/data_routes.py`: GET `/data/inventory` → `data_inventory`
+- `backend/app/api/data_routes.py`: GET `/data/export` → `data_export`
+- `backend/app/api/data_routes.py`: POST `/data/import/preview` → `data_import_preview`
+- `backend/app/api/data_routes.py`: POST `/data/import` → `data_import`
+- `backend/app/api/privacy_routes.py`: GET `/privacy/info` → `privacy_info`
+- `backend/app/api/privacy_routes.py`: POST `/privacy/factory-reset` → `factory_reset`
+- `backend/app/api/privacy_routes.py`: GET `/privacy/diagnostic-export` → `diagnostic_export`
+- `backend/app/api/product_routes.py`: GET `/classes` → `list_classes`
+- `backend/app/api/product_routes.py`: GET `/assignments` → `list_assignments`
+- `backend/app/api/product_routes.py`: GET `/assignments/{coursework_id}` → `assignment_detail`
+- `backend/app/api/product_routes.py`: POST `/assignments/local` → `create_local_assignment`
+- `backend/app/api/product_routes.py`: POST `/classroom/courses/{course_id}/assignments/create` → `create_managed_assignment`
+- `backend/app/api/product_routes.py`: POST `/classroom/assignments/{coursework_id}/import` → `import_external_assignment`
+- `backend/app/api/product_routes.py`: POST `/classroom/assignments/{coursework_id}/classroom-total` → `update_classroom_total`
+- `backend/app/api/product_routes.py`: GET `/classroom/assignments/{coursework_id}/publish/queue` → `publish_queue`
+- `backend/app/api/product_routes.py`: POST `/classroom/assignments/{coursework_id}/publish` → `publish_operations`
+- `backend/app/api/product_routes.py`: GET `/attention` → `attention`
+- `backend/app/api/product_routes.py`: GET `/assignments/{coursework_id}/mark-scheme` → `assignment_mark_scheme`
+- `backend/app/api/product_routes.py`: POST `/assignments/{coursework_id}/mark-scheme/recheck` → `recheck_assignment_mark_scheme`
+- `backend/app/api/product_routes.py`: POST `/assignments/{coursework_id}/mark-scheme/override` → `override_assignment_mark_scheme`
+- `backend/app/api/report_routes.py`: GET `/reports/assignment/{coursework_id}` → `assignment_report`
+- `backend/app/api/report_routes.py`: GET `/reports/class/{course_id}` → `class_report`
+- `backend/app/api/report_routes.py`: GET `/reports/assignment/{coursework_id}/export` → `export_assignment_report`
+- `backend/app/api/report_routes.py`: GET `/reports/class/{course_id}/export` → `export_class_report`
+- `backend/app/api/report_routes.py`: GET `/reports/class-report` → `class_report_json`
+- `backend/app/api/report_routes.py`: GET `/reports/class-report/export` → `class_report_export`
+- `backend/app/api/report_routes.py`: GET `/reports/options` → `reports_options`
+- `backend/app/api/report_routes.py`: GET `/reports/build` → `reports_build`
+- `backend/app/api/report_routes.py`: GET `/reports/build/export` → `reports_build_export`
+- `backend/app/api/routes_all.py`: GET `/workers` → `workers_state`
+- `backend/app/api/routes_all.py`: POST `/workers/resize` → `workers_resize`
+- `backend/app/api/routes_all.py`: GET `/dashboard` → `dashboard`
+- `backend/app/api/routes_all.py`: GET `/jobs` → `list_jobs`
+- `backend/app/api/routes_all.py`: GET `/jobs/stream` → `jobs_stream`
+- `backend/app/api/routes_all.py`: GET `/jobs/{job_id}` → `job_detail`
+- `backend/app/api/routes_all.py`: POST `/jobs/{job_id}/cancel` → `cancel_job`
+- `backend/app/api/routes_all.py`: POST `/jobs/{job_id}/retry` → `retry_job`
+- `backend/app/api/routes_all.py`: GET `/results` → `list_results`
+- `backend/app/api/routes_all.py`: GET `/results/{result_id}` → `result_detail`
+- `backend/app/api/routes_all.py`: GET `/results/{result_id}/export` → `export_result`
+- `backend/app/api/routes_all.py`: GET `/results/{result_id}/versions` → `result_versions`
+- `backend/app/api/routes_all.py`: POST `/results/{result_id}/versions/{version}/restore` → `restore_result_version`
+- `backend/app/api/routes_all.py`: POST `/results/{result_id}/remark` → `remark_result`
+- `backend/app/api/routes_all.py`: GET `/results/{result_id}/remark` → `remark_status`
+- `backend/app/api/routes_all.py`: POST `/results/{result_id}/remark/decision` → `remark_decision`
+- `backend/app/api/routes_all.py`: POST `/results/{result_id}/retry` → `retry_result_operation`
+- `backend/app/api/routes_all.py`: POST `/corrections/manual` → `manual_correction`
+- `backend/app/api/routes_all.py`: POST `/corrections/unified` → `unified_correction`
+- `backend/app/api/routes_all.py`: GET `/corrections/pipelines` → `correction_pipelines`
+- `backend/app/api/routes_all.py`: GET `/keys` → `keys_status`
+- `backend/app/api/routes_all.py`: POST `/keys/{fingerprint}/re-enable` → `re_enable_key`
+- `backend/app/api/routes_all.py`: POST `/keys/{fingerprint}/disable` → `disable_key`
+- `backend/app/api/routes_all.py`: POST `/keys/{fingerprint}/test` → `test_single_key`
+- `backend/app/api/routes_all.py`: GET `/keys/test/stream` → `test_all_keys`
+- `backend/app/api/routes_all.py`: GET `/classroom/status` → `classroom_status`
+- `backend/app/api/routes_all.py`: POST `/classroom/connect` → `classroom_connect`
+- `backend/app/api/routes_all.py`: POST `/classroom/disconnect` → `classroom_do_disconnect`
+- `backend/app/api/routes_all.py`: GET `/classroom/courses` → `courses`
+- `backend/app/api/routes_all.py`: GET `/classroom/courses/{course_id}/assignments` → `assignments`
+- `backend/app/api/routes_all.py`: GET `/classroom/courses/{course_id}/assignments/{coursework_id}/submissions` → `submissions`
+- `backend/app/api/routes_all.py`: POST `/classroom/courses/{course_id}/assignments/{coursework_id}/correct` → `correct_selected`
+- `backend/app/api/routes_all.py`: POST `/classroom/courses/{course_id}/assignments/{coursework_id}/allow` → `allow_assignment`
+- `backend/app/api/routes_all.py`: POST `/classroom/courses/{course_id}/assignments/{coursework_id}/mark-scheme` → `upload_mark_scheme`
+- `backend/app/api/routes_all.py`: GET `/assignments/{coursework_id}/correct-all/preview` → `correct_all_preview`
+- `backend/app/api/routes_all.py`: POST `/classroom/courses/{course_id}/assignments/{coursework_id}/correct-all` → `correct_all`
+- `backend/app/api/routes_all.py`: GET `/results/{result_id}/classroom-attachment` → `result_attachment_status`
+- `backend/app/api/routes_all.py`: POST `/results/{result_id}/attach-report` → `attach_report_to_submission`
+- `backend/app/api/routes_all.py`: POST `/results/{result_id}/report-cleanup` → `retry_report_cleanup`
+- `backend/app/api/routes_all.py`: POST `/classroom/report-cleanup/sweep` → `sweep_report_cleanup`
+- `backend/app/api/routes_all.py`: POST `/classroom/courses/{course_id}/assignments/{coursework_id}/attach-reports` → `attach_reports_batch`
+- `backend/app/api/routes_all.py`: POST `/classroom/grades/push` → `push_grades`
+- `backend/app/api/routes_all.py`: GET `/search` → `global_search`
+- `backend/app/api/routes_all.py`: GET `/usage` → `usage_report`
+- `backend/app/api/routes_all.py`: GET `/agent/state` → `agent_state`
+- `backend/app/api/routes_all.py`: POST `/agent/state` → `set_agent_state`
+- `backend/app/api/routes_all.py`: GET `/agent/discovery` → `agent_discovery`
+- `backend/app/api/routes_all.py`: GET `/settings` → `get_settings`
+- `backend/app/api/routes_all.py`: POST `/settings` → `update_settings`
+- `backend/app/api/routes_all.py`: POST `/settings/gemini-keys` → `set_gemini_keys`
+- `backend/app/api/routes_all.py`: POST `/keys/{fingerprint}/remove` → `remove_key`
+- `backend/app/api/routes_all.py`: GET `/diagnostics` → `diagnostics`
+- `backend/app/api/routes_all.py`: GET `/diagnostics/logs` → `diagnostics_logs`
+- `backend/app/api/routes_all.py`: POST `/diagnostics/logs/clear` → `diagnostics_clear_log`
+- `backend/app/api/routes_all.py`: GET `/diagnostics/db` → `diagnostics_db`
+- `backend/app/api/routes_all.py`: POST `/diagnostics/compare-legacy` → `compare_legacy`
+- `backend/app/api/routes_all.py`: GET `/dev/prompts` → `dev_prompts`
+- `backend/app/api/routes_all.py`: POST `/dev/prompts` → `set_dev_prompts`
+- `backend/app/api/scheme_routes.py`: GET `/discrepancies` → `list_discrepancies`
+- `backend/app/api/scheme_routes.py`: GET `/discrepancies/{discrepancy_id}` → `get_discrepancy`
+- `backend/app/api/scheme_routes.py`: POST `/discrepancies/{discrepancy_id}/decision` → `decide`
+- `backend/app/api/scheme_routes.py`: GET `/proposals` → `list_proposals`
+- `backend/app/api/scheme_routes.py`: POST `/discrepancies/{discrepancy_id}/propose` → `propose`
+- `backend/app/api/scheme_routes.py`: GET `/proposals/{proposal_id}` → `get_proposal`
+- `backend/app/api/scheme_routes.py`: POST `/proposals/{proposal_id}/approve` → `approve`
+- `backend/app/api/scheme_routes.py`: POST `/proposals/{proposal_id}/reject` → `reject`
+- `backend/app/api/scheme_routes.py`: GET `/summary` → `summary`
+- `backend/app/api/setup_routes.py`: GET `/setup/status` → `setup_status`
+- `backend/app/api/setup_routes.py`: POST `/setup/complete` → `setup_complete`
+- `backend/app/api/setup_routes.py`: GET `/diagnostics/selfcheck` → `selfcheck`
+- `backend/app/api/setup_routes.py`: GET `/backup/config` → `export_config`
+- `backend/app/api/setup_routes.py`: POST `/backup/config` → `import_config`
+- `backend/app/api/setup_routes.py`: GET `/backup/database` → `backup_database`
+- `backend/app/api/setup_routes.py`: GET `/review` → `review_queue`
+- `backend/app/api/setup_routes.py`: POST `/results/{result_id}/override` → `manual_override`
+- `backend/app/api/setup_routes.py`: POST `/results/{result_id}/questions/{question_number}/mark` → `override_question_mark`
+- `backend/app/api/setup_routes.py`: GET `/results/{result_id}/reviews` → `result_review_history`
+- `backend/app/api/setup_routes.py`: POST `/jobs/{job_id}/reprocess` → `force_reprocess`
+- `backend/app/api/student_routes.py`: GET `/students` → `list_students`
+- `backend/app/api/student_routes.py`: GET `/students/classes` → `list_classes`
+- `backend/app/api/student_routes.py`: GET `/students/{student_id}` → `student_profile`
+- `backend/app/api/student_routes.py`: PUT `/students/{student_id}/nickname` → `set_nickname`
+- `backend/app/api/student_routes.py`: PUT `/students/{student_id}/details` → `set_student_details`
+- `backend/app/api/student_routes.py`: POST `/students/bulk-details` → `bulk_set_details`
+- `backend/app/api/student_routes.py`: GET `/students/{student_id}/report` → `student_report`
+- `backend/app/api/student_routes.py`: GET `/students/{student_id}/assignments/{coursework_id}/report` → `student_assignment_report`
+- `backend/app/audit/routes.py`: GET `/api/audit/summary` → `audit_summary`
+- `backend/app/audit/routes.py`: GET `/api/audit/reports` → `audit_reports`
+- `backend/app/audit/routes.py`: GET `/api/audit/reports/{name}` → `audit_report`
+- `backend/app/automation/routes.py`: GET `/status` → `automation_status`
+- `backend/app/automation/routes.py`: POST `/worker` → `worker_control`
+- `backend/app/automation/routes.py`: POST `/settings` → `update_settings`
+- `backend/app/automation/routes.py`: GET `/assignments` → `list_assignments`
+- `backend/app/automation/routes.py`: POST `/assignments/{coursework_id}` → `set_assignment`
+- `backend/app/automation/routes.py`: GET `/jobs` → `list_jobs`
+- `backend/app/automation/routes.py`: GET `/jobs/{job_id}` → `job_detail`
+- `backend/app/automation/routes.py`: POST `/jobs/{job_id}/approve` → `approve_job`
+- `backend/app/automation/routes.py`: POST `/jobs/{job_id}/retry` → `retry_job`
+- `backend/app/automation/routes.py`: POST `/jobs/{job_id}/retry-report` → `retry_report`
+- `backend/app/automation/routes.py`: POST `/run-now` → `run_now`
+- `backend/app/automation/routes.py`: GET `/log` → `recent_log`
+- `backend/app/automation/routes.py`: GET `/assignment-naming` → `get_assignment_naming`
+- `backend/app/automation/routes.py`: POST `/assignment-naming` → `set_assignment_naming`
+- `backend/app/automation/routes.py`: POST `/assignments/{coursework_id}/name` → `rename_assignment`
+- `backend/app/automation/routes.py`: GET `/grade-boundaries/{coursework_id}` → `get_grade_boundaries`
+- `backend/app/automation/routes.py`: POST `/grade-boundaries/{coursework_id}` → `set_assignment_grade_boundaries`
+- `backend/app/classroom/tracking_routes.py`: GET `/classroom/courses/{course_id}/assignments/{coursework_id}/sync` → `sync_tracking`
+- `backend/app/classroom/tracking_routes.py`: POST `/classroom/courses/{course_id}/assignments/{coursework_id}/sync` → `sync_tracking`
+- `backend/app/classroom/tracking_routes.py`: GET `/classroom/sync` → `full_sync`
+- `backend/app/classroom/tracking_routes.py`: POST `/classroom/sync` → `full_sync`
+- `backend/app/classroom/tracking_routes.py`: GET `/classroom/sync/start` → `sync_start`
+- `backend/app/classroom/tracking_routes.py`: POST `/classroom/sync/start` → `sync_start`
+- `backend/app/classroom/tracking_routes.py`: GET `/classroom/sync/progress` → `sync_progress`
+- `backend/app/classroom/tracking_routes.py`: GET `/classroom/permissions` → `classroom_permissions`
+- `backend/app/classroom/tracking_routes.py`: GET `/classroom/tracking` → `tracking`
+- `backend/app/classroom/tracking_routes.py`: GET `/classroom/submissions/{submission_id}/detail` → `tracking_detail`
+- `backend/app/classroom/tracking_routes.py`: GET `/classroom/tracking/export` → `export_tracking`
+- `backend/app/classroom/tracking_routes.py`: POST `/classroom/diagnostics/run` → `diagnostics_run`
+- `backend/app/distributed/routes.py`: GET `/ping` → `ping`
+- `backend/app/distributed/routes.py`: GET `/capabilities` → `capabilities`
+- `backend/app/distributed/routes.py`: POST `/login` → `login`
+- `backend/app/distributed/routes.py`: POST `/change-password` → `change_password`
+- `backend/app/distributed/routes.py`: POST `/logout` → `logout`
+- `backend/app/distributed/routes.py`: GET `/me` → `me`
+- `backend/app/distributed/routes.py`: GET `/accounts` → `list_accounts`
+- `backend/app/distributed/routes.py`: POST `/accounts` → `create_account`
+- `backend/app/distributed/routes.py`: POST `/accounts/{account_id}/scope` → `set_scope`
+- `backend/app/distributed/routes.py`: POST `/accounts/{account_id}/disable` → `disable_account`
+- `backend/app/distributed/routes.py`: POST `/accounts/{account_id}/username` → `change_username`
+- `backend/app/distributed/routes.py`: POST `/accounts/{account_id}/display-name` → `change_display_name`
+- `backend/app/distributed/routes.py`: POST `/accounts/{account_id}/password-reset` → `reset_account_password`
+- `backend/app/distributed/routes.py`: POST `/accounts/{account_id}/roles` → `change_roles`
+- `backend/app/distributed/routes.py`: GET `/schools` → `get_schools`
+- `backend/app/distributed/routes.py`: POST `/schools` → `create_school`
+- `backend/app/distributed/routes.py`: POST `/schools/{school_id}/rename` → `rename_school`
+- `backend/app/distributed/routes.py`: POST `/schools/{school_id}/active` → `school_active`
+- `backend/app/distributed/routes.py`: POST `/schools/{school_id}/classes` → `create_class`
+- `backend/app/distributed/routes.py`: POST `/schools/{school_id}/assign` → `assign`
+- `backend/app/distributed/routes.py`: POST `/mappings/course` → `map_course`
+- `backend/app/distributed/routes.py`: POST `/mappings/assignment` → `map_assignment`
+- `backend/app/distributed/routes.py`: GET `/mappings/course/{course_id}` → `course_mapping`
+- `backend/app/distributed/routes.py`: GET `/workers` → `list_workers`
+- `backend/app/distributed/routes.py`: GET `/workers/{worker_id}` → `get_worker`
+- `backend/app/distributed/routes.py`: POST `/register-worker` → `register_worker`
+- `backend/app/distributed/routes.py`: POST `/heartbeat` → `heartbeat`
+- `backend/app/distributed/routes.py`: POST `/device/register` → `register_device_and_credential`
+- `backend/app/distributed/routes.py`: GET `/device/discovery` → `device_discovery`
+- `backend/app/distributed/routes.py`: GET `/devices` → `list_devices`
+- `backend/app/distributed/routes.py`: POST `/devices/{device_id}/revoke` → `revoke_device`
+- `backend/app/distributed/routes.py`: POST `/devices/{device_id}/link` → `link_device`
+- `backend/app/distributed/routes.py`: GET `/teams` → `list_teams`
+- `backend/app/distributed/routes.py`: GET `/me/teams` → `my_teams`
+- `backend/app/distributed/routes.py`: POST `/teams` → `create_team`
+- `backend/app/distributed/routes.py`: GET `/teams/{team_id}` → `get_team`
+- `backend/app/distributed/routes.py`: POST `/teams/{team_id}/members` → `add_team_member`
+- `backend/app/distributed/routes.py`: POST `/teams/{team_id}/members/remove` → `remove_team_member`
+- `backend/app/distributed/routes.py`: POST `/teams/{team_id}/active` → `set_team_active`
+- `backend/app/distributed/routes.py`: GET `/teams/{team_id}/results` → `team_results`
+- `backend/app/distributed/routes.py`: GET `/agent/state` → `get_agent_state`
+- `backend/app/distributed/routes.py`: POST `/agent/state` → `set_agent_state`
+- `backend/app/distributed/routes.py`: POST `/events` → `post_event`
+- `backend/app/distributed/routes.py`: POST `/results` → `post_result`
+- `backend/app/distributed/routes.py`: GET `/results` → `list_results`
+- `backend/app/distributed/routes.py`: GET `/report-deliveries` → `list_report_deliveries`
+- `backend/app/distributed/routes.py`: POST `/report-deliveries/{result_record_id}/retry` → `retry_report_delivery`
+- `backend/app/distributed/routes.py`: POST `/report-deliveries/{result_record_id}/delivered` → `confirm_report_delivery`
+- `backend/app/distributed/routes.py`: GET `/events` → `get_events`
+- `backend/app/distributed/routes.py`: GET `/sync-monitor` → `sync_monitor`
+- `backend/app/distributed/routes.py`: POST `/errors` → `post_error`
+- `backend/app/distributed/routes.py`: GET `/errors` → `list_errors`
+- `backend/app/distributed/routes.py`: POST `/updates` → `create_update`
+- `backend/app/distributed/routes.py`: GET `/updates` → `list_updates`
+- `backend/app/distributed/routes.py`: GET `/updates/for-device` → `updates_for_device`
+- `backend/app/distributed/routes.py`: POST `/updates/{update_id}/status` → `update_status`
+- `backend/app/distributed/routes.py`: POST `/updates/history` → `update_history_post`
+- `backend/app/distributed/routes.py`: GET `/updates/history` → `update_history`
+- `backend/app/distributed/routes.py`: POST `/updates/{update_id}/package` → `upload_package`
+- `backend/app/distributed/routes.py`: GET `/updates/{update_id}/package` → `download_package`
+- `backend/app/distributed/routes.py`: GET `/releases` → `list_releases`
+- `backend/app/distributed/routes.py`: GET `/releases/overview` → `releases_overview`
+- `backend/app/distributed/routes.py`: GET `/releases/installations` → `release_installations`
+- `backend/app/distributed/routes.py`: POST `/releases` → `create_release`
+- `backend/app/distributed/routes.py`: POST `/releases/{update_id}/validate` → `validate_release`
+- `backend/app/distributed/routes.py`: POST `/releases/{update_id}/publish` → `publish_release`
+- `backend/app/distributed/routes.py`: POST `/releases/{update_id}/withdraw` → `withdraw_release`
+- `backend/app/distributed/routes.py`: PATCH `/releases/{update_id}` → `edit_release`
+- `backend/app/distributed/routes.py`: POST `/releases/{update_id}/rollback` → `rollback_release`
+- `backend/app/distributed/routes.py`: GET `/audit` → `get_audit`
+- `backend/app/large_pdf/routes.py`: GET `/large-pdf/jobs` → `list_large_pdf_jobs`
+- `backend/app/large_pdf/routes.py`: GET `/large-pdf/jobs/{job_id}` → `get_large_pdf_job`
+- `backend/app/large_pdf/routes.py`: GET `/large-pdf/config` → `get_large_pdf_config`
+- `backend/app/large_pdf/routes.py`: POST `/large-pdf/jobs` → `create_large_pdf_job`
+- `backend/app/large_pdf/routes.py`: POST `/large-pdf/jobs/{job_id}/process` → `process_large_pdf_job`
+- `backend/app/large_pdf/routes.py`: POST `/large-pdf/jobs/{job_id}/batches/{batch_index}/retry` → `retry_large_pdf_batch`
+- `backend/app/large_pdf/routes.py`: POST `/large-pdf/jobs/{job_id}/retry` → `retry_large_pdf_job`
+- `backend/app/large_pdf/routes.py`: POST `/large-pdf/jobs/{job_id}/cancel` → `cancel_large_pdf_job`
+- `backend/app/lifecycle/routes.py`: GET `/heartbeat` → `heartbeat`
+- `backend/app/lifecycle/routes.py`: GET `/leave` → `leave`
+- `backend/app/lifecycle/routes.py`: GET `/status` → `status`
+- `backend/app/main.py`: GET `/{full_path:path}` → `spa`
+- `backend/app/repair/routes.py`: GET `/api/repair/summary` → `repair_summary`
+- `backend/app/repair/routes.py`: GET `/api/repair/item/{run_id}/{item_id}` → `repair_item`
+- `backend/app/repair/routes.py`: GET `/api/repair/report/{run_id}/{name}` → `repair_report`
+
+## Critical workflow map
+- UI/API → jobs manager → standard worker pool / large-PDF runner → Gemini proxy/key manager → blueprint + verification + result guard → SQLite results/versions.
+- Automation scheduler → submission detection/version dedup → correction → report render/Drive canonical report → grade PATCH → read-back verification → return → read-back → terminal state.
+- Scheme checks → scheme_audit persistence → attention notification → staged proposal → authorized explicit approval → per-item transaction/audit → optional Classroom publish.
+- Auth middleware → live account/permissions; distributed bearer routes enforce independent scope. Multi-school implementation remains preserved.
+- Lifecycle supervisor → heartbeats/activity tracker → busy jobs/transactions → stop/recovery.
+- Release allowlist → privacy scan → runtime imports → portable ZIP/Inno installer → hashes/manifest → verify_portable isolated awkward path.
+
+## Acceptance matrix
+| Area | Status | Evidence |
+|---|---|---|
+| Production data preservation | PASS | Read-only SQLite backup, no production tests |
+| Role-scoped bulk approval | PASS | Teacher/developer dependency; identity from live session; 68 affected tests |
+| Stale proposal and recovery | PASS | Serialized claim, stale/override guard, savepoints, failed-item retry |
+| Mathematical confirmation | PASS (classification safeguard) | AI confidence never confirms; human decision required. Live accuracy BLOCKED |
+| Automation Clear | PASS | Confirmed real browser workflow; persisted hide watermark, audit retained |
+| UI pages/sizes | PASS (rendering only) | 19 pages × 6 viewports, 114 checks; all-controls/accessibility NOT TESTED |
+| Live Classroom | BLOCKED | No designated test class authorization |
+| Live provider mathematics | BLOCKED | No approved live fixtures/provider budget |
+| Portable fresh/update | PASS | Real ZIP 38/38; RC-to-RC update 5/5 at unrelated Temp path |

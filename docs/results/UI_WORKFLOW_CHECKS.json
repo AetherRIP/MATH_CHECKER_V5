@@ -1,0 +1,537 @@
+{
+  "url": "http://127.0.0.1:18748",
+  "checks": [
+    {
+      "id": "nav/dashboard@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "5 headings, overflow=False, 40 buttons, 1413 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/ai@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "2 headings, overflow=False, 31 buttons, 878 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/tasks@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "2 headings, overflow=False, 38 buttons, 2222 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/correct@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "2 headings, overflow=False, 30 buttons, 1150 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/assignments@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 32 buttons, 1192 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/results@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 39 buttons, 1552 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/review@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 27 buttons, 806 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/scheme-review@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 26 buttons, 920 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/largepdf@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "3 headings, overflow=False, 26 buttons, 1110 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/automation@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "9 headings, overflow=False, 54 buttons, 3770 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/classroom@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 25 buttons, 765 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/classes@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 29 buttons, 909 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/students@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 28 buttons, 1204 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/reports@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "3 headings, overflow=False, 32 buttons, 4915 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/storage@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "5 headings, overflow=False, 27 buttons, 2935 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/usage@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "5 headings, overflow=False, 25 buttons, 1349 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/privacy@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "4 headings, overflow=False, 26 buttons, 1434 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/settings@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "18 headings, overflow=False, 28 buttons, 8637 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/distributed@800",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 24 buttons, 743 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/dashboard@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "5 headings, overflow=False, 39 buttons, 1369 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/ai@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "2 headings, overflow=False, 30 buttons, 834 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/tasks@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "2 headings, overflow=False, 37 buttons, 2177 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/correct@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "2 headings, overflow=False, 29 buttons, 1105 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/assignments@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 31 buttons, 1148 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/results@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 38 buttons, 1508 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/review@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 26 buttons, 762 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/scheme-review@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 25 buttons, 876 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/largepdf@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "3 headings, overflow=False, 25 buttons, 1066 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/automation@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "9 headings, overflow=False, 53 buttons, 3726 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/classroom@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 24 buttons, 721 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/classes@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 28 buttons, 865 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/students@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 27 buttons, 1160 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/reports@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "3 headings, overflow=False, 32 buttons, 4915 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/storage@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "5 headings, overflow=False, 27 buttons, 2935 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/usage@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "5 headings, overflow=False, 25 buttons, 1349 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/privacy@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "4 headings, overflow=False, 26 buttons, 1434 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/settings@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "18 headings, overflow=False, 28 buttons, 8637 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/distributed@1366",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 24 buttons, 743 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/dashboard@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "5 headings, overflow=False, 39 buttons, 1369 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/ai@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "2 headings, overflow=False, 30 buttons, 834 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/tasks@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "2 headings, overflow=False, 37 buttons, 2177 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/correct@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "2 headings, overflow=False, 29 buttons, 1105 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/assignments@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 31 buttons, 1148 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/results@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 38 buttons, 1508 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/review@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 26 buttons, 762 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/scheme-review@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 25 buttons, 876 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/largepdf@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "3 headings, overflow=False, 25 buttons, 1066 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/automation@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "9 headings, overflow=False, 53 buttons, 3726 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/classroom@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 24 buttons, 721 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/classes@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 28 buttons, 865 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/students@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 27 buttons, 1160 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/reports@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "3 headings, overflow=False, 32 buttons, 4915 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/storage@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "5 headings, overflow=False, 27 buttons, 2935 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/usage@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "5 headings, overflow=False, 25 buttons, 1349 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/privacy@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "4 headings, overflow=False, 26 buttons, 1434 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/settings@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "18 headings, overflow=False, 28 buttons, 8637 chars of text",
+      "note": ""
+    },
+    {
+      "id": "nav/distributed@1920",
+      "group": "navigation",
+      "status": "PASS",
+      "expected": "a heading, no horizontal overflow, real content",
+      "actual": "1 headings, overflow=False, 24 buttons, 743 chars of text",
+      "note": ""
+    },
+    {
+      "id": "counts/tasks",
+      "group": "counts match backend",
+      "status": "PASS",
+      "expected": "8 jobs in GET /api/jobs",
+      "actual": "the Tasks page says 8",
+      "note": "the number a teacher reads must be the number the API holds"
+    },
+    {
+      "id": "counts/review",
+      "group": "counts match backend",
+      "status": "PASS",
+      "expected": "0 results awaiting review, shown as the empty state",
+      "actual": "0 row(s); empty state shown=True",
+      "note": ""
+    },
+    {
+      "id": "counts/scheme-review",
+      "group": "counts match backend",
+      "status": "PASS",
+      "expected": "0 disputes, shown as the empty state",
+      "actual": "0 row(s); empty state shown=True",
+      "note": ""
+    },
+    {
+      "id": "workflow/automation-run",
+      "group": "workflows",
+      "status": "PASS",
+      "expected": "a run appends to (or at least does not break) the log",
+      "actual": "log entries 0 -> 0",
+      "note": ""
+    },
+    {
+      "id": "workflow/clear-activity",
+      "group": "workflows",
+      "status": "SKIP",
+      "expected": "a 'Clear activity' control that can be pressed",
+      "actual": "present but disabled \u2014 the visible log is empty, so there was nothing to clear",
+      "note": "the workflow was not exercised on this dataset"
+    },
+    {
+      "id": "workflow/settings-roundtrip",
+      "group": "workflows",
+      "status": "PASS",
+      "expected": "at least one settings toggle changes GET /api/settings",
+      "actual": "changed under 'classroom'",
+      "note": "toggled 'Attempt to write draft grades back to Classroom'; GET /api/settings changed under 'classroom' | deliberately NOT flipped by automation: 'Public address is switched OFF \u2014 nothing is exposed'"
+    },
+    {
+      "id": "errors/broken-scheme",
+      "group": "error handling",
+      "status": "PASS",
+      "expected": "a broken scheme yields NO markable structure and is never reported as confident",
+      "actual": "has_mark_scheme=True, processed=False, questions=0, question_count=0, confidence=None",
+      "note": "asserted at the engine layer (deterministic, no AI) rather than by pressing buttons in mock mode, where a COMPLETED job would prove only that the stub ran"
+    },
+    {
+      "id": "errors/unknown-route",
+      "group": "error handling",
+      "status": "PASS",
+      "expected": "the shell survives an unknown route",
+      "actual": "868 chars of text rendered",
+      "note": ""
+    },
+    {
+      "id": "errors/page-errors",
+      "group": "error handling",
+      "status": "PASS",
+      "expected": "0 uncaught page errors across the whole walk",
+      "actual": "0: []",
+      "note": ""
+    }
+  ],
+  "counts": {
+    "PASS": 65,
+    "SKIP": 1
+  }
+}

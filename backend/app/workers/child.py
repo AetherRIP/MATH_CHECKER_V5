@@ -182,6 +182,21 @@ def _run(job: dict) -> dict:
         blueprint_report["source"] = blueprint_meta.get("source", "unavailable")
         if blueprint_meta.get("error"):
             blueprint_report["note"] = blueprint_meta["error"]
+        # §9: marking against an INCOMPLETE or unreviewed structure must say so.
+        # Grading is unchanged — the marks are still produced exactly as before —
+        # but the result carries the verdict so it cannot look routine.
+        blueprint_report["completeness"] = blueprint_meta.get("completeness") or {}
+        blueprint_report["verification_state"] = blueprint_meta.get(
+            "verification_state")
+        review = blueprint_meta.get("review") or {}
+        if review.get("warnings"):
+            blueprint_report["review_required"] = True
+            blueprint_report["review_warnings"] = list(review["warnings"])
+            result["mark_scheme_review_required"] = True
+            result["mark_scheme_warnings"] = list(review["warnings"])
+            result.setdefault("warnings", [])
+            if isinstance(result["warnings"], list):
+                result["warnings"].extend(review["warnings"])
 
         # ---- explicit per-question states ----------------------------------
         # Missing mark-scheme questions become NEEDS_REVIEW (not a silent 0)
@@ -198,65 +213,97 @@ def _run(job: dict) -> dict:
         # ---- targeted recovery of the missing questions ---------------------
         # Before anything is persisted: the remote files are still alive here,
         # so re-marking ONLY the missing questions costs no re-upload and no
-        # re-marking of the successful rows. Bounded: one round per child run,
-        # and only for a gap small enough to be a marker omission (a large
-        # gap means the mark-scheme blueprint itself is incomplete, and the
-        # questions stay NEEDS_REVIEW for the teacher).
+        # re-marking of the successful rows. Bounded by the configured retry
+        # budget, and only for a gap small enough to be a marker omission (a
+        # large gap means the mark-scheme blueprint itself is incomplete, and
+        # the questions stay NEEDS_REVIEW for the teacher).
+        #
+        # The round REPEATS while it is still closing the gap. It used to run
+        # exactly once: if that single retry came back without the question —
+        # or could not build its narrow prompt at all — the placeholder
+        # survived, and the same paper could then total 47 or 49 depending on
+        # whether the model happened to emit the row that run. A transient
+        # omission now heals instead of being persisted as a mark.
         recovery_record = None
         try:
             from app.engine import recover_missing
-            missing_here = list(blueprint_report.get("missing_questions") or [])
-            may_retry, block_reason = recover_missing.need_recovery(
-                missing=missing_here, already_attempted=0)
-            if may_retry:
+            import app.engine.question_inventory as qi
+            missing_reported = list(blueprint_report.get("missing_questions") or [])
+            missing_here = list(missing_reported)
+            rounds_run = 0
+            recovered_rows: dict = {}
+            last_error = None
+            still_missing = list(missing_here)
+            while missing_here:
+                may_retry, block_reason = recover_missing.need_recovery(
+                    missing=missing_here, already_attempted=rounds_run)
+                if not may_retry:
+                    last_error = block_reason
+                    break
                 outcome = recover_missing.run_recovery_round(
                     client=client, missing=missing_here,
                     student_remote=remote_students,
                     mark_scheme_remote=remote_scheme,
                     question_remote=remote_question,
                     mark_scheme_path=mark_scheme_path,
+                    # The reconciled structure this run ALREADY holds, so the
+                    # narrow prompt never depends on a cached mark-scheme FILE
+                    # (a scheme that arrived from Classroom/Drive has none).
+                    # Without it the retry was refused outright and the omitted
+                    # question kept its placeholder 0 for good.
+                    blueprint=blueprint,
                 )
+                rounds_run += 1
+                still_missing = list(outcome.still_missing)
+                if outcome.error:
+                    last_error = outcome.error
+                recovered_rows.update(outcome.recovered)
+                missing_here = list(still_missing)
+                # A round that returns nothing is retried (the next iteration
+                # is still inside the bounded budget): the live finding is that
+                # the omission itself is flaky, so a second attempt is exactly
+                # the cheap chance that closes the gap. ``need_recovery`` above
+                # refuses once the configured budget is spent, which is what
+                # keeps this loop finite.
+
+            if rounds_run or last_error:
                 recovery_record = {
-                    "rounds": 1,
-                    "missing_reported": missing_here,
-                    "recovered": sorted(outcome.recovered),
-                    "still_missing": list(outcome.still_missing),
-                    "error": outcome.error,
+                    "rounds": rounds_run,
+                    "missing_reported": missing_reported,
+                    "recovered": sorted(recovered_rows),
+                    "still_missing": list(still_missing),
+                    "error": last_error,
                 }
-                if outcome.recovered:
-                    from app.engine.question_inventory import canonical_question_id
-                    by_canon = {
-                        canonical_question_id(
-                            str(q.get("question_number", ""))): q
-                        for q in result.get("questions", [])
-                    }
-                    for canon, row in outcome.recovered.items():
-                        placeholder = by_canon.get(canon)
-                        if placeholder is not None and \
-                                str(placeholder.get("status", "")).upper() in (
-                                    "REVIEW", "NEEDS_REVIEW", "UNMARKED"):
-                            placeholder.clear()
-                            placeholder.update(row)
-                    result, blueprint_report = apply_blueprint(result, blueprint)
-                    blueprint_report["source"] = blueprint_meta.get(
-                        "source", "unavailable")
-                    mark_missing_results(result)
-                    for q in result.get("questions", []):
-                        if confirmed_zero_status(q) == "CONFIRMED_ZERO" \
-                                and not q.get("status"):
-                            q["status"] = "CONFIRMED_ZERO"
+
+            if recovered_rows:
+                by_canon = {
+                    qi.canonical_question_id(
+                        str(q.get("question_number", ""))): q
+                    for q in result.get("questions", [])
+                }
+                for canon, row in recovered_rows.items():
+                    placeholder = by_canon.get(canon)
+                    if placeholder is not None and \
+                            str(placeholder.get("status", "")).upper() in (
+                                "REVIEW", "NEEDS_REVIEW", "UNMARKED"):
+                        placeholder.clear()
+                        placeholder.update(row)
+                result, blueprint_report = apply_blueprint(result, blueprint)
+                blueprint_report["source"] = blueprint_meta.get(
+                    "source", "unavailable")
+                mark_missing_results(result)
+                for q in result.get("questions", []):
+                    if confirmed_zero_status(q) == "CONFIRMED_ZERO" \
+                            and not q.get("status"):
+                        q["status"] = "CONFIRMED_ZERO"
+
+            if recovery_record is not None:
                 from app.logging_setup import log_event as _log
                 _log("workers.child", "targeted recovery finished",
                      run_id=job["job_id"],
-                    recovered=recovery_record["recovered"],
-                    still_missing=recovery_record["still_missing"],
-                    error=recovery_record["error"])
-            elif block_reason:
-                recovery_record = {"rounds": 0, "missing_reported":
-                                   list(blueprint_report.get(
-                                       "missing_questions") or []),
-                                   "recovered": [], "still_missing": [],
-                                   "error": block_reason}
+                     recovered=recovery_record["recovered"],
+                     still_missing=recovery_record["still_missing"],
+                     error=recovery_record["error"])
         except Exception as recovery_exc:  # noqa: BLE001 — never lose the job
             recovery_record = {"rounds": 0, "error": str(recovery_exc)[:500]}
         if recovery_record is not None:

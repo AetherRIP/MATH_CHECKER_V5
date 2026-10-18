@@ -37,8 +37,28 @@ interface ReportOptions {
   mode_default?: string;
 }
 
+/**
+ * One selected assignment as the PREVIEW MODEL reports it.
+ *
+ * The model is built from `AssignmentCode.as_dict()`, which names the
+ * assignment's identity `coursework_id` - the options endpoint above calls the
+ * same thing `id`. Reading `id` off a model assignment silently yielded
+ * `undefined`, which is how every grade-matrix cell can end up blank, so the
+ * two shapes are kept apart here.
+ *
+ * The identity is what the grade matrix pairs on: `code` ("CH1L1") is the
+ * lesson's full identifier and two assignments may legitimately share one,
+ * while `coursework_id` is unique per assignment.
+ */
+interface ModelAssignment {
+  coursework_id: string;
+  code: string; key?: string; label: string; detail: string;
+  title: string; topic: string; chapter: string; lesson: string;
+}
+
 interface GradeEntry {
-  code: string; label: string; detail: string; title: string;
+  code: string; key?: string; coursework_id?: string;
+  label: string; detail: string; title: string;
   chapter: string; lesson: string; grade: string; source: string;
   grade_label: string; percentage: number | null; status: string;
   submitted: boolean; is_draft: boolean; is_missing: boolean;
@@ -53,7 +73,8 @@ interface StudentEntry {
 interface FlatEntry {
   student_id: string; display_name: string; class_label: string;
   assignments: {
-    code: string; label: string; detail: string; title: string;
+    code: string; key?: string; coursework_id?: string;
+    label: string; detail: string; title: string;
     chapter: string; lesson: string; grade?: string; grade_label?: string;
     status?: string; status_label?: string; submitted?: boolean;
     source?: string; percentage?: number | null;
@@ -82,7 +103,7 @@ interface ReportModel {
     missing: number; outstanding?: number; draft: number; low_grade: number;
     grade_one: number;
   };
-  assignments: AssignmentOption[];
+  assignments: ModelAssignment[];
   classroom_note?: ClassroomNote[];
   groups: ReportGroup[];
   branding: Branding;
@@ -735,7 +756,7 @@ function ReportPaper({ model }: { model: ReportModel }) {
             <Table
               head={<tr><th>Code</th><th>Chapter / lesson</th><th>Topic</th></tr>}
               rows={model.assignments.map((a) => (
-                <tr key={a.id}>
+                <tr key={a.coursework_id}>
                   <td className="rp-code">{a.code}</td>
                   <td>{a.detail || a.title}</td>
                   <td>{a.topic || a.title}</td>
@@ -757,19 +778,24 @@ function ReportPaper({ model }: { model: ReportModel }) {
                 head={<tr>
                   <th>Student</th>
                   {model.assignments.map((a) => (
-                    <th key={a.id} className="center">{a.code}</th>
+                    <th key={a.coursework_id} className="center">{a.code}</th>
                   ))}
                 </tr>}
                 rows={g.students.map((st) => {
-                  const byCode = new Map(st.grades.map((x) => [x.code, x]));
+                  // Keyed by the assignment's own row (coursework id), never by
+                  // the code alone: CH1L1 and CH2L1 are different lessons and
+                  // two "Quiz 3"s are different assignments.
+                  const byAssignment = new Map(
+                    st.grades.map((x) => [x.coursework_id ?? x.code, x]));
                   return (
                     <tr key={st.student_id}>
                       <td className="rp-name">{st.display_name}</td>
                       {model.assignments.map((a) => {
-                        const entry = byCode.get(a.code);
+                        const entry = byAssignment.get(
+                          a.coursework_id || a.code);
                         const [cell, tone] = matrixCell(entry, model.threshold);
                         return (
-                          <td key={a.id} className={classNames("center", tone && `tone-${tone}`)}>
+                          <td key={a.coursework_id} className={classNames("center", tone && `tone-${tone}`)}>
                             {cell}
                           </td>
                         );
@@ -811,7 +837,7 @@ function ReportPaper({ model }: { model: ReportModel }) {
               </tr>}
               rows={flat(model.groups, "low_grade").map((row, i) =>
                 row.assignments.map((a) => (
-                  <tr key={`${row.student_id}-${a.code}-${i}`} className="tone-warn">
+                  <tr key={`${row.student_id}-${a.coursework_id ?? a.code}-${i}`} className="tone-warn">
                     <td className="rp-name">{row.display_name}</td>
                     <td>{row.class_label}</td>
                     <td className="center strong">{a.grade_label || "—"}</td>
@@ -881,7 +907,7 @@ function ReportPaper({ model }: { model: ReportModel }) {
                     </tr>}
                     rows={g.missing.flatMap((m) =>
                       m.assignments.map((a) => (
-                        <tr key={`${m.student_id}-${a.code}`}>
+                        <tr key={`${m.student_id}-${a.coursework_id ?? a.code}`}>
                           <td className="rp-name">{m.display_name}</td>
                           <td>{m.class_label}</td>
                           <td className="center">{a.code}</td>
@@ -920,7 +946,7 @@ function ReportPaper({ model }: { model: ReportModel }) {
               </tr>}
               rows={flat(model.groups, "draft").flatMap((row) =>
                 row.assignments.map((a) => (
-                  <tr key={`${row.student_id}-${a.code}`} className="tone-warn">
+                  <tr key={`${row.student_id}-${a.coursework_id ?? a.code}`} className="tone-warn">
                     <td className="rp-name">{row.display_name}</td>
                     <td>{row.class_label}</td>
                     <td className="center">{a.code}</td>
@@ -957,7 +983,7 @@ function ReportPaper({ model }: { model: ReportModel }) {
                         : gr.grade_label ? ["Graded", "ok"] : ["Submitted", "ok"];
                       const [state, tone] = info;
                       return (
-                      <tr key={`${st.student_id}-${gr.code}`}>
+                      <tr key={`${st.student_id}-${gr.coursework_id ?? gr.code}`}>
                         <td className="rp-name">{st.display_name}</td>
                         <td>{g.class_label}</td>
                         <td className="center">{gr.code}</td>

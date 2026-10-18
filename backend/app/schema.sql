@@ -412,6 +412,17 @@ CREATE INDEX IF NOT EXISTS idx_report_attachments_status
 CREATE INDEX IF NOT EXISTS idx_report_attachments_coursework
     ON report_attachments(coursework_id);
 
+-- Cross-process report-upload lease. One holder per Classroom submission;
+-- expired leases recover automatically after a process crash.
+CREATE TABLE IF NOT EXISTS report_upload_locks (
+    coursework_id TEXT NOT NULL,
+    submission_id TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    lease_until REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY(coursework_id, submission_id)
+);
+
 -- Canonical report mapping (spec §1/§2/§6): one active correction report per
 -- student submission. ``canonical_reports`` records which result's report is
 -- the current canonical attachment for a given submission, so a re-correction
@@ -486,7 +497,8 @@ CREATE TABLE IF NOT EXISTS automation_jobs (
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL,
     finished_at REAL,
-    completed_at REAL
+    completed_at REAL,
+    hidden_at REAL
 );
 -- One job per submission VERSION; the same submission version can never be
 -- corrected twice, but a new version legitimately creates a new job (§10/§11).
@@ -496,6 +508,72 @@ CREATE INDEX IF NOT EXISTS idx_automation_jobs_status
     ON automation_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_automation_jobs_coursework
     ON automation_jobs(coursework_id);
+
+-- Durable component outcomes for teacher-triggered grade + report upload.
+-- A row is keyed by corrected result, not automation attempt, so retries can
+-- independently resume the component that did not succeed.
+CREATE TABLE IF NOT EXISTS bulk_upload_items (
+    result_id TEXT PRIMARY KEY REFERENCES results(id) ON DELETE CASCADE,
+    coursework_id TEXT NOT NULL,
+    submission_id TEXT NOT NULL,
+    report_hash TEXT,
+    grade REAL,
+    grade_status TEXT NOT NULL DEFAULT 'PENDING',
+    grade_message TEXT,
+    report_status TEXT NOT NULL DEFAULT 'PENDING',
+    report_message TEXT,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bulk_upload_items_submission
+    ON bulk_upload_items(coursework_id, submission_id);
+
+-- Per-submission bulk run claims prevent repeated/overlapping requests.
+CREATE TABLE IF NOT EXISTS bulk_upload_claims (
+    result_id TEXT PRIMARY KEY REFERENCES results(id) ON DELETE CASCADE,
+    run_id TEXT NOT NULL,
+    lease_until REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bulk_upload_claims_run ON bulk_upload_claims(run_id);
+
+-- Durable report identity/outcome. Ambiguous writes stay parked for remote
+-- reconciliation rather than blindly creating another Classroom attachment.
+CREATE TABLE IF NOT EXISTS report_upload_records (
+    result_id TEXT PRIMARY KEY REFERENCES results(id) ON DELETE CASCADE,
+    coursework_id TEXT NOT NULL,
+    submission_id TEXT NOT NULL,
+    student_id TEXT,
+    report_hash TEXT NOT NULL,
+    status TEXT NOT NULL,
+    remote_file_id TEXT,
+    lease_until REAL,
+    error TEXT,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_report_upload_records_identity
+    ON report_upload_records(coursework_id, submission_id, student_id, report_hash);
+
+CREATE TABLE IF NOT EXISTS automation_bulk_runs (
+    id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    total INTEGER NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS automation_bulk_run_items (
+    run_id TEXT NOT NULL REFERENCES automation_bulk_runs(id) ON DELETE CASCADE,
+    result_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    grade_status TEXT,
+    report_status TEXT,
+    message TEXT,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY(run_id, result_id)
+);
+CREATE INDEX IF NOT EXISTS idx_automation_bulk_run_items_run
+    ON automation_bulk_run_items(run_id, status);
 
 -- Append-only activity log for the automation view (§44). Never contains a
 -- token, key or credential - only classroom ids, counts and marks.
@@ -785,3 +863,48 @@ CREATE TABLE IF NOT EXISTS bulk_correction_items (
 );
 CREATE INDEX IF NOT EXISTS idx_bulk_items_proposal
     ON bulk_correction_items(proposal_id);
+
+-- Per-OPERATION state for one automation job (report upload / grade / return).
+--
+-- The job's own ``status`` column is the state-machine position, and
+-- ``error``/``error_code`` hold only the LAST failure. That is not enough to
+-- tell a genuinely failed operation from one that already SUCCEEDED and whose
+-- error is history: a report upload that timed out (and was in fact accepted
+-- by Google) parked a job as REPORT_UPLOAD_FAILED while the report and the
+-- returned work were already on the submission, and the stale error then
+-- stayed on screen through every retry.
+--
+-- One row per logical operation keeps the two apart:
+--   * ``state``        — the CURRENT outcome: PENDING | IN_PROGRESS |
+--                        SUCCEEDED | FAILED | NEEDS_VERIFICATION | CANCELLED.
+--   * ``error``/...    — HISTORY: what failed, when, on which attempt, and
+--                        whether it was later resolved (``resolved``).
+-- Rows are never deleted by error clearing: the row is what prevents a
+-- duplicate report attachment or a second grade write, so clearing removes
+-- only the resolved MESSAGE.
+CREATE TABLE IF NOT EXISTS automation_operations (
+    job_id TEXT NOT NULL,
+    op_key TEXT NOT NULL,            -- report | grade | return
+    kind TEXT NOT NULL,              -- report_upload | grade | return
+    state TEXT NOT NULL,
+    attempt INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    error_code TEXT,
+    error_at REAL,
+    error_attempt INTEGER,
+    resolved INTEGER NOT NULL DEFAULT 0,
+    resolved_at REAL,
+    recovered INTEGER NOT NULL DEFAULT 0,
+    verified INTEGER NOT NULL DEFAULT 0,
+    note TEXT,
+    dismissed_at REAL,
+    first_attempt_at REAL,
+    last_attempt_at REAL,
+    succeeded_at REAL,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY (job_id, op_key)
+);
+CREATE INDEX IF NOT EXISTS idx_automation_operations_state
+    ON automation_operations(state);
+CREATE INDEX IF NOT EXISTS idx_automation_operations_errors
+    ON automation_operations(resolved);

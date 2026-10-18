@@ -9,11 +9,15 @@ Three runs, identical inputs:
 
   A. ORIGINAL engine  — the friend's app5_1_automated.py imported as-is
                         (streamlit stubbed), its own google-genai client.
+                        Needs the reference copy under ``Friend code/``; it
+                        has been removed from the project, so this run is
+                        skipped unless the folder is restored. Use
+                        ``--skip-original`` to silence it explicitly.
   B. V5 engine direct — preserved copy driven through the KeyAwareClient.
   C. V5 production    — HTTP upload to the live server, full job pipeline.
 
 Prints marks/feedback comparison. Never prints key material.
-Usage: python scripts/compare_original_vs_v5.py [--production]
+Usage: python scripts/compare_original_vs_v5.py [--production] [--skip-original]
 """
 
 from __future__ import annotations
@@ -29,6 +33,12 @@ from unittest.mock import MagicMock
 
 BACKEND = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND))
+
+#: Where the friend's original Streamlit app used to be kept as the untouched
+#: reference implementation. That folder has been removed from the project, so
+#: run A only works where a copy of it still exists.
+ORIGINAL_APP = (BACKEND.parent / "Friend code" / "edexcel-maths-correctorv2-main"
+                / "app5_1_automated.py")
 
 from app.config import DATA_DIR, get_config, get_secrets  # noqa: E402
 from app.engine import legacy_marking as v5_legacy  # noqa: E402
@@ -58,9 +68,16 @@ def load_original_module():
         stub.fragment.return_value = lambda fn: fn
         sys.modules["streamlit"] = stub
 
-    original_path = (BACKEND.parent / "Friend code" / "edexcel-maths-correctorv2-main"
-                     / "app5_1_automated.py")
-    spec = importlib.util.spec_from_file_location("legacy_original_app", str(original_path))
+    if not ORIGINAL_APP.exists():
+        # Say exactly what is missing and how to get it back, instead of dying
+        # with a bare "no such file" deep inside importlib.
+        raise FileNotFoundError(
+            f"The friend's original app is not present ({ORIGINAL_APP}). "
+            "Run A compares against that untouched reference copy; restore "
+            "'Friend code/edexcel-maths-correctorv2-main/app5_1_automated.py' "
+            "to include it, or pass --skip-original.")
+    spec = importlib.util.spec_from_file_location("legacy_original_app",
+                                                  str(ORIGINAL_APP))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -257,6 +274,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--production", action="store_true",
                         help="also run the full HTTP pipeline (C)")
+    parser.add_argument("--skip-original", action="store_true",
+                        help="skip run A (the friend's original app, whose "
+                             "reference folder has been removed)")
     args = parser.parse_args()
 
     for f in (SUBMISSION, SCHEME, QUESTION):
@@ -272,7 +292,13 @@ def main() -> int:
           f"{QUESTION.name} ({QUESTION.stat().st_size // 1024} KB)")
 
     runs = []
-    runners = [run_original, run_v5_direct]
+    runners = [run_v5_direct]
+    if args.skip_original or not ORIGINAL_APP.exists():
+        print("[A. ORIGINAL] skipped — the friend's reference app "
+              f"({ORIGINAL_APP.parent}) is not in the project.\n"
+              "              (runs B and C are unaffected.)")
+    else:
+        runners.insert(0, run_original)
     if args.production:
         runners.append(run_v5_production)
 
@@ -307,7 +333,11 @@ def main() -> int:
                   f"-> {'MATCH' if match else 'DIFFER'}  "
                   f"({base['earned']}/{base['available']} vs {other['earned']}/{other['available']})")
         return 0 if all_match else 2
-    print("One or more runs failed — see output above.")
+    if len(completed) == 1:
+        print("Only one run completed — nothing to compare against "
+              "(see the skip/failure notes above).")
+    else:
+        print("One or more runs failed — see output above.")
     return 1
 
 

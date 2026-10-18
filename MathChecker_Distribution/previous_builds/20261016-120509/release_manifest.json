@@ -1,0 +1,85 @@
+{
+  "application": "Math Checker",
+  "version": "5.2.1",
+  "build_number": "20261013-rc1",
+  "build_timestamp": "2026-10-13T21:06:18Z",
+  "python_version": "3.14.7",
+  "platform": "win32",
+  "self_contained": true,
+  "dependencies": [
+    {
+      "package": "fastapi",
+      "installed": "0.143.0"
+    },
+    {
+      "package": "uvicorn",
+      "installed": "0.54.0"
+    },
+    {
+      "package": "python-multipart",
+      "installed": "0.0.32"
+    },
+    {
+      "package": "google-genai",
+      "installed": "2.29.0"
+    },
+    {
+      "package": "google-auth",
+      "installed": "2.61.0"
+    },
+    {
+      "package": "google-auth-oauthlib",
+      "installed": "1.5.0"
+    },
+    {
+      "package": "requests",
+      "installed": "2.34.2"
+    },
+    {
+      "package": "pytest",
+      "installed": "9.1.1"
+    },
+    {
+      "package": "httpx",
+      "installed": "0.28.1"
+    },
+    {
+      "package": "openpyxl",
+      "installed": "3.1.5"
+    },
+    {
+      "package": "reportlab",
+      "installed": "5.0.1"
+    },
+    {
+      "package": "pymupdf",
+      "installed": "1.28.2"
+    },
+    {
+      "package": "pypdf",
+      "installed": "6.20.0"
+    },
+    {
+      "package": "Pillow",
+      "installed": "12.3.0"
+    },
+    {
+      "package": "cryptography",
+      "installed": "50.0.2"
+    }
+  ],
+  "file_count": 3832,
+  "staged_allowlist_entries": 150,
+  "artifacts": [
+    {
+      "name": "MathChecker_Portable.zip",
+      "bytes": 76328811,
+      "sha256": "3efbf024949ac5e16a1795d7266c54d594bdd3d28d1d66ba13956ae08de0f79e"
+    },
+    {
+      "name": "MathChecker_Setup.exe",
+      "bytes": 53381749,
+      "sha256": "5717a083737d2fac71ec1f9dfdcf56f4910a6b5b68a2614c8ce42d6cfc0d8810"
+    }
+  ]
+}

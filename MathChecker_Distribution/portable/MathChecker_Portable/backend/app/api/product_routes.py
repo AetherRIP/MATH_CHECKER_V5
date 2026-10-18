@@ -628,6 +628,12 @@ def attention():
             "route": "#/ai", "count": cfg_keys["total"],
         })
 
+    # -- suspected mark-scheme errors --------------------------------------
+    # Grouped and de-duplicated by the engine (one live record per assignment
+    # + question + type), so the same error can never notify twice.
+    from ..engine import scheme_audit as _scheme_audit
+    items.extend(_scheme_audit.notifications(limit=25))
+
     counts: dict[str, int] = {}
     for it in items:
         counts[it["type"]] = counts.get(it["type"], 0) + 1
@@ -727,6 +733,14 @@ def _mark_scheme_validation(coursework_id: str) -> dict:
         "processed": True,
         "validation": report,
         "questions": blueprint.get("questions", []),
+        # Subquestion structure (§2/§8/§9): every declared marking point with
+        # its own id, answers, M/A/B codes, page and validation status, plus the
+        # anomalies the checker found at that level. The review surface can
+        # therefore point a teacher at ONE subquestion instead of invalidating
+        # an otherwise-correct scheme.
+        "subquestions": report.get("subquestions") or [],
+        "subquestion_count": report.get("subquestion_count") or 0,
+        "subquestion_anomalies": report.get("subquestion_anomalies") or [],
         "total_marks": declared if declared is not None else report["total_marks"],
         "detected_total": report["total_marks"],
         "declared_total": declared,
@@ -758,6 +772,8 @@ def _mark_scheme_validation(coursework_id: str) -> dict:
             "verified": verification["verified"],
             "evidence_agrees": verification["evidence_agrees"],
             "missing_questions": verification["checks"].get("missing_questions"),
+            "subquestion_counts": verification["checks"].get(
+                "subquestion_counts"),
             "anomalies": verification["anomalies"],
             # One actionable sentence instead of a bare "AI verification failed".
             "likely_cause": msv.likely_cause(verification),

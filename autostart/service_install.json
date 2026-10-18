@@ -1,25 +1,20 @@
 {
   "tasks": {
     "MathCorrectBackend": {
-      "created": true,
-      "launcher": "E:\\MATH V6.0 AUTOMATION\\MATH V5\\autostart\\mathcorrect_backend_autostart.bat"
+      "created": false,
+      "removed": true,
+      "launcher": "E:\\MATH_CHECKER_V5\\autostart\\mathcorrect_backend_autostart.bat"
     },
     "MathCorrectAgent": {
-      "created": true,
-      "launcher": "E:\\MATH V6.0 AUTOMATION\\MATH V5\\autostart\\mathcorrect_agent_autostart.bat"
+      "created": false,
+      "removed": true,
+      "launcher": "E:\\MATH_CHECKER_V5\\autostart\\mathcorrect_agent_autostart.bat"
     }
   },
-  "verify": {
-    "MathCorrectBackend": {
-      "query_ok": true,
-      "points_at_launcher": true
-    },
-    "MathCorrectAgent": {
-      "query_ok": true,
-      "points_at_launcher": true
-    }
-  },
+  "verify": {},
   "ok": true,
   "elevated": true,
-  "marker": "E:\\MATH V6.0 AUTOMATION\\MATH V5\\autostart\\service_install.json"
+  "autostart_installed": false,
+  "note": "Both boot tasks were removed with 'python scripts/install_autostart.py service-remove', so nothing of Math Checker starts with Windows. setup.bat no longer registers startup either; re-add it deliberately with 'setup.bat /autostart' or 'python scripts/install_autostart.py service'.",
+  "marker": "E:\\MATH_CHECKER_V5\\autostart\\service_install.json"
 }

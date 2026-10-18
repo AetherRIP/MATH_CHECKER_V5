@@ -1,0 +1,434 @@
+{
+  "mode": "read-only live Classroom verification",
+  "generated_at": "2026-10-16T22:09:09",
+  "installation": "E:\\MATH_CHECKER_V5\\data",
+  "throwaway_directory_deleted": true,
+  "checks": [
+    {
+      "id": "C8",
+      "group": "static",
+      "description": "every raw write in client.py sits behind the guard",
+      "status": "PASS",
+      "expected": "0 undecorated raw writers",
+      "actual": "3 guarded / 0 undecorated",
+      "note": "checked by parsing the module, not by reading it"
+    },
+    {
+      "id": "C1",
+      "group": "guard",
+      "description": "the app reads testing-only mode as ON",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "note": "the child process must load the throwaway config"
+    },
+    {
+      "id": "C2",
+      "group": "guard",
+      "description": "every publishing helper refuses while testing-only is ON",
+      "status": "PASS",
+      "expected": "8 blocked, 0 reached transport",
+      "actual": "8/8 blocked",
+      "note": ""
+    },
+    {
+      "id": "C3",
+      "group": "guard",
+      "description": "no write reached the HTTP transport",
+      "status": "PASS",
+      "expected": 0,
+      "actual": 0,
+      "note": ""
+    },
+    {
+      "id": "C4",
+      "group": "guard",
+      "description": "the guard is scoped to writes; reads stay allowed",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "note": ""
+    },
+    {
+      "id": "C5",
+      "group": "guard",
+      "description": "the guard is a switch: with testing-only off the same write is allowed",
+      "status": "PASS",
+      "expected": "allowed_when_off",
+      "actual": "allowed_when_off",
+      "note": ""
+    },
+    {
+      "id": "C6",
+      "group": "guard",
+      "description": "negative control: the same call DOES reach the transport when the flag is off",
+      "status": "PASS",
+      "expected": ">0 recorded with the flag off",
+      "actual": 1,
+      "note": "proves the refusal comes from the flag, not from a broken code path"
+    },
+    {
+      "id": "A1",
+      "group": "auth",
+      "description": "the OAuth client JSON is resolvable by the app",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "note": ""
+    },
+    {
+      "id": "A2",
+      "group": "auth",
+      "description": "a Classroom refresh token is stored",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "note": ""
+    },
+    {
+      "id": "A3",
+      "group": "auth",
+      "description": "the app refreshes an access token unaided",
+      "status": "PASS",
+      "expected": "a non-empty token",
+      "actual": "token of length 254",
+      "note": ""
+    },
+    {
+      "id": "A4",
+      "group": "auth",
+      "description": "every scope the app requests was actually granted",
+      "status": "PASS",
+      "expected": "all 7 scopes the app asks for",
+      "actual": "8 granted, none missing",
+      "note": ""
+    },
+    {
+      "id": "A5",
+      "group": "auth",
+      "description": "the connected account resolves to a real identity",
+      "status": "PASS",
+      "expected": "an account email",
+      "actual": "rudroritisha12@gmail.com",
+      "note": "the email is shown in the app's own UI; no token is recorded"
+    },
+    {
+      "id": "B1",
+      "group": "listings",
+      "description": "courses are listed",
+      "status": "PASS",
+      "expected": ">=1 active course",
+      "actual": "2 courses: 886515702341 'TESTING', 877926720424 'WBIS - O Level Mathematics - Mr. Abanoub Akram'",
+      "note": ""
+    },
+    {
+      "id": "B2b",
+      "group": "listings",
+      "description": "the course listing is complete (pagination followed)",
+      "status": "PASS",
+      "expected": "2 courses over 1 page(s)",
+      "actual": 2,
+      "note": "truncation here hides a whole class"
+    },
+    {
+      "id": "B3a",
+      "group": "listings",
+      "description": "the busiest course is chosen so the checks exercise real work",
+      "status": "PASS",
+      "expected": "the course with the most students",
+      "actual": "'WBIS - O Level Mathematics - Mr. Abanoub Akram', 78 students",
+      "note": "override with --course-id to inspect a specific class"
+    },
+    {
+      "id": "B3",
+      "group": "listings",
+      "description": "assignments are retrieved for the course",
+      "status": "PASS",
+      "expected": "a list of assignments",
+      "actual": "18 assignments in course 877926720424",
+      "note": ""
+    },
+    {
+      "id": "B4",
+      "group": "listings",
+      "description": "the assignment listing is complete (pagination followed)",
+      "status": "PASS",
+      "expected": "18 assignments over 1 page(s)",
+      "actual": 18,
+      "note": "assignments past the first page would never be marked"
+    },
+    {
+      "id": "B5",
+      "group": "listings",
+      "description": "the class roster is retrieved",
+      "status": "PASS",
+      "expected": ">=1 student",
+      "actual": "78 students in course 877926720424",
+      "note": ""
+    },
+    {
+      "id": "B6",
+      "group": "listings",
+      "description": "the roster listing follows pagination to the end",
+      "status": "PASS",
+      "expected": "78 students over 3 page(s)",
+      "actual": 78,
+      "note": "LIVE DATA PAGINATES: this is the one listing where a nextPageToken really appears"
+    },
+    {
+      "id": "D1",
+      "group": "submissions",
+      "description": "turned-in submissions are retrieved for an assignment",
+      "status": "PASS",
+      "expected": ">=1 submission",
+      "actual": "24 turned-in on coursework 891651209745",
+      "note": ""
+    },
+    {
+      "id": "D2",
+      "group": "submissions",
+      "description": "submissions across every state are read to the last page",
+      "status": "PASS",
+      "expected": "78 submissions over 1 page(s) in 6 states",
+      "actual": 78,
+      "note": ""
+    },
+    {
+      "id": "D3",
+      "group": "submissions",
+      "description": "the correction pipeline's submission listing is complete",
+      "status": "PASS",
+      "expected": "24 TURNED_IN submissions (paginated truth)",
+      "actual": 24,
+      "note": "an incomplete listing here means a student is never corrected"
+    },
+    {
+      "id": "D4",
+      "group": "submissions",
+      "description": "a single submission can be re-read by id",
+      "status": "PASS",
+      "expected": "the same submission id",
+      "actual": "Cg4IweGmoIYFEJH0ttT5GQ",
+      "note": ""
+    },
+    {
+      "id": "E1",
+      "group": "student matching",
+      "description": "every submission belongs to a member of the class roster",
+      "status": "PASS",
+      "expected": "0 submissions outside the roster",
+      "actual": "0 unmatched",
+      "note": ""
+    },
+    {
+      "id": "E2",
+      "group": "student matching",
+      "description": "the roster explains students who never submitted",
+      "status": "PASS",
+      "expected": "enumerable",
+      "actual": "0 of 78 roster members have no submission resource",
+      "note": "these must appear as NOT_STARTED/MISSING, not vanish"
+    },
+    {
+      "id": "E3",
+      "group": "student matching",
+      "description": "turned-in submissions are a subset of all-state submissions",
+      "status": "PASS",
+      "expected": "subset",
+      "actual": "24 turned in of 78 with a resource",
+      "note": ""
+    },
+    {
+      "id": "E4",
+      "group": "student matching",
+      "description": "student identifiers resolve to real profiles (display name)",
+      "status": "PASS",
+      "expected": "78 roster members resolvable",
+      "actual": "5 resolved, 0 errors",
+      "note": "emails: NOT granted by this token (rosters.readonly only) \u2014 expected, and a privacy win; "
+    },
+    {
+      "id": "E5",
+      "group": "student matching",
+      "description": "the roster exposes a stable Google user id per student",
+      "status": "PASS",
+      "expected": "every entry carries userId",
+      "actual": "78/78",
+      "note": ""
+    },
+    {
+      "id": "F1",
+      "group": "drive",
+      "description": "turned-in work is discoverable as attachments",
+      "status": "PASS",
+      "expected": ">=1 submission carrying an attachment",
+      "actual": "21 with Drive files, 2 with form/link/youtube only",
+      "note": "a submission with no Drive file cannot be downloaded or marked"
+    },
+    {
+      "id": "F2",
+      "group": "drive",
+      "description": "a student attachment's metadata is readable",
+      "status": "PASS",
+      "expected": "file metadata",
+      "actual": "mimeType=application/pdf size=None",
+      "note": ""
+    },
+    {
+      "id": "F3",
+      "group": "drive",
+      "description": "real student work downloads byte-for-byte",
+      "status": "PASS",
+      "expected": "a non-empty PDF",
+      "actual": "3764654 bytes, magic b'%PDF'",
+      "note": "anonymised: no student data kept"
+    },
+    {
+      "id": "G1",
+      "group": "permissions",
+      "description": "an endpoint outside the granted scopes is refused: courseWorkMaterials.list (classroom.courseworkmaterials.readonly)",
+      "status": "PASS",
+      "expected": "403 (or 404 where the resource is absent)",
+      "actual": "HTTP 403",
+      "note": "403 proves the token's other permissions are real, not a blanket allowance"
+    },
+    {
+      "id": "G1",
+      "group": "permissions",
+      "description": "an endpoint outside the granted scopes is refused: topics.list (classroom.topics.readonly)",
+      "status": "PASS",
+      "expected": "403 (or 404 where the resource is absent)",
+      "actual": "HTTP 403",
+      "note": "403 proves the token's other permissions are real, not a blanket allowance"
+    },
+    {
+      "id": "G2",
+      "group": "permissions",
+      "description": "an invalid token is rejected by Google",
+      "status": "PASS",
+      "expected": "401",
+      "actual": "HTTP 401",
+      "note": ""
+    },
+    {
+      "id": "H1",
+      "group": "no mutation",
+      "description": "every submission touched by this run is identical afterwards (volatile signed URLs excluded)",
+      "status": "PASS",
+      "expected": "0 changed",
+      "actual": "0 changed of 5",
+      "note": "changed fields: none outside volatile keys"
+    },
+    {
+      "id": "H3",
+      "group": "no mutation",
+      "description": "the before/after comparison covers grade, state and attachments",
+      "status": "PASS",
+      "expected": "state, assignmentSubmission and friends",
+      "actual": "comparing ['state', 'assignmentSubmission', 'submissionHistory', 'updateTime']",
+      "note": ""
+    },
+    {
+      "id": "H2",
+      "group": "no mutation",
+      "description": "the evidence document was written",
+      "status": "PASS",
+      "expected": "an evidence file",
+      "actual": "C:\\Users\\RUDRAN~1\\AppData\\Local\\Temp\\mc5-readonly-2vb8eji4\\child_live.json",
+      "note": ""
+    }
+  ],
+  "live_evidence": {
+    "mode": "read-only live Classroom verification",
+    "generated_at": "2026-10-16T22:09:09",
+    "account": "rudroritisha12@gmail.com",
+    "granted_scopes": [
+      "email",
+      "https://www.googleapis.com/auth/classroom.courses.readonly",
+      "https://www.googleapis.com/auth/classroom.coursework.students",
+      "https://www.googleapis.com/auth/classroom.rosters.readonly",
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "openid"
+    ],
+    "requested_scopes": [
+      "https://www.googleapis.com/auth/classroom.courses.readonly",
+      "https://www.googleapis.com/auth/classroom.coursework.students",
+      "https://www.googleapis.com/auth/classroom.rosters.readonly",
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "openid"
+    ],
+    "course": {
+      "id": "877926720424",
+      "name": "WBIS - O Level Mathematics - Mr. Abanoub Akram"
+    },
+    "counts": {
+      "courses": 2,
+      "assignments": 18,
+      "roster": 78,
+      "submissions_all_states": 78,
+      "turned_in": 24
+    },
+    "pagination": {
+      "course_pages": 1,
+      "roster_pages": 3,
+      "submission_pages": 1
+    },
+    "sample_students": [
+      {
+        "student": "S-4ccca6eb",
+        "name_resolved": true,
+        "has_email": false,
+        "verified_teacher": null
+      },
+      {
+        "student": "S-a9a0d608",
+        "name_resolved": true,
+        "has_email": false,
+        "verified_teacher": null
+      },
+      {
+        "student": "S-ea630f05",
+        "name_resolved": true,
+        "has_email": false,
+        "verified_teacher": null
+      },
+      {
+        "student": "S-0322a5e3",
+        "name_resolved": true,
+        "has_email": false,
+        "verified_teacher": null
+      },
+      {
+        "student": "S-1cab0314",
+        "name_resolved": true,
+        "has_email": false,
+        "verified_teacher": null
+      }
+    ],
+    "submission_shape": {
+      "keys": [
+        "alternateLink",
+        "assignmentSubmission",
+        "associatedWithDeveloper",
+        "courseId",
+        "courseWorkId",
+        "courseWorkType",
+        "creationTime",
+        "id",
+        "state",
+        "submissionHistory",
+        "updateTime",
+        "userId"
+      ],
+      "attachment_kinds": [
+        "drive",
+        "link"
+      ]
+    }
+  },
+  "exit_code": 0
+}

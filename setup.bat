@@ -59,11 +59,20 @@ if errorlevel 1 (
   exit /b 1
 )
 
-rem --- register automatic startup (no manual commands after a reboot) -------
-rem Preferred: a boot-time SYSTEM task (starts before sign-in, survives
-rem logoff). That needs administrator rights, so Windows shows the normal
-rem UAC prompt now. If it is declined or fails, fall back to a per-user
-rem Startup entry so startup still works without any manual step.
+rem --- automatic startup: OFF unless it is asked for ----------------------
+rem Setup does NOT register automatic startup. A boot-time SYSTEM task runs
+rem before anybody signs in and keeps the backend resident after every
+rem restart, which is not something a one-time dependency install should do
+rem behind the teacher's back (it is also what makes the app look like it
+rem cannot be switched off). Ask for it explicitly:
+rem     setup.bat /autostart      (or set MC5_INSTALL_AUTOSTART=1)
+rem and approve the Windows administrator prompt. Undo it any time with:
+rem     python scripts\install_autostart.py service-remove
+set "WANT_AUTOSTART="
+if /i "%~1"=="/autostart" set "WANT_AUTOSTART=1"
+if /i "%~1"=="autostart" set "WANT_AUTOSTART=1"
+if "%MC5_INSTALL_AUTOSTART%"=="1" set "WANT_AUTOSTART=1"
+if not defined WANT_AUTOSTART goto :autostart_skipped
 echo.
 echo   Installing automatic startup (Windows may ask for administrator permission - this lets Math Correct start before you sign in) ...
 "%~dp0.venv\Scripts\python.exe" "%~dp0scripts\install_autostart.py" service
@@ -72,11 +81,19 @@ if errorlevel 1 (
   "%~dp0.venv\Scripts\python.exe" "%~dp0scripts\install_autostart.py" all
 )
 "%~dp0.venv\Scripts\python.exe" "%~dp0scripts\install_autostart.py" verify
+goto :autostart_done
+:autostart_skipped
+echo.
+echo   Automatic startup is NOT installed: Math Correct starts only when you
+echo   run start.bat. To start it with Windows too, re-run this file as:
+echo          setup.bat /autostart
+echo   and approve the administrator prompt.
+:autostart_done
 
 echo.
 echo   Setup complete.
 echo     * Start the app now with:  start.bat
-rem (kept for compatibility; startup is already configured)
+rem (setup does not touch startup; run 'setup.bat /autostart' to add it)
 echo     * The frontend is prebuilt in frontend\dist; only run "npm install"
 echo       and "npm run build" inside frontend\ if you change the UI code.
 echo.

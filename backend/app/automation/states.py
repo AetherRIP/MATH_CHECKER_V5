@@ -56,6 +56,14 @@ ATTENTION_REQUIRED = "ATTENTION_REQUIRED"
 BLOCKED_NOT_MODIFIABLE = "BLOCKED_NOT_MODIFIABLE"
 CANCELLED = "CANCELLED"
 
+#: A LATER attempt for the same submission already finished this work, so this
+#: job's state is history rather than a live failure. Resubmissions and
+#: re-corrections legitimately create one job per submission VERSION, and the
+#: older job used to stay parked in its failure/attention state forever — the
+#: dashboard then showed a "failed" job for work another job had already
+#: completed. Reconciling now marks it superseded instead.
+SUPERSEDED = "SUPERSEDED"
+
 # -- sets --------------------------------------------------------------------
 
 #: States whose step still needs to run (the runner advances from these).
@@ -103,6 +111,13 @@ BLOCKED_STEP_FROM_CODE = {
     "requires_review": ATTACHMENT_VERIFIED,     # accept in Review Queue, retry
     "result_missing": CORRECTING,               # re-read the engine's result
     "correction_job_missing": NEW,              # the AI job itself is gone
+    # Reconciled with Classroom and one operation is still owed: resume exactly
+    # there. The report is only re-attempted when it is the step that is owed,
+    # and the grade/return steps are never repeated once verified.
+    "needs_verification": REPORT_VALIDATED,     # check the remote outcome first
+    "report_remaining": REPORT_VALIDATED,       # report is the only step owed
+    "grade_not_published": ATTACHMENT_VERIFIED, # this attempt's grade is not in
+                                                # Classroom yet — publish it
 }
 
 #: Parked waiting for an explicit teacher DECISION, not for a retry. Re-running
@@ -161,7 +176,12 @@ def retry_step(job: dict) -> str | None:
     return None
 
 #: Genuinely finished states (no further automatic work).
-TERMINAL = (COMPLETE, CANCELLED, ATTENTION_REQUIRED, BLOCKED_NOT_MODIFIABLE)
+TERMINAL = (COMPLETE, CANCELLED, ATTENTION_REQUIRED, BLOCKED_NOT_MODIFIABLE,
+            SUPERSEDED)
+
+#: Finished states that ended badly and still owe the teacher something. A
+#: superseded job is NOT one of them: its work was done by a newer attempt.
+UNRESOLVED_TERMINAL = (ATTENTION_REQUIRED, BLOCKED_NOT_MODIFIABLE)
 
 #: Ordered list used by the UI to render the progress timeline.
 PIPELINE = (
@@ -195,7 +215,13 @@ LABELS = {
     ATTENTION_REQUIRED: "Needs attention",
     BLOCKED_NOT_MODIFIABLE: "Blocked by Google Classroom",
     CANCELLED: "Cancelled",
+    SUPERSEDED: "Superseded by a newer attempt",
 }
+
+#: The label suffix the automation page adds when a job is history rather than
+#: a live problem, so an old row can never read as a failure.
+SUPERSEDED_NOTE = ("A newer attempt for this submission finished this work; "
+                   "this older job is kept only as history.")
 
 
 def label(status: str) -> str:

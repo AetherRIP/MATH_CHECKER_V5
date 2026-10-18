@@ -64,6 +64,19 @@ def fresh_state(tmp_path, monkeypatch):
     from app import auth_gate as _ag
     _ag.reset_throttle()
 
+    # The tiny-agent ON/OFF state file is written under
+    # ``agent_control.agent_dir()``, which defaults to the REPOSITORY's
+    # ``agent/`` folder — the same folder the standalone ``agent.py`` and its
+    # ``device_id`` live in. Any test that exercised ``/api/agent/state`` or
+    # ``/api/distributed/agent/state`` therefore rewrote the tracked file
+    # ``agent/agent_state.json`` with a test account id, whichever data dir the
+    # test used: the suite was not hermetic and it showed up as a change to a
+    # file the developer never edited. ``MC_AGENT_DIR`` is the module's own
+    # override, so pointing it inside this test's temp dir confines the write.
+    # A test that needs its own agent directory sets the variable again itself
+    # and still wins (its monkeypatch is applied after this fixture).
+    monkeypatch.setenv("MC_AGENT_DIR", str(data_dir / "agent"))
+
     data_dir.mkdir(parents=True, exist_ok=True)
     db.init_db()
     yield data_dir

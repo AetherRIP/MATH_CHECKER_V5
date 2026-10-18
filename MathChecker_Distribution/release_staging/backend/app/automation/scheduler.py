@@ -212,15 +212,9 @@ class AutomationScheduler:
         counts = store.counts()
         assignments = store.enabled_assignments()
         total = sum(counts.values())
-        processing_states = (
-            states.NEW, states.CORRECTING, states.RESULT_VALIDATED,
-            states.REPORT_GENERATED, states.REPORT_VALIDATED,
-            states.REPORT_UPLOADED, states.REPORT_ATTACHED,
-            states.ATTACHMENT_VERIFIED, states.GRADE_DRAFTED,
-            states.GRADE_VERIFIED, states.RETURNING,
-        )
-        waiting = sum(counts.get(s, 0) for s in states.RETRYABLE_FAILURES) \
-            + counts.get(states.NEW, 0)
+        execution = store.execution_counts()
+        waiting = execution["waiting"]
+        active = execution["active"]
         thread_alive = self.running()
         last_activity = store.last_activity()
         candidate_activity = store.get_meta("last_check")
@@ -247,7 +241,7 @@ class AutomationScheduler:
             "thread_running": thread_alive,
             "last_activity": last_activity,
             "pending_jobs": waiting,
-            "active_jobs": sum(counts.get(s, 0) for s in processing_states),
+            "active_jobs": active,
             "assignments_enabled": len(assignments),
             # Post-correction behaviour, exposed so the UI can show/toggle it.
             # ``review_mode`` holds every grade as a teacher-approved draft and
@@ -266,7 +260,7 @@ class AutomationScheduler:
             "counts": {
                 "total": total,
                 "completed": counts.get(states.COMPLETE, 0),
-                "processing": sum(counts.get(s, 0) for s in processing_states),
+                "processing": active,
                 "waiting": waiting,
                 "failed": sum(counts.get(s, 0)
                               for s in states.RETRYABLE_FAILURES) +

@@ -17,58 +17,10 @@ import pytest
 
 from app.engine import scheme_inventory as si
 
+from fakes_gemini import FakeClient, Response as _Response, ScriptedModels
 from fixtures_mark_scheme import (
     compiled_image_only_mark_scheme, page_break_mark_scheme,
 )
-
-
-# --------------------------------------------------------------- fake model
-
-class _Finish:
-    def __init__(self, name: str) -> None:
-        self.name = name
-
-
-class _Candidate:
-    def __init__(self, name: str) -> None:
-        self.finish_reason = _Finish(name)
-
-
-class _Response:
-    def __init__(self, text: str, finish: str = "STOP") -> None:
-        self.text = text
-        self.candidates = [_Candidate(finish)]
-
-
-class _Remote:
-    name = "files/fake-scheme"
-
-
-class ScriptedModels:
-    """A model that answers from a script, or from a responder callable."""
-
-    def __init__(self, script=None, responder=None) -> None:
-        self.script = list(script or [])
-        self.responder = responder
-        self.calls: list[dict] = []
-
-    def generate_content(self, *, model, contents, config=None, **kwargs):
-        self.calls.append({"model": model, "contents": contents,
-                           "config": config or {}})
-        if self.responder is not None:
-            return self.responder(contents, model, config or {})
-        nxt = self.script.pop(0)
-        if isinstance(nxt, Exception):
-            raise nxt
-        return nxt
-
-
-class FakeClient:
-    def __init__(self, script=None, responder=None) -> None:
-        self.models = ScriptedModels(script, responder)
-
-    def upload_file(self, path, *args, **kwargs):  # pragma: no cover - unfinished
-        return _Remote()
 
 
 def rendered(chunk: si.PageChunk, pages=None) -> si.RenderedChunk:
@@ -363,6 +315,88 @@ class TestMerge:
         assert [i["source_index"] for i in merged["items"]] == [7]
         assert merged["items"][0]["conflict"] is True
         assert {v["max_marks"] for v in merged["items"][0]["variants"]} == {3, 8}
+
+    def test_a_label_difference_with_equal_marks_is_information_not_a_conflict(self):
+        """Two reads of index 11 that disagree only about the printed label are
+        the same question: treating that as a discrepancy buries the real ones."""
+        # Merge operates on NORMALISED items, where the printed label lives in
+        # ``label`` (the model's key is renamed by the chunk gate).
+        left = {"chunk": {"id": "p1-6"},
+                "items": [{"source_index": 11, "label": "June 05/4H/Q11",
+                           "max_marks": 4, "page": 6}]}
+        right = {"chunk": {"id": "p6-11"},
+                 "items": [{"source_index": 11, "label": "Q11",
+                            "max_marks": 4, "page": 6}]}
+        merged = si.merge_chunks([left, right])
+        assert merged["conflicts"] == []
+        assert merged["label_variants"][0]["source_index"] == 11
+        assert set(merged["label_variants"][0]["labels"]) == {"June 05/4H/Q11", "Q11"}
+        # Both transcriptions are kept; the item is not duplicated.
+        assert [i["source_index"] for i in merged["items"]] == [11]
+        assert merged["items"][0]["label_variant"] == ["June 05/4H/Q11", "Q11"]
+        assert merged["items"][0]["seen_in_chunks"] == ["p1-6", "p6-11"]
+
+    def test_a_label_difference_does_not_make_the_read_unresolved(self):
+        left = {"chunk": {"id": "p1-2"}, "status": si.CHUNK_OK, "items": [
+            {"source_index": 1, "label": "Q1", "max_marks": 4, "page": 1},
+            {"source_index": 2, "label": "June 05/4H/Q2", "max_marks": 4, "page": 2}]}
+        right = {"chunk": {"id": "p2-3"}, "status": si.CHUNK_OK,
+                 "items": [{"source_index": 2, "label": "Q2",
+                             "max_marks": 4, "page": 2}]}
+        report = si.inventory_report([left, right], page_count_total=3)
+        assert report["conflicting_indices"] == []
+        assert report["label_variant_indices"] == [2]
+        assert report["unresolved"] is False
+        assert report["verdict"].startswith("COMPLETE")
+
+    def test_sub_part_punctuation_is_not_a_marks_disagreement(self):
+        """The live document read "a (i)/(ii)" in one chunk and "a(i)/a(ii)" in
+        the next. Identical marks, identical structure: reporting that as a
+        CRITICAL conflict on a consistent scheme is its own failure."""
+        left = {"chunk": {"id": "p11-16"},
+                "items": [{"source_index": 43, "label": "June 18/1H/Q4",
+                           "max_marks": 5, "page": 16,
+                           "parts": [{"number": "a (i)", "max_marks": 1},
+                                     {"number": "(ii)", "max_marks": 1},
+                                     {"number": "b", "max_marks": 1},
+                                     {"number": "c", "max_marks": 2}]}]}
+        right = {"chunk": {"id": "p16-21"},
+                 "items": [{"source_index": 43, "label": "June 18/1H/Q4",
+                            "max_marks": 5, "page": 16,
+                            "parts": [{"number": "a(i)", "max_marks": 1},
+                                      {"number": "a(ii)", "max_marks": 1},
+                                      {"number": "b", "max_marks": 1},
+                                      {"number": "c", "max_marks": 2}]}]}
+        merged = si.merge_chunks([left, right])
+        assert merged["conflicts"] == []
+        assert merged["label_variants"][0]["kind"] == "parts"
+        assert merged["items"][0]["part_label_variant"]
+        assert not merged["items"][0].get("conflict")
+
+    def test_a_different_sub_part_mark_is_still_critical(self):
+        """The mirror image: when the marks really differ, it stays a conflict."""
+        left = {"chunk": {"id": "p11-16"},
+                "items": [{"source_index": 43, "label": "Q4", "max_marks": 5,
+                           "page": 16,
+                           "parts": [{"number": "a(i)", "max_marks": 2}]}]}
+        right = {"chunk": {"id": "p16-21"},
+                 "items": [{"source_index": 43, "label": "Q4", "max_marks": 5,
+                            "page": 16,
+                            "parts": [{"number": "a(i)", "max_marks": 1}]}]}
+        merged = si.merge_chunks([left, right])
+        assert merged["conflicts"][0]["source_index"] == 43
+        assert merged["label_variants"] == []
+
+    def test_equal_labels_with_different_marks_are_still_a_conflict(self):
+        left = {"chunk": {"id": "p1-2"},
+                "items": [{"source_index": 2, "label": "Q2",
+                           "max_marks": 4, "page": 2}]}
+        right = {"chunk": {"id": "p2-3"},
+                 "items": [{"source_index": 2, "label": "Q2",
+                            "max_marks": 3, "page": 2}]}
+        merged = si.merge_chunks([left, right])
+        assert merged["conflicts"][0]["source_index"] == 2
+        assert merged["label_variants"] == []
 
     def test_a_variant_says_which_sub_part_disagreed(self):
         """A conflict must be specific enough to act on."""

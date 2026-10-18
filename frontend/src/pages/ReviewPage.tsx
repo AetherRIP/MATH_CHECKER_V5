@@ -6,7 +6,7 @@ import {
 
 export default function ReviewPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const toast = useToast();
-  const [items, setItems] = useState<ReviewItem[] | null>(null);
+  const [items, setItems] = useState<(ReviewItem & { automation_hold?: boolean })[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [overrideFor, setOverrideFor] = useState<ReviewItem | null>(null);
   const [mark, setMark] = useState("");
@@ -16,7 +16,7 @@ export default function ReviewPage({ onNavigate }: { onNavigate: (r: string) => 
     useState<{ item: ReviewItem; message: string } | null>(null);
 
   const load = useCallback(() => {
-    api<{ items: ReviewItem[]; total: number }>("/review")
+    api<{ items: (ReviewItem & { automation_hold?: boolean })[]; total: number }>("/review?limit=500")
       .then((r) => setItems(r.items)).catch((e) => setError(e.message));
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -147,7 +147,8 @@ export default function ReviewPage({ onNavigate }: { onNavigate: (r: string) => 
                 </td>
                 <td data-label="Flagged" className="small faint">{timeAgo(r.created_at)}</td>
                 <td data-label="Action">
-                  <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                  {r.automation_hold ? <Button size="sm" onClick={() => onNavigate("#/automation")}>
+                    Review delivery in Automation</Button> : <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
                     <Button size="sm" variant="success" icon="check"
                       loading={busy === r.id} onClick={() => accept(r)}>
                       Accept
@@ -156,7 +157,7 @@ export default function ReviewPage({ onNavigate }: { onNavigate: (r: string) => 
                       onClick={() => { setOverrideFor(r); setMark(String(r.earned)); setNote(""); }}>
                       Override
                     </Button>
-                  </div>
+                  </div>}
                 </td>
               </tr>
             ))}

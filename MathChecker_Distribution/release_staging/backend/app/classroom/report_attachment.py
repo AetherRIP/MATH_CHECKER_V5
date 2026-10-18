@@ -760,17 +760,63 @@ def attach_report(token: str, result: dict, *, course_id: str,
     the existing file is reused / updated in place and no new file is created.
     A file Classroom references is never deleted here.
     """
-    # ONE worker at a time per Classroom submission (see ``_submission_lock``):
-    # the whole attachment is serialized so two workers cannot each decide "no
-    # Math Correct report yet" and then both ADD a file.
-    with _submission_lock(result.get("coursework_id"),
-                          result.get("submission_id")):
+    # The lock file is stored in SQLite so concurrent server processes (not
+    # just threads in one process) cannot start the same report operation.
+    # A crashed process leaves a lease that another process can recover.
+    coursework_id = result.get("coursework_id")
+    submission_id = result.get("submission_id")
+    lock = _acquire_submission_lock(coursework_id, submission_id)
+    if lock is None:
+        current_state = _row_for(str(result.get("id") or "")) or {}
+        return AttachmentOutcome(
+            STATUS_PENDING, message="Report upload is already in progress for this submission.",
+            result_id=result.get("id"), retryable=True,
+            drive_file_id=current_state.get("drive_file_id"))
+    try:
         return _attach_report_locked(
             token, result, course_id=course_id,
             assignment_title=assignment_title, detail=detail,
             share_with_student=share_with_student, account_email=account_email)
+    finally:
+        _release_submission_lock(coursework_id, submission_id, lock)
 
 
+def _acquire_submission_lock(coursework_id: str | None, submission_id: str | None):
+    if not coursework_id or not submission_id:
+        return {"owner": "local", "lease": time.time()}
+    import uuid
+    from .. import db
+    owner = uuid.uuid4().hex
+    now_ts = time.time()
+    with db.transaction() as conn:
+        row = conn.execute(
+            "SELECT owner, lease_until FROM report_upload_locks "
+            "WHERE coursework_id = ? AND submission_id = ?",
+            (coursework_id, submission_id)).fetchone()
+        if row and float(row["lease_until"] or 0) > now_ts:
+            return None
+        conn.execute(
+            "INSERT INTO report_upload_locks(coursework_id, submission_id, owner, "
+            "lease_until, updated_at) VALUES(?,?,?,?,?) "
+            "ON CONFLICT(coursework_id, submission_id) DO UPDATE SET "
+            "owner=excluded.owner, lease_until=excluded.lease_until, "
+            "updated_at=excluded.updated_at",
+            (coursework_id, submission_id, owner, now_ts + 240, now_ts))
+    return {"owner": owner, "lease": now_ts + 240}
+
+
+def _release_submission_lock(coursework_id: str | None, submission_id: str | None,
+                             lock: dict) -> None:
+    if not coursework_id or not submission_id:
+        return
+    from .. import db
+    db.execute(
+        "DELETE FROM report_upload_locks WHERE coursework_id = ? "
+        "AND submission_id = ? AND owner = ?",
+        (coursework_id, submission_id, lock["owner"]))
+
+
+# The existing attach implementation runs after the persistent lease is held.
 def _attach_report_locked(token: str, result: dict, *, course_id: str,
                           assignment_title: str | None = None,
                           detail: str = "standard",
@@ -814,6 +860,8 @@ def _attach_report_locked(token: str, result: dict, *, course_id: str,
     except gc.ClassroomApiError as exc:
         state["status"] = STATUS_FAILED
         state["error"] = f"Classroom refused the read ({exc.status})."
+        if exc.status >= 500 or exc.status == 429:
+            state["error_code"] = "remote_read_retryable"
         _save(state)
         return AttachmentOutcome(STATUS_FAILED, message=state["error"],
                                  result_id=result_id)
@@ -1159,10 +1207,16 @@ def _attach_report_locked(token: str, result: dict, *, course_id: str,
     except Exception as exc:  # noqa: BLE001
         state["status"] = STATUS_UPLOAD_FAILED
         state["error"] = f"Google Drive upload failed: {exc}"
+        # A transport timeout can be returned after Drive accepted the write.
+        # Keep this result in a reconcile-required state instead of inviting a
+        # blind retry that could create a second file.
+        if isinstance(exc, (TimeoutError, ConnectionError)) or "timeout" in str(exc).lower():
+            state["error_code"] = "upload_outcome_ambiguous"
         _save(state)
         return AttachmentOutcome(STATUS_UPLOAD_FAILED, message=state["error"],
                                  result_id=result_id,
-                                 report_filename=filename)
+                                 report_filename=filename,
+                                 retryable=state.get("error_code") != "upload_outcome_ambiguous")
 
     # ---- verify the Drive upload BEFORE trusting it (§28) ----------------
     # A returned file id is not proof: the file may be missing, trashed, the
@@ -1256,9 +1310,11 @@ def _attach_report_locked(token: str, result: dict, *, course_id: str,
                 token, course_id, coursework_id, submission_id,
                 add_drive_file_ids=[drive_file_id])
     except gc.ClassroomApiError as exc:
-        # The file is deliberately KEPT so "Retry attachment" can reuse it
-        # without re-marking the student or regenerating the PDF (§7, §15).
+        # The file is deliberately KEPT so retries can reconcile the accepted
+        # attachment when Classroom committed it but the response was lost.
         state["status"] = STATUS_ATTACH_FAILED
+        if exc.status >= 500 or exc.status == 429:
+            state["error_code"] = "attachment_outcome_ambiguous"
         state["error"] = (
             f"{ERROR_ATTACH}: Classroom refused the attachment ({exc.status}). "
             + (exc.detail or "")[:200])

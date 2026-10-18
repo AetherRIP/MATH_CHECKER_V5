@@ -437,7 +437,7 @@ class TestManualFallback:
         # The header itself is quoted, so assert on the NAME between the
         # quotes - illegal characters must not survive inside it.
         name = cd.split('filename="', 1)[1].rsplit('"', 1)[0]
-        for ch in '/\:*?"<>|':
+        for ch in r'/\:*?"<>|':
             assert ch not in name, f"{ch!r} survived in {name!r}"
         assert ".." not in name
         assert name.endswith("_Correction_Report.pdf")

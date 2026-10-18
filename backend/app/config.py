@@ -121,9 +121,6 @@ def resolve_oauth_client_path() -> Path:
     # already hold a bound reference keep working.
     return OAUTH_CLIENT_PATH
 
-# The original Streamlit app (preserved under Friend code/) lives here.
-LEGACY_APP_DIR = PROJECT_ROOT / "Friend code" / "edexcel-maths-correctorv2-main"
-
 
 @dataclass
 class GeminiConfig:

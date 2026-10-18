@@ -282,6 +282,45 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE result_versions ADD COLUMN pending INTEGER NOT NULL DEFAULT 0")
 
+    # Durable automation clear/bulk upload structures for existing databases.
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS bulk_upload_claims (
+            result_id TEXT PRIMARY KEY REFERENCES results(id) ON DELETE CASCADE,
+            run_id TEXT NOT NULL, lease_until REAL NOT NULL, updated_at REAL NOT NULL);
+        CREATE INDEX IF NOT EXISTS idx_bulk_upload_claims_run ON bulk_upload_claims(run_id);
+        CREATE TABLE IF NOT EXISTS report_upload_records (
+            result_id TEXT PRIMARY KEY REFERENCES results(id) ON DELETE CASCADE,
+            coursework_id TEXT NOT NULL, submission_id TEXT NOT NULL, student_id TEXT,
+            report_hash TEXT NOT NULL, status TEXT NOT NULL, remote_file_id TEXT,
+            lease_until REAL, error TEXT, updated_at REAL NOT NULL);
+        CREATE INDEX IF NOT EXISTS idx_report_upload_records_identity
+            ON report_upload_records(coursework_id, submission_id, student_id, report_hash);
+        CREATE TABLE IF NOT EXISTS automation_bulk_runs (
+            id TEXT PRIMARY KEY, status TEXT NOT NULL, total INTEGER NOT NULL,
+            completed INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0,
+            created_at REAL NOT NULL, updated_at REAL NOT NULL);
+        CREATE TABLE IF NOT EXISTS automation_bulk_run_items (
+            run_id TEXT NOT NULL REFERENCES automation_bulk_runs(id) ON DELETE CASCADE,
+            result_id TEXT NOT NULL, status TEXT NOT NULL, grade_status TEXT,
+            report_status TEXT, message TEXT, updated_at REAL NOT NULL,
+            PRIMARY KEY(run_id, result_id));
+        CREATE INDEX IF NOT EXISTS idx_automation_bulk_run_items_run
+            ON automation_bulk_run_items(run_id, status);
+    """)
+
+    upload_lock_cols = {row[1] for row in conn.execute(
+        "PRAGMA table_info(report_upload_locks)")}
+    if not upload_lock_cols:
+        conn.execute("""CREATE TABLE IF NOT EXISTS report_upload_locks (
+            coursework_id TEXT NOT NULL, submission_id TEXT NOT NULL,
+            owner TEXT NOT NULL, lease_until REAL NOT NULL, updated_at REAL NOT NULL,
+            PRIMARY KEY(coursework_id, submission_id))""")
+
+    automation_cols = {row[1] for row in conn.execute(
+        "PRAGMA table_info(automation_jobs)")}
+    if automation_cols and "hidden_at" not in automation_cols:
+        conn.execute("ALTER TABLE automation_jobs ADD COLUMN hidden_at REAL")
+
     # One-active-per-submission: the pool leaves jobs in 'STARTING' (and the
     # recovery set includes PREPARING..RETRYING) while work runs; the older
     # index definition did not cover 'STARTING', so two enqueues of the same

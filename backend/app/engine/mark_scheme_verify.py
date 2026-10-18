@@ -43,6 +43,8 @@ VERIFY_SCHEMA: dict[str, Any] = {
                     "question_number": {"type": "string"},
                     "max_marks": {"type": "integer"},
                     "criteria": {"type": "string"},
+                    "answers": {"type": "array", "items": {"type": "string"}},
+                    "page": {"type": "integer"},
                     "parts": {
                         "type": "array",
                         "items": {
@@ -50,6 +52,13 @@ VERIFY_SCHEMA: dict[str, Any] = {
                             "properties": {
                                 "number": {"type": "string"},
                                 "max_marks": {"type": "integer"},
+                                # Per-subquestion evidence. Without these the
+                                # sub-part's own answer and marking points never
+                                # reach the marker or the checker (§2/§4/§5).
+                                "criteria": {"type": "string"},
+                                "answers": {"type": "array",
+                                            "items": {"type": "string"}},
+                                "page": {"type": "integer"},
                             },
                             "required": ["number", "max_marks"],
                         },
@@ -79,6 +88,15 @@ Rules:
 - List every top-level question exactly once with the marks the scheme
   allocates to it. If the scheme splits a question into labelled parts, put
   them in "parts"; the parent max_marks will be recomputed as their sum.
+- EVERY labelled sub-part must be its own entry in "parts" (a, b, c, and the
+  nested i, ii, iii), spelled as the scheme prints it, with its own max_marks
+  and its own criteria. Never merge (b)(i) and (b)(ii), and never move an
+  answer or a mark from one part to another.
+- Give each part's own accepted answers in "answers" (one string per accepted
+  alternative) and its own marking points in "criteria" (the M/A/B codes and
+  the working they reward). Put the parent's answers in the parent's
+  "answers" only when the scheme states them for the question as a whole.
+- Set "page" to the page number the row was read from when it is visible.
 - Never invent a question that only appears as a page number or mark value.
 - The evidence preserves page and block order. For a two-column page the blocks
   are already in reading order (left column first) - do not re-interleave them.
@@ -101,6 +119,237 @@ FAILURE_AUTH = "authentication"
 FAILURE_INVALID_REQUEST = "invalid_request"
 FAILURE_EXTRACTION = "extraction_failure"
 FAILURE_STRUCTURAL = "structural_inconsistency"
+
+# ------------------------------------------------------- evidence honesty
+
+#: Usable text was available AND the page images were used: two independent
+#: views of the same document.
+EVIDENCE_COMBINED = "COMBINED"
+#: Only usable extracted text (no page images were part of the evidence).
+EVIDENCE_TEXT = "TEXT"
+#: Only page images — the document has no text layer, so the structure was read
+#: visually. This is NOT text-based verification and must never be reported as
+#: such.
+EVIDENCE_VISUAL = "VISUAL"
+#: Recognised text produced from an OCR engine. Reserved: this project ships no
+#: OCR engine, so nothing may claim it (the constant exists so a future OCR
+#: source cannot be silently labelled as text evidence).
+EVIDENCE_OCR = "OCR"
+#: Nothing readable at all.
+EVIDENCE_NONE = "NONE"
+
+#: How much a structure read from this kind of evidence can be trusted, before
+#: any anomaly is taken into account. A visual-only read of a scanned mark
+#: scheme is genuinely weaker than a text-layer read, and saying so is the point.
+_EVIDENCE_CAP: dict[str, float] = {
+    EVIDENCE_COMBINED: 1.0,
+    EVIDENCE_TEXT: 1.0,
+    EVIDENCE_VISUAL: 0.75,
+    EVIDENCE_OCR: 0.7,
+    EVIDENCE_NONE: 0.5,
+}
+
+ANOMALY_KINDS = (
+    "missing_question", "duplicate_question", "question_sequence_gap",
+    "total_mismatch", "unread_marks", "unread_page_range", "chunk_conflict",
+    "unsupported_question", "image_only_evidence", "no_local_evidence",
+    "subquestion_mismatch", "count_unestablished", "no_questions",
+    "label_variant", "part_label_variant", "other",
+)
+
+_SEVERITY_CRITICAL = "critical"   # the structure cannot be trusted as verified
+_SEVERITY_WARNING = "warning"     # review advised, marking may continue
+_SEVERITY_INFO = "info"           # context, no action
+
+
+def evidence_kind(evidence: dict | None) -> str | None:
+    """Which evidence did verification ACTUALLY have? ``None`` when none was given.
+
+    ``None`` is not ``NONE``: it means the caller supplied no evidence record at
+    all (the pre-existing diagnostics path), and that must not be scored as
+    "unreadable document".
+    """
+    if not evidence:
+        return None
+    mode = evidence.get("mode")
+    if mode == ms.MODE_TEXT:
+        # The text-layer path sends both the reconstructed blocks AND the PDF,
+        # so the structure has two independent views behind it.
+        return EVIDENCE_COMBINED
+    if mode == ms.MODE_IMAGE_ONLY:
+        return EVIDENCE_VISUAL
+    return EVIDENCE_NONE
+
+
+def anomaly_records(validation: dict | None) -> list[dict]:
+    """Every anomaly as a record a reader can act on.
+
+    A bare sentence ("Missing expected question number(s): 68, 69") is not
+    enough to decide what to do, so each record names its kind, its severity,
+    the question or page it concerns when that is known, the observation, the
+    evidence behind it, and whether a human must look at it. ``repaired``
+    starts False for everything: this layer never claims a repair it did not
+    perform.
+    """
+    validation = validation or {}
+    records: list[dict] = []
+    checks = validation.get("checks") or {}
+    inventory = checks.get("inventory") or {}
+
+    for index in (inventory.get("missing_indices") or []):
+        records.append({
+            "kind": "missing_question",
+            "severity": _SEVERITY_CRITICAL,
+            "question_id": str(index),
+            "page": None,
+            "observed": f"printed index {index} was not returned by any read",
+            "evidence": "the document's own printed index",
+            "repaired": False,
+            "needs_human": True,
+        })
+    for index in (inventory.get("conflicting_indices") or []):
+        records.append({
+            "kind": "chunk_conflict",
+            "severity": _SEVERITY_CRITICAL,
+            "question_id": str(index),
+            "page": None,
+            "observed": "two overlapping page ranges read this index differently",
+            "evidence": "both readings were kept for review",
+            "repaired": False,
+            "needs_human": True,
+        })
+    for variant in (inventory.get("label_variants") or []):
+        kind = str(variant.get("kind") or "label")
+        question_id = str(variant.get("source_index"))
+        if kind in ("label", "both"):
+            labels = [str(label) for label in (variant.get("labels") or []) if label]
+            records.append({
+                "kind": "label_variant",
+                "severity": _SEVERITY_INFO,
+                "question_id": question_id,
+                "page": variant.get("page"),
+                "observed": "two reads transcribed the label differently ("
+                            + " / ".join(labels) + ") while the marks agree",
+                "evidence": "the printed index is the identity; the label is display text",
+                "repaired": False,
+                "needs_human": False,
+            })
+        if kind in ("parts", "both"):
+            part_labels = [" / ".join(str(p) for p in group)
+                           for group in (variant.get("part_labels") or []) if group]
+            records.append({
+                "kind": "part_label_variant",
+                "severity": _SEVERITY_INFO,
+                "question_id": question_id,
+                "page": variant.get("page"),
+                "observed": "two reads transcribed the sub-part numbers differently ("
+                            + " / ".join(part_labels) + ") with identical marks",
+                "evidence": "the marks of every declared sub-part agree",
+                "repaired": False,
+                "needs_human": False,
+            })
+    for chunk in (inventory.get("failed_chunks") or []):
+        records.append({
+            "kind": "unread_page_range",
+            "severity": _SEVERITY_CRITICAL,
+            "question_id": None,
+            "page": chunk,
+            "observed": f"page range {chunk} did not pass its read gates",
+            "evidence": "per-chunk finish reason and parse result",
+            "repaired": False,
+            "needs_human": True,
+        })
+    for page in (inventory.get("pages_without_items") or []):
+        records.append({
+            "kind": "unread_page_range",
+            "severity": _SEVERITY_WARNING,
+            "question_id": None,
+            "page": page,
+            "observed": "no question came back from this page",
+            "evidence": "page coverage from the page-scoped read",
+            "repaired": False,
+            "needs_human": page != 1,
+        })
+
+    for message in (validation.get("anomalies") or []):
+        text = str(message)
+        low = text.lower()
+        notes_only = False
+        if "missing expected question" in low:
+            kind, severity = "missing_question", _SEVERITY_CRITICAL
+        elif "duplicate question" in low:
+            kind, severity = "duplicate_question", _SEVERITY_CRITICAL
+        elif "gap of" in low:
+            kind, severity = "question_sequence_gap", _SEVERITY_WARNING
+        elif "unaccounted" in low or "disagrees with the marks" in low:
+            kind, severity = "total_mismatch", _SEVERITY_WARNING
+        elif "does not support" in low:
+            kind, severity = "unsupported_question", _SEVERITY_WARNING
+        elif "no text layer" in low:
+            # A permanent property of the document, not something a reviewer
+            # can act on: informative, never "a human must look at this" on its
+            # own.
+            kind, severity = "image_only_evidence", _SEVERITY_WARNING
+            notes_only = True
+        elif "could not be read locally" in low:
+            kind, severity = "no_local_evidence", _SEVERITY_WARNING
+            notes_only = True
+        elif "no questions were reconstructed" in low:
+            kind, severity = "no_questions", _SEVERITY_CRITICAL
+        elif "disagree" in low and "part" in low:
+            kind, severity = "subquestion_mismatch", _SEVERITY_WARNING
+        else:
+            kind, severity = "other", _SEVERITY_WARNING
+        records.append({
+            "kind": kind,
+            "severity": severity,
+            "question_id": None,
+            "page": None,
+            "observed": text,
+            "evidence": "cross-validation of the reconstructed structure",
+            "repaired": False,
+            "needs_human": (severity != _SEVERITY_INFO) and not notes_only,
+        })
+    return records
+
+
+def _inventory_anomalies(inventory: dict | None) -> list[str]:
+    """Anomalies the page-scoped inventory establishes about completeness.
+
+    These are the ones a self-numbered extraction cannot see: a printed index
+    that never came back, a page range that failed its gates, two reads of one
+    index that disagree, or a count that the document does not establish.
+    """
+    inventory = inventory or {}
+    out: list[str] = []
+    missing = inventory.get("missing_indices") or []
+    if missing:
+        out.append(
+            "The document's printed index reaches "
+            f"{inventory.get('observed_last_index') or inventory.get('expected_count')} "
+            f"but {len(missing)} index/indices did not come back from any page "
+            f"read: {', '.join(str(m) for m in missing[:12])}. Questions were lost "
+            "or the page range was not read.")
+    failed = inventory.get("failed_chunks") or []
+    if failed:
+        out.append("Page range(s) " + ", ".join(str(c) for c in failed[:12])
+                   + " failed their read gates, so their pages are unverified.")
+    conflicts = inventory.get("conflicting_indices") or []
+    if conflicts:
+        out.append("Overlapping page reads disagree about index/indices "
+                   + ", ".join(str(c) for c in conflicts[:12])
+                   + "; both readings were kept for review.")
+    if inventory.get("unkeyed_items"):
+        out.append(f"{inventory['unkeyed_items']} item(s) carried no printed "
+                   "index, so they cannot be reconciled with the document.")
+    if inventory and inventory.get("expected_count") is None:
+        out.append("The document's numbering does not establish how many "
+                   "questions it contains, so the count cannot be confirmed.")
+    marks_missing = inventory.get("marks_missing_indices") or []
+    if marks_missing:
+        out.append("No mark allocation could be read for index/indices "
+                   + ", ".join(str(m) for m in marks_missing[:12]) + ".")
+    return out
 
 #: Failures that mean "ask again later". None of them is evidence that the
 #: mark scheme is broken, so none may invalidate a verified structure.
@@ -158,6 +407,7 @@ def canonicalize(parsed: Any) -> dict | None:
     by_number: dict[str, dict] = {}
     duplicates: list[str] = []
     rejected: list[str] = []
+    parts_disagreements: list[str] = []
 
     for item in raw:
         if not isinstance(item, dict):
@@ -182,8 +432,24 @@ def canonicalize(parsed: Any) -> dict | None:
             except (TypeError, ValueError):
                 continue
             if pnum and pm > 0:
-                parts.append({"number": pnum, "max_marks": pm})
+                part: dict[str, Any] = {"number": pnum, "max_marks": pm}
+                # The sub-part's OWN evidence travels with it. Dropping it here
+                # is what forced every part's answer and M/A/B rules into the
+                # parent's one free-text field.
+                part_criteria = str(p.get("criteria", "") or "").strip()
+                if part_criteria:
+                    part["criteria"] = part_criteria
+                part_answers = [str(a).strip()
+                                for a in (p.get("answers") or [])
+                                if str(a).strip()]
+                if part_answers:
+                    part["answers"] = part_answers
+                part_page = _as_int(p.get("page"))
+                if part_page:
+                    part["page"] = part_page
+                parts.append(part)
         parts.sort(key=lambda p: ms.order_key(p["number"]))
+        parts_stated = max_marks
         if parts:
             max_marks = sum(p["max_marks"] for p in parts)
 
@@ -195,8 +461,24 @@ def canonicalize(parsed: Any) -> dict | None:
             "max_marks": max_marks,
             "criteria": str(item.get("criteria", "") or "").strip(),
         }
+        answers = [str(a).strip() for a in (item.get("answers") or [])
+                   if str(a).strip()]
+        if answers:
+            entry["answers"] = answers
+        page = _as_int(item.get("page"))
+        if page:
+            entry["page"] = page
         if parts:
             entry["parts"] = parts
+            if parts_stated and parts_stated != max_marks:
+                # The statement and its own parts disagree. The parts win (they
+                # are the finer evidence) but the disagreement is recorded: an
+                # incomplete parts list silently shrinking a question is how a
+                # denominator goes missing.
+                entry["parts_disagreement"] = {
+                    "stated": parts_stated, "summed_from_parts": max_marks}
+                parts_disagreements.append(
+                    f"{number}: stated {parts_stated}, parts sum to {max_marks}")
         by_number[number] = entry
 
     if not by_number:
@@ -214,6 +496,7 @@ def canonicalize(parsed: Any) -> dict | None:
                      if isinstance(w, (str, int, float))],
         "duplicates_rejected": sorted(set(duplicates)),
         "invalid_rejected": sorted(set(rejected)),
+        "parts_disagreements": parts_disagreements,
     }
 
 
@@ -234,7 +517,8 @@ def _as_confidence(value: Any) -> float | None:
 
 # ----------------------------------------------------------------- cross-validation
 
-def cross_validate(structure: dict | None, evidence: dict | None = None) -> dict:
+def cross_validate(structure: dict | None, evidence: dict | None = None,
+                   inventory: dict | None = None) -> dict:
     """Check the structure against every independent source available.
 
     "The model said 33" is not evidence. Agreement between sources is. Compared
@@ -266,6 +550,30 @@ def cross_validate(structure: dict | None, evidence: dict | None = None) -> dict
         "missing_questions": seq["missing"],
         "duplicates_rejected": structure.get("duplicates_rejected") or [],
     }
+
+    # --- subquestion structure (§2/§3/§8) ---------------------------------
+    # Only meaningful when the scheme actually declares sub-parts: a flat
+    # scheme of 33 whole questions has nothing to say here, and inventing
+    # findings for it would bury the real ones.
+    sub_report: dict[str, Any] = {"anomalies": [], "counts": {}}
+    if any(q.get("parts") for q in questions):
+        from . import scheme_structure as st
+        built = st.build_structure(questions)
+        sub_report = st.validate_structure(built["questions"])
+        checks["subquestion_counts"] = sub_report["counts"]
+        checks["subquestions"] = [
+            {"id": s["id"], "label": s["label"], "parent_id": s["parent_id"],
+             "max_marks": s["max_marks"], "answers": s["answers"],
+             "mark_codes": (s.get("marks") or {}).get("codes") or [],
+             "validation": s.get("validation")}
+            for s in built["subquestions"]]
+        for issue in sub_report["anomalies"]:
+            if issue.get("severity") == st.SEVERITY_REVIEW:
+                anomalies.append(issue["message"])
+    for disagreement in (structure.get("parts_disagreements") or []):
+        anomalies.append(
+            f"The stated marks and the sub-part marks disagree for question "
+            f"{disagreement} — a sub-part may be missing from the scheme.")
 
     if not questions:
         anomalies.append("No questions were reconstructed from the mark scheme.")
@@ -319,31 +627,94 @@ def cross_validate(structure: dict | None, evidence: dict | None = None) -> dict
         checks["local_candidate_count"] = 0
 
     # --- what kind of document is this? -----------------------------------
+    # Evidence-QUALITY notes, kept separate from discrepancies. An image-only
+    # document has no text layer for ever, and calling that a verification
+    # failure would mean such a scheme could never be verified even after every
+    # page had been read and every printed index accounted for. The notes still
+    # travel with the result (the teacher must know the structure was read
+    # visually) and they still cap the confidence — they just do not, by
+    # themselves, contradict a complete page-scoped read.
+    notes: list[str] = []
     mode = evidence.get("mode")
     if mode == ms.MODE_IMAGE_ONLY:
-        anomalies.append(
+        notes.append(
             "This mark scheme has no text layer (image-only), so its structure "
             "was reconstructed visually and cannot be cross-checked against "
             "extracted text.")
     elif mode == ms.MODE_NONE and evidence:
-        anomalies.append(
+        notes.append(
             "The mark scheme could not be read locally, so no independent "
             "structural evidence is available.")
+    anomalies.extend(notes)
 
+    # --- what the page-scoped inventory proves about completeness ---------
+    # A self-numbered extraction cannot see its own loss; the printed index can.
+    inventory = inventory or {}
+    if inventory:
+        checks["inventory"] = {
+            key: inventory.get(key) for key in
+            ("detected_count", "expected_count", "expected_basis",
+             "observed_last_index", "missing_indices", "conflicting_indices",
+             "label_variant_indices", "part_label_variant_indices",
+             "label_variants", "unkeyed_items", "failed_chunks",
+             "pages_without_items", "items_total_marks", "marks_missing_indices",
+             "unresolved", "verdict")
+            if inventory.get(key) is not None
+        }
+    anomalies.extend(_inventory_anomalies(inventory))
+
+    incomplete = bool(inventory.get("missing_indices")
+                      or inventory.get("failed_chunks")
+                      or inventory.get("conflicting_indices"))
+
+    discrepancies = [a for a in anomalies if a not in set(notes)]
+
+    kind = evidence_kind(evidence)
     confidence = structure.get("model_confidence")
     if confidence is None:
         confidence = 1.0 if evidence_agrees else 0.6
-    if anomalies:
+    basis: dict[str, Any] = {
+        "model_confidence": structure.get("model_confidence"),
+        "evidence_kind": kind,
+        "evidence_agrees": evidence_agrees,
+        "anomalies": len(discrepancies),
+        "evidence_notes": len(notes),
+        "inventory_incomplete": incomplete,
+    }
+    if kind is not None:
+        cap = _EVIDENCE_CAP.get(kind, 0.5)
+        if cap < confidence:
+            basis["capped_by_evidence"] = cap
+            confidence = cap
+    if incomplete:
+        # A missing question is not a rounding error: the structure is not
+        # usable as verified no matter how sure the model felt.
+        if confidence > 0.4:
+            basis["capped_by_incompleteness"] = 0.4
+        confidence = min(confidence, 0.4)
+    if discrepancies:
+        if confidence > 0.5:
+            basis["capped_by_anomalies"] = 0.5
         confidence = min(confidence, 0.5)
 
     return {
         "checks": checks,
+        # Everything the teacher should know, discrepancies first.
         "anomalies": anomalies,
+        # What actually contradicts the structure.
+        "discrepancies": discrepancies,
+        # How the document could be read ("no text layer"), which lowers
+        # confidence but is not a finding about the mark scheme.
+        "evidence_notes": notes,
         "sequence": seq,
         "evidence_agrees": evidence_agrees,
         "extraction_mode": mode,
+        "evidence_kind": kind,
+        "confidence_basis": basis,
         "structural_confidence": round(float(confidence), 3),
-        "verified": not anomalies,
+        "verified": not discrepancies,
+        "anomaly_records": anomaly_records({"anomalies": anomalies,
+                                            "checks": checks}),
     }
 
 
@@ -354,9 +725,16 @@ def likely_cause(verification: dict | None) -> str | None:
     probable *cause* so they know whether to look at the PDF pages, fix the
     question list by hand, or simply re-verify. Returns ``None`` when there is
     nothing to explain.
+
+    It explains DISCREPANCIES only. "This PDF has no text layer" says nothing
+    went wrong — there is no cause to name when nothing contradicts the
+    structure, and inventing one would undo the point of the split.
     """
     verification = verification or {}
-    anomalies = [str(a) for a in (verification.get("anomalies") or [])]
+    source = (verification.get("discrepancies")
+              if verification.get("discrepancies") is not None
+              else verification.get("anomalies"))
+    anomalies = [str(a) for a in (source or [])]
     if not anomalies:
         return None
     joined = " ".join(anomalies).lower()

@@ -92,7 +92,7 @@ def _wrong_numeric_check(**overrides) -> dict:
 def test_incorrect_numeric_answer_is_confirmed():
     check = sa.classify(_wrong_numeric_check(), max_marks=3, awarded=0)
     assert check is not None
-    assert check["state"] == sa.STATE_CONFIRMED
+    assert check["state"] == sa.STATE_POSSIBLE
     assert check["justified_marks"] == 3
     assert check["review_recommended"] is True
 
@@ -101,7 +101,7 @@ def test_sign_and_arithmetic_errors_are_confirmed():
     for dtype in ("sign_error", "arithmetic_error"):
         info = sa.classify(_wrong_numeric_check(discrepancy_type=dtype),
                            max_marks=4, awarded=0)
-        assert info["state"] == sa.STATE_CONFIRMED, dtype
+        assert info["state"] == sa.STATE_POSSIBLE, dtype
         assert info["type"] == dtype
 
 
@@ -208,6 +208,23 @@ def test_same_discrepancy_is_recorded_once_and_notified_once(fresh_state):
     assert len(sa.notifications()) == 1        # no duplicate notification
 
 
+def test_different_types_same_question_notify_once(fresh_state):
+    """Two records for the same assignment + question collapse into ONE
+    review request (brief s6: no duplicate notifications)."""
+    _seed_assignment()
+    _seed_result(result_id="r1", submission_id="s1", student_id="s1",
+                 student_name="Alice", awarded=0, max_marks=3,
+                 scheme_check=_wrong_numeric_check())
+    _seed_result(result_id="r2", submission_id="s2", student_id="s2",
+                 student_name="Bob", awarded=0, max_marks=3,
+                 scheme_check=_wrong_numeric_check(
+                     discrepancy_type="arithmetic_error"))
+    assert len(sa.list_discrepancies()) == 2      # two distinct records
+    notes = sa.notifications()
+    assert len(notes) == 1                        # one review request
+    assert notes[0]["related_count"] == 1
+
+
 def test_ordinary_result_records_nothing(fresh_state):
     _seed_assignment()
     _seed_result(result_id="plain", submission_id="s1", student_id="s1",
@@ -226,7 +243,7 @@ def test_confirmed_and_possible_are_distinguished(fresh_state):
                  question_number="13",
                  scheme_check=_wrong_numeric_check(confidence=0.3))
     states = {r["question_number"]: r["state"] for r in sa.list_discrepancies()}
-    assert states["12"] == sa.STATE_CONFIRMED
+    assert states["12"] == sa.STATE_POSSIBLE
     assert states["13"] == sa.STATE_POSSIBLE
 
 
@@ -264,6 +281,42 @@ def test_proposal_without_justified_marks_lists_review_only(fresh_state):
     assert proposal["items"][0]["question_awarded_after"] is None
 
 
+def test_bulk_apply_never_overwrites_a_teacher_override(fresh_state):
+    """A submission the teacher already marked by hand keeps that mark: a
+    bulk batch lists it for manual re-mark but never changes it."""
+    _seed_assignment()
+    _seed_result(result_id="r1", submission_id="s1", student_id="s1",
+                 student_name="Alice", awarded=0, max_marks=3,
+                 scheme_check=_wrong_numeric_check())
+    _seed_result(result_id="r2", submission_id="s2", student_id="s2",
+                 student_name="Bob", awarded=0, max_marks=3,
+                 scheme_check=_wrong_numeric_check())
+    db.execute("UPDATE results SET manual_override = 1 WHERE id = 'r2'")
+    discrepancy = sa.list_discrepancies()[0]
+    proposal = sa.build_proposal(discrepancy["id"])
+    assert proposal["affected_count"] == 2
+    assert proposal["changed_count"] == 1          # only Alice is auto-changed
+    bob = next(i for i in proposal["items"] if i["result_id"] == "r2")
+    assert bob["question_awarded_after"] is None
+    result = sa.apply_approved(proposal["id"], approved_by="t")
+    assert result["applied_count"] == 1
+    assert db.query_one("SELECT earned FROM results WHERE id='r2'")["earned"] == 0
+
+
+def test_restaging_after_apply_returns_the_applied_proposal(fresh_state):
+    _seed_assignment()
+    _seed_result(result_id="r1", submission_id="s1", student_id="s1",
+                 student_name="Alice", awarded=0, max_marks=3,
+                 scheme_check=_wrong_numeric_check())
+    discrepancy = sa.list_discrepancies()[0]
+    first = sa.build_proposal(discrepancy["id"])
+    sa.apply_approved(first["id"], approved_by="t")
+    again = sa.build_proposal(discrepancy["id"])
+    # No duplicate batch is produced after an approved change was applied.
+    assert again["id"] == first["id"]
+    assert again["status"] == sa.PROPOSAL_APPLIED
+
+
 def test_restaging_returns_the_same_proposal(fresh_state):
     _seed_assignment()
     _seed_result(result_id="r1", submission_id="s1", student_id="s1",
@@ -295,7 +348,7 @@ def test_approval_applies_marks_and_records_audit(fresh_state):
     # Audit trail distinguishes the AI recommendation from the human decision.
     reviews = db.query("SELECT * FROM scheme_discrepancy_reviews")
     assert len(reviews) == 1
-    assert reviews[0]["decision"] == sa.DECISION_CONFIRM_SCHEME_WRONG
+    assert reviews[0]["decision"] == "APPROVE_BULK_CORRECTION"
     assert reviews[0]["decided_by"] == "Ms Teacher"
     assert reviews[0]["ai_recommendation"] is not None
 
@@ -324,7 +377,8 @@ def test_duplicate_approval_is_prevented(fresh_state):
     second = sa.apply_approved(proposal["id"], approved_by="t")
     assert first["applied_count"] == 1
     assert second["applied_count"] == 1          # unchanged, not re-applied
-    assert len(db.query("SELECT * FROM result_versions WHERE result_id='r1'")) == 1
+    assert len(db.query("SELECT * FROM result_versions WHERE result_id='r1'")) == 2
+    assert db.query_one("SELECT earned FROM result_versions WHERE result_id='r1' AND is_current=1")["earned"] == 3
 
 
 def test_rejection_leaves_grades_and_record(fresh_state):
@@ -433,7 +487,7 @@ def test_human_decision_removes_notification(fresh_state):
     assert sa.notifications() == []
     # The AI classification is preserved in the audit history.
     history = sa.review_history(discrepancy["id"])
-    assert history and history[0]["ai_recommendation"] == sa.STATE_CONFIRMED
+    assert history and history[0]["ai_recommendation"] == sa.STATE_POSSIBLE
 
 
 # ================================================================ pipeline wiring
@@ -469,7 +523,7 @@ def test_service_save_result_records_discrepancy_without_extra_ai(fresh_state):
     rows = sa.list_discrepancies()
     assert len(rows) == 1
     assert rows[0]["question_number"] == "12"
-    assert rows[0]["state"] == sa.STATE_CONFIRMED
+    assert rows[0]["state"] == sa.STATE_POSSIBLE
     assert rows[0]["justified_marks"] == 3
 
 

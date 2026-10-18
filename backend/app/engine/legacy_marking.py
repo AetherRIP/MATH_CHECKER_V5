@@ -1,7 +1,9 @@
 """LEGACY CORRECTION ENGINE — preserved from the friend's working app.
 
-Source: ``Friend code/edexcel-maths-correctorv2-main/app5_1_automated.py``
-(commit of record: the version audited before V5 development started).
+Source: ``app5_1_automated.py``, the friend's original Streamlit app — kept as
+an untouched reference copy under ``Friend code/`` until that folder was removed
+on 2026-10-15 (commit of record: the version audited before V5 development
+started).
 
 PRESERVATION CONTRACT (V5 rule #0 — do not break the working engine):
 

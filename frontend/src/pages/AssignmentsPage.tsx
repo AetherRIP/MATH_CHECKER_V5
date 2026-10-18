@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode,
+} from "react";
 import {
   ACTIVE_STATUSES, api, cancelJob, displayName, elapsed, postForm, retryJob, timeAgo,
   type AssignmentDetail, type AssignmentOverview, type ClassOverview, type Job,
-  type MarkSchemeQuestion, type MarkSchemeValidation,
+  type MarkSchemeQuestion, type MarkSchemeSubquestion, type MarkSchemeValidation,
   type PublishQueue, type PublishResult, type TrackingData, type TrackingRow,
 } from "../api";
 import {
   Badge, Button, DataTable, Empty, Icon, IconButton, Modal, PageHeader, Progress,
   rowActivate, Segmented, StatusBadge, Tabs, useToast,
 } from "../components";
+import { flaggedParts, flaggedSummary, structureStartsOpen } from "../schemeStructure";
 import { SyncClassroomButton } from "../SyncClassroom";
+import SchemeSourceViewer from "./SchemeSourceViewer";
 
 type KindFilter = "all" | "managed" | "external" | "local";
 
@@ -208,7 +212,11 @@ function MarkSchemeVerificationResult({ data, onInspect, onVerifyAgain, busy }: 
   const ver = data.verification;
   if (!ver) return null;
   const v = data.validation;
-  const anomalies = ver.anomalies ?? [];
+  // DISCREPANCIES decide the verdict; evidence notes ("no text layer") explain
+  // how the pages had to be read. Presenting the second as the first would flag
+  // a perfectly consistent scheme as broken.
+  const anomalies = ver.discrepancies ?? ver.anomalies ?? [];
+  const readingNotes = ver.evidence_notes ?? [];
   const clean = ver.verified === true && anomalies.length === 0;
   const pct = Math.round((ver.structural_confidence ?? 0) * 100);
   const calc = ver.calculated_total;
@@ -258,6 +266,11 @@ function MarkSchemeVerificationResult({ data, onInspect, onVerifyAgain, busy }: 
           <div className="small muted" style={{ marginTop: 2 }}>
             No structural problems detected.
           </div>
+          {readingNotes.map((note, i) => (
+            <div key={i} className="small muted" style={{ marginTop: 2 }}>
+              How it was read: {note}
+            </div>
+          ))}
         </>
       ) : (
         <>
@@ -289,6 +302,11 @@ function MarkSchemeVerificationResult({ data, onInspect, onVerifyAgain, busy }: 
             {anomalies.length > 6 &&
               <li className="muted">+{anomalies.length - 6} more…</li>}
           </ul>
+          {readingNotes.map((note, i) => (
+            <div key={i} className="small muted" style={{ marginTop: 4 }}>
+              How it was read: {note}
+            </div>
+          ))}
           {!seqComplete && (
             <div className="small" style={{ marginTop: 4 }}>
               Question sequence: missing{" "}
@@ -326,6 +344,103 @@ function MarkSchemeVerificationResult({ data, onInspect, onVerifyAgain, busy }: 
   );
 }
 
+/**
+ * §2/§9: the declared marking points, so a doubtful extraction can be
+ * reviewed at the subquestion that is actually wrong instead of invalidating
+ * an otherwise-correct mark scheme.
+ *
+ * The block is COLLAPSIBLE: a long scheme's structure would otherwise push the
+ * verdict (and the marking points the teacher actually came for) off the
+ * screen. It folds away when every marking point is accounted for and opens
+ * itself when something needs review; a click on the header wins over both.
+ * Folded, the header still names the flagged parts, so the default hides
+ * nothing — see `schemeStructure.ts`.
+ */
+function SubquestionStructure({ subs, anomalies, complete }: {
+  subs: MarkSchemeSubquestion[]; anomalies: string[];
+  complete: boolean | null | undefined;
+}) {
+  const flagged = flaggedParts(subs);
+  const startsOpen = structureStartsOpen({
+    complete, flagged: flagged.length, anomalies: anomalies.length });
+  // null = "no opinion yet", so the block follows the data until the teacher
+  // says otherwise (data can arrive or change after the first render, e.g. on
+  // "Verify again").
+  const [shown, setShown] = useState<boolean | null>(null);
+  const open = shown ?? startsOpen;
+  const panelId = useId();
+  if (subs.length === 0) return null;
+  const summary = flaggedSummary(subs);
+  return (
+    <div className="notice info" style={{ marginBottom: 10 }}>
+      <Icon name="list" size={16} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="row between wrap" style={{ gap: 8, marginBottom: open ? 4 : 0 }}>
+          <button type="button" className="disclosure" aria-expanded={open}
+            aria-controls={panelId} onClick={() => setShown(!open)}>
+            <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
+            <strong style={{ fontSize: 12, letterSpacing: "0.04em" }}>
+              SUBQUESTION STRUCTURE ({subs.length})
+            </strong>
+            <span className="small muted">{open ? "Hide" : "Show"}</span>
+          </button>
+          {complete === false
+            ? <Badge tone="warn" icon="alert">
+                {flagged.length} need review</Badge>
+            : <Badge tone="ok" icon="check">Each marking point mapped</Badge>}
+        </div>
+        {!open && (
+          <div className="small muted">
+            Folded — {summary.labels.length > 0
+              ? <>flagged: <strong>{summary.labels.join(", ")}</strong>
+                  {summary.more > 0 && <> +{summary.more} more</>}</>
+              : <>every marking point is mapped</>}
+            .
+          </div>
+        )}
+        {open && (
+          <div id={panelId}>
+            <table className="table small" style={{ marginBottom: 4 }}>
+              <thead>
+                <tr><th>Subquestion</th><th className="num">Marks</th>
+                  <th>Expected answer(s)</th><th>Marking points</th><th /></tr>
+              </thead>
+              <tbody>
+                {subs.map((s) => {
+                  const ok = (s.validation ?? "OK") === "OK";
+                  return (
+                    <tr key={s.id}>
+                      <td><strong>Q{s.question}</strong> {s.label}</td>
+                      <td className="num">{s.max_marks}</td>
+                      <td>{s.answers.length ? s.answers.join(" or ") : <span className="muted">not stated</span>}</td>
+                      <td>{s.mark_codes.length ? s.mark_codes.join(", ") : <span className="muted">none stated</span>}</td>
+                      <td>{ok
+                        ? <Icon name="check" size={13} style={{ color: "var(--ok)" }} />
+                        : <Icon name="alert" size={13} style={{ color: "var(--warn)" }} />}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {anomalies.length > 0 && (
+              <ul className="small" style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                {anomalies.slice(0, 6).map((a, i) => <li key={i}>{a}</li>)}
+                {anomalies.length > 6 &&
+                  <li className="muted">+{anomalies.length - 6} more…</li>}
+              </ul>
+            )}
+            <div className="small muted" style={{ marginTop: 4 }}>
+              Each marking point keeps its own answers, M/A/B codes and page. A part
+              the marker does not return stays UNMARKED for review — never a silent
+              zero, and never another part's marks.
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MarkSchemePanel({ courseworkId, hasMarkScheme, onChanged }: {
   courseworkId: string; hasMarkScheme: boolean; onChanged: () => void;
 }) {
@@ -335,6 +450,9 @@ function MarkSchemePanel({ courseworkId, hasMarkScheme, onChanged }: {
   const [editing, setEditing] = useState(false);
   const [rows, setRows] = useState<MarkSchemeQuestion[]>([]);
   const [dismissed, setDismissed] = useState(false);
+  // "Where did this question come from?" — the real page, on demand.
+  const [viewingSource, setViewingSource] = useState(false);
+  const [focusQuestion, setFocusQuestion] = useState<string | null>(null);
 
   const load = useCallback(() => {
     api<MarkSchemeValidation>(`/assignments/${encodeURIComponent(courseworkId)}/mark-scheme`)
@@ -410,6 +528,9 @@ function MarkSchemePanel({ courseworkId, hasMarkScheme, onChanged }: {
         <div className="row wrap">
           <Button size="sm" variant="secondary" icon="refresh"
             loading={busy === "recheck"} onClick={recheck}>Recheck mark scheme</Button>
+          <Button size="sm" variant="ghost" icon="file"
+            onClick={() => { setFocusQuestion(null); setViewingSource((v) => !v); }}>
+            {viewingSource ? "Hide source pages" : "Source pages"}</Button>
           <Button size="sm" variant="ghost" icon="edit"
             onClick={openEditor} disabled={!data.processed}>Review structure</Button>
         </div>
@@ -421,6 +542,10 @@ function MarkSchemePanel({ courseworkId, hasMarkScheme, onChanged }: {
             <div className="value">{v.question_count}</div></div>
           <div className="stat"><div className="label">Total marks</div>
             <div className="value">{v.total_marks}</div></div>
+          {v.has_subquestions && (
+            <div className="stat"><div className="label">Subquestions</div>
+              <div className="value">{v.subquestion_count ?? 0}</div></div>
+          )}
           <div className="stat"><div className="label">Numbering</div>
             <div className="value">
               {v.first ?? "—"}{v.last != null && v.last !== v.first ? `–${v.last}` : ""}
@@ -428,10 +553,27 @@ function MarkSchemePanel({ courseworkId, hasMarkScheme, onChanged }: {
         </div>
       )}
 
+      {/* §2/§9: the declared marking points themselves, before the verdict. */}
+      {data.processed && (
+        <SubquestionStructure subs={data.subquestions ?? []}
+          anomalies={data.subquestion_anomalies ?? []}
+          complete={v.subquestions_complete} />
+      )}
+
       {/* §17: the verification result itself, with the evidence behind it. */}
       {data.processed && (
         <MarkSchemeVerificationResult data={data} onInspect={openEditor}
           onVerifyAgain={recheck} busy={busy === "recheck"} />
+      )}
+
+      {/* The source itself: every page of the uploaded file, the questions the
+          read attributed to it, and any page that returned nothing. */}
+      {data.processed && viewingSource && (
+        <div style={{ marginBottom: 12 }}>
+          <SchemeSourceViewer courseworkId={courseworkId}
+            questions={data.questions ?? []} focusQuestion={focusQuestion}
+            onClose={() => setViewingSource(false)} />
+        </div>
       )}
 
       {suspect && (
@@ -445,6 +587,12 @@ function MarkSchemePanel({ courseworkId, hasMarkScheme, onChanged }: {
             <ul className="small" style={{ margin: "6px 0 0", paddingLeft: 18 }}>
               {(data.confidence_reasons ?? []).map((r, i) => <li key={i}>{r}</li>)}
             </ul>
+            <div className="row wrap" style={{ gap: 8, marginTop: 8 }}>
+              <Button size="sm" variant="ghost" icon="file"
+                onClick={() => { setFocusQuestion(null); setViewingSource(true); }}>
+                Open the source pages
+              </Button>
+            </div>
             {data.totals_agree === false && (
               <div className="small" style={{ marginTop: 6 }}>
                 <strong>Mark scheme mismatch:</strong> detected question total{" "}

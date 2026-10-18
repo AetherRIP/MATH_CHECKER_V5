@@ -415,3 +415,38 @@ def test_login_returns_every_role(fresh_state):
     body = r.json()
     assert set(body["roles"]) == {"ASSISTANT", "DEVELOPER"}
     assert body["role"] == "DEVELOPER"
+
+
+# ============================================ the suite stays inside its sandbox
+
+
+def test_agent_state_write_is_confined_to_the_test_dir(fresh_state):
+    """Regression: the suite must not write into the checkout's tracked files.
+
+    ``agent_control.save_state()`` writes ``agent_state.json`` under
+    ``agent_dir()``, whose default is the REPOSITORY's ``agent/`` folder. This
+    test deliberately does NOT set ``MC_AGENT_DIR`` itself, so it exercises the
+    conftest default: before that default existed, exercising the
+    agent-state endpoint rewrote the tracked file ``agent/agent_state.json``
+    with a test account id, leaving the checkout dirty after a green run.
+
+    Both halves are asserted, so the test cannot pass by the write simply not
+    happening: the checkout file must be untouched AND the state must really
+    have been persisted somewhere else.
+    """
+    from pathlib import Path
+
+    repo_state = (Path(__file__).resolve().parents[2]
+                  / "agent" / "agent_state.json")
+    before = repo_state.read_bytes() if repo_state.exists() else None
+
+    written = agent_control.save_state(False, updated_by="regression-account")
+
+    after = repo_state.read_bytes() if repo_state.exists() else None
+    assert after == before, (
+        f"save_state() modified the tracked file {repo_state}: the suite is not "
+        f"hermetic — MC_AGENT_DIR must point inside the test's temp dir")
+    assert written["enabled"] is False
+    assert agent_control.state_path().exists(), (
+        "the state was not persisted at all, so this test would pass for the "
+        "wrong reason")

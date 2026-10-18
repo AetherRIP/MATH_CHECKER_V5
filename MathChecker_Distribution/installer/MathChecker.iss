@@ -105,7 +105,10 @@ Type: filesandordirs; Name: "{app}"
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\mathchecker.ico"; Comment: "AI-assisted mathematics marking"
 Name: "{group}\{#AppName} (Demo mode)"; Filename: "{app}\{#AppExeName}"; Parameters: "--demo"; WorkingDir: "{app}"; IconFilename: "{app}\assets\mathchecker.ico"; Comment: "Explore with synthetic data — no real accounts"
-Name: "{group}\{#AppName} (Public / LAN access)"; Filename: "{app}\{#AppPublicExe}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\mathchecker.ico"; Comment: "Also publish a verified public address for phone/tablet access"
+; A "/" here is an invalid filename character: Inno created a stray folder
+; named "Math Checker (Public" instead of a shortcut, so start_public.bat was
+; unreachable from the Start Menu (found by scripts/verify_installer.py).
+Name: "{group}\{#AppName} (Public or LAN access)"; Filename: "{app}\{#AppPublicExe}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\mathchecker.ico"; Comment: "Also publish a verified public address for phone/tablet access"
 Name: "{group}\Stop {#AppName}"; Filename: "{app}\{#AppStopExe}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\mathchecker.ico"; Comment: "Stop the running Math Checker and its background workers"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\mathchecker.ico"; Tasks: desktopicon

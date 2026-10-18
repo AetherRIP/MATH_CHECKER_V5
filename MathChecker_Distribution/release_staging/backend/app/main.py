@@ -351,6 +351,10 @@ from .api import product_routes  # noqa: E402
 
 product_routes.register(app)
 
+from .api import scheme_routes  # noqa: E402
+
+scheme_routes.register(app)
+
 from .api import privacy_routes  # noqa: E402
 
 privacy_routes.register(app)

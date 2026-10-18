@@ -105,7 +105,7 @@ const NAV_GROUPS: NavGroup[] = [
     { id: "diagnostics", icon: "gear", label: "Diagnostics", developerOnly: true },
     { id: "prompts", icon: "sparkles", label: "Gemini Prompts", developerOnly: true },
     { id: "audit", icon: "check-circle", label: "Accuracy Audit", developerOnly: true },
-    { id: "distributed", icon: "cloud", label: "Multi-School", developerOnly: true },
+    { id: "distributed", icon: "cloud", label: "Multi-School · WIP" },
     { id: "updates", icon: "download", label: "Application Updates", developerOnly: true },
   ] },
 ];
@@ -190,6 +190,7 @@ function Shell() {
     typeof window !== "undefined" && window.localStorage.getItem(SIDEBAR_KEY) === "1");
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [attention, setAttention] = useState<AttentionFeed | null>(null);
+  const [reviewCount, setReviewCount] = useState(0);
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [setupChecked, setSetupChecked] = useState(false);
@@ -247,6 +248,7 @@ function Shell() {
 
   const loadAttention = useCallback(() => {
     api<AttentionFeed>("/attention").then(setAttention).catch(() => {});
+    api<{ total: number }>("/review?limit=500").then(r => setReviewCount(r.total)).catch(() => {});
   }, []);
   useEffect(() => {
     loadAttention();
@@ -315,7 +317,12 @@ function Shell() {
     // reachable by Assistants on their own machines without the teacher's
     // app session. It talks only to /api/distributed/*, which the backend
     // gate exempts from the session requirement.
-    if (route === "distributed") return <DistributedPage />;
+    if (route === "distributed") return <div className="card" style={{ margin: 24 }}>
+      <h1>Multi-School — Work in Progress</h1>
+      <p>This integration is preserved but is not approved for ordinary release use.
+        Sign in to the local application to continue. Developer diagnostics remain available.</p>
+      <a href="#/dashboard">Back to sign in</a>
+    </div>;
     return (
       <SignIn status={auth}
         onSignedIn={(fresh) => { setCsrfToken(fresh.csrf); setAuth(fresh); }} />
@@ -373,8 +380,8 @@ function Shell() {
                 >
                   <span className="icon"><Icon name={item.icon} size={18} /></span>
                   <span className="label-text">{item.label}</span>
-                  {item.id === "review" && attentionCount > 0 && (
-                    <span className="nav-count label-text">{attentionCount}</span>
+                  {item.id === "review" && reviewCount > 0 && (
+                    <span className="nav-count label-text">{reviewCount}</span>
                   )}
                 </button>
               ))}
@@ -559,7 +566,11 @@ function Shell() {
               {route === "privacy" && <PrivacyPage />}
               {route === "diagnostics" && <DiagnosticsPage />}
               {route === "prompts" && <PromptsPage />}
-              {route === "distributed" && <DistributedPage />}
+              {route === "distributed" && (showDeveloperItems ? <DistributedPage /> :
+                <div className="card"><h2>Multi-School — Work in Progress</h2>
+                  <p>The account, school, class and synchronization implementation is preserved.
+                    Cross-school use has not completed release verification. Unfinished controls
+                    are unavailable here; developers retain diagnostics access.</p></div>)}
               {route === "updates" && <UpdatesPage />}
               {route === "audit" && <AuditPage />}
             </div>

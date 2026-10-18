@@ -96,31 +96,58 @@ class ClassroomApiError(RuntimeError):
 
 # -- reads (legacy parity) --------------------------------------------------
 
+#: A hard stop so a server that echoes the same ``nextPageToken`` forever can
+#: never spin this loop. Google's own maximum page count is far below this.
+MAX_PAGES = 200
+
+
+def _paginate(token: str, url: str, params: dict, key: str) -> list[dict]:
+    """Follow ``nextPageToken`` until the listing is exhausted.
+
+    Google returns at most ``pageSize`` entries per response and hands back a
+    ``nextPageToken`` for the remainder. Stopping at the first page is not a
+    partial answer — it is a SILENTLY incomplete one: assignments past the cap
+    are never offered for correction, and students past it are never marked at
+    all. Every listing in this module therefore reads to the last page.
+
+    The loop is bounded and refuses to revisit a token, so a misbehaving
+    response cannot hang a correction.
+    """
+    if params.get("pageSize") in (None, 0):
+        params = {**params, "pageSize": 100}
+    items: list[dict] = []
+    seen: set[str] = set()
+    cursor = dict(params)
+    for _ in range(MAX_PAGES):
+        data = classroom_request("GET", url, token, params=cursor)
+        items.extend(data.get(key) or [])
+        page_token = data.get("nextPageToken")
+        if not page_token or page_token in seen:
+            break
+        seen.add(page_token)
+        cursor["pageToken"] = page_token
+    return items
+
+
 def list_teacher_courses(token: str):
-    data = classroom_request(
-        "GET", f"{CLASSROOM_BASE}/courses", token,
-        params={"teacherId": "me", "courseStates": "ACTIVE", "pageSize": 100},
-    )
-    return data.get("courses", [])
+    return _paginate(token, f"{CLASSROOM_BASE}/courses",
+                     {"teacherId": "me", "courseStates": "ACTIVE",
+                      "pageSize": 100}, "courses")
 
 
 def list_assignments(token: str, course_id: str):
-    data = classroom_request(
-        "GET", f"{CLASSROOM_BASE}/courses/{course_id}/courseWork", token,
-        params={"courseWorkStates": "PUBLISHED", "pageSize": 100},
-    )
-    assignments = data.get("courseWork", [])
+    assignments = _paginate(
+        token, f"{CLASSROOM_BASE}/courses/{course_id}/courseWork",
+        {"courseWorkStates": "PUBLISHED", "pageSize": 100}, "courseWork")
     return [item for item in assignments if item.get("workType") == "ASSIGNMENT"]
 
 
 def list_turned_in_submissions(token: str, course_id: str, coursework_id: str):
-    data = classroom_request(
-        "GET",
-        f"{CLASSROOM_BASE}/courses/{course_id}/courseWork/{coursework_id}/studentSubmissions",
+    return _paginate(
         token,
-        params={"states": "TURNED_IN", "pageSize": 100},
-    )
-    return data.get("studentSubmissions", [])
+        f"{CLASSROOM_BASE}/courses/{course_id}/courseWork/{coursework_id}"
+        "/studentSubmissions",
+        {"states": "TURNED_IN", "pageSize": 100}, "studentSubmissions")
 
 
 def get_user_profile(token: str, user_id: str):
@@ -156,21 +183,8 @@ def list_course_students(token: str, course_id: str) -> list[dict]:
 
     Needed so students WITHOUT a submission resource can still appear in the
     tracking view as NOT_STARTED / MISSING instead of silently vanishing."""
-    students: list[dict] = []
-    page_token: str | None = None
-    while True:
-        params: dict = {"pageSize": 100}
-        if page_token:
-            params["pageToken"] = page_token
-        data = classroom_request(
-            "GET", f"{CLASSROOM_BASE}/courses/{course_id}/students", token,
-            params=params,
-        )
-        students.extend(data.get("students", []))
-        page_token = data.get("nextPageToken")
-        if not page_token:
-            break
-    return students
+    return _paginate(token, f"{CLASSROOM_BASE}/courses/{course_id}/students",
+                     {"pageSize": 100}, "students")
 
 
 def extract_attachments(submission: dict) -> list[dict]:

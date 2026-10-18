@@ -1010,6 +1010,16 @@ export interface MarkSchemeQuestion {
   question_number: string;
   max_marks: number;
   criteria?: string;
+  /** The index the document itself prints, when the page-scoped read saw it. */
+  source_index?: number;
+  /** The page the question was read from — what the source viewer opens. */
+  page?: number;
+  /** The descriptive header the document prints ("Jan 12/3H/Q6"), when it has
+   *  one: the question NUMBER stays the printed index so sub-parts nest, and
+   *  this keeps the source wording attached to it. */
+  printed_label?: string;
+  /** One entry per declared sub-part, when the scheme has them. */
+  parts?: { number: string; max_marks: number; criteria?: string; page?: number }[];
 }
 
 export interface MarkSchemeStructure {
@@ -1023,6 +1033,30 @@ export interface MarkSchemeStructure {
   missing_max_marks: string[];
   has_gaps: boolean;
   complete: boolean;
+  /** True when the scheme splits its questions into labelled sub-parts. */
+  has_subquestions?: boolean;
+  subquestion_count?: number;
+  /** One entry per declared marking point (4(a), 4(b)(i), 4(b)(ii)...). */
+  subquestions?: MarkSchemeSubquestion[];
+  /** Findings at subquestion level; empty when the scheme is flat. */
+  subquestion_anomalies?: string[];
+  /** null when the scheme declares no subquestions at all. */
+  subquestions_complete?: boolean | null;
+}
+
+/** §2/§4: a declared marking point, with its own identity, answers and M/A/B
+ *  codes. The identity is the full nested label ("4bii"), never a bare "(ii)". */
+export interface MarkSchemeSubquestion {
+  id: string;
+  label: string;
+  question: string;
+  max_marks: number;
+  answers: string[];
+  mark_codes: string[];
+  /** OK, or NEEDS_REVIEW with the reason reported alongside it. */
+  validation?: string;
+  /** Derived from the findings, never invented: 1.0 when nothing was found. */
+  confidence?: number | null;
 }
 
 /** §17: the independent local reconstruction of the PDF, cross-checked against
@@ -1053,7 +1087,17 @@ export interface MarkSchemeVerification {
   /** null when there was no local evidence to compare against. */
   evidence_agrees?: boolean | null;
   missing_questions?: (string | number)[];
+  /** Question/subquestion counts the checker validated (Part F). */
+  subquestion_counts?: {
+    questions?: number; subquestions?: number; marks?: number;
+  };
   anomalies?: string[];
+  /** What actually contradicts the structure — the list that decides whether
+   *  the scheme can be treated as verified. */
+  discrepancies?: string[];
+  /** How the document had to be READ ("no text layer"): it lowers confidence
+   *  but is not a finding about the mark scheme. */
+  evidence_notes?: string[];
   /** One actionable sentence: what went wrong and what to do about it. */
   likely_cause?: string | null;
 }
@@ -1065,6 +1109,10 @@ export interface MarkSchemeValidation {
   processed: boolean;
   validation: MarkSchemeStructure;
   questions?: MarkSchemeQuestion[];
+  /** §9: subquestion-level detail, so review can target ONE marking point. */
+  subquestions?: MarkSchemeSubquestion[];
+  subquestion_count?: number;
+  subquestion_anomalies?: string[];
   total_marks?: number;
   /** Sum of the per-question maxima actually detected. */
   detected_total?: number;
@@ -1465,6 +1513,40 @@ export function classLabel(row: NamedStudent | null | undefined,
 
 /* ------------------------------------------------- automated correction (§1-§52) */
 
+/**
+ * One Google Classroom OPERATION of an automation job.
+ *
+ * `state` is what is true NOW (pending / in progress / succeeded / failed /
+ * needs verification / cancelled) and the `error*` fields are HISTORY: what
+ * failed, when, on which attempt, and whether it was later resolved. A resolved
+ * error is never an active failure, so an operation that succeeded after a
+ * retry cannot go on reading as broken.
+ */
+export interface AutomationOperation {
+  op_key: "report" | "grade" | "return" | string;
+  label: string;
+  state: string;
+  state_label: string;
+  attempt: number;
+  verified: boolean;
+  /** Succeeded because the outcome was verified with Google, not because a
+   *  response came back (e.g. a timed-out upload Google had already accepted). */
+  recovered: boolean;
+  note: string | null;
+  error: string | null;
+  error_code: string | null;
+  error_at: number | null;
+  error_attempt: number | null;
+  error_resolved: boolean;
+  error_resolved_at: number | null;
+  error_dismissed: boolean;
+  last_attempt_at: number | null;
+  succeeded_at: number | null;
+  /** The error is still an ACTIVE failure (unresolved and not dismissed). */
+  active: boolean;
+  dismissible: boolean;
+}
+
 /** One persistent workflow job. `status` is an explicit state-machine value. */
 export interface AutomationJob {
   id: string;
@@ -1534,10 +1616,22 @@ export interface AutomationJob {
    *  backend — Classroom operations are separate API calls, so each stage is
    *  reported individually rather than as one "published" flag. */
   publication?: {
-    report: string; report_sent: boolean;
-    grade: string; grade_published: boolean;
-    returned: boolean; awaiting_approval: boolean; complete: boolean;
+    report: string; report_sent: boolean; report_state?: string;
+    grade: string; grade_published: boolean; grade_state?: string;
+    returned: boolean; return_state?: string;
+    awaiting_approval: boolean; complete: boolean; superseded?: boolean;
   } | null;
+  /** The current state AND the error history of every operation. */
+  operations?: AutomationOperation[];
+  operation_states?: Record<string, string>;
+  active_errors?: AutomationOperation[];
+  resolved_errors?: AutomationOperation[];
+  has_active_error?: boolean;
+  /** Google never confirmed an outcome: check/refresh instead of re-sending. */
+  needs_verification?: boolean;
+  /** History: a newer attempt for this submission already finished the work. */
+  superseded?: boolean;
+  reconcilable?: boolean;
 }
 
 export interface AutomationAssignment {
@@ -1663,6 +1757,113 @@ export function automationRetryReport(jobId: string) {
   return api<AutomationJob>(`/automation/jobs/${jobId}/retry-report`, {
     method: "POST",
   });
+}
+
+/**
+ * Re-read ONE job's real Google Classroom state (read-only) and update the
+ * recorded operations/status from it. This is what turns a stale "Upload
+ * failed" into the truth: the report, the grade and the return are each
+ * checked, a confirmed operation is marked succeeded (recovered) and its old
+ * error resolved, and only a genuinely missing artifact stays failed.
+ */
+export function automationReconcileJob(jobId: string) {
+  return api<AutomationJob>(
+    `/automation/jobs/${encodeURIComponent(jobId)}/reconcile`, { method: "POST" });
+}
+
+/**
+ * Refresh every job whose recorded state may be stale (failures and holds),
+ * at most `limit` per call. The returned `jobs` are the refreshed list, so one
+ * round trip updates the whole page.
+ */
+export function automationReconcile(limit = 25): Promise<{
+  checked: number; completed: number; superseded: number;
+  still_open: number; failed: number; jobs: AutomationJob[];
+}> {
+  return api("/automation/jobs/reconcile", {
+    method: "POST", body: JSON.stringify({ limit }),
+  });
+}
+
+/** Number of RESOLVED errors that could be cleared from the active list. */
+export function automationClearableErrors(): Promise<{ count: number }> {
+  return api("/automation/errors/clearable-count");
+}
+
+/** Clear resolved/recovered error MESSAGES. Unresolved errors are kept, and
+ *  every operation record (the duplicate-upload guard) is preserved. */
+export function automationClearResolvedErrors() {
+  return api<{ cleared: number; operations_preserved: boolean;
+               remaining: number }>("/automation/errors/clear", {
+    method: "POST", body: JSON.stringify({ confirm: true }),
+  });
+}
+
+/** Dismiss ONE error line. A genuinely failed operation stays failed. */
+export function automationDismissError(jobId: string, opKey: string) {
+  return api<AutomationJob>(
+    `/automation/jobs/${encodeURIComponent(jobId)}/errors/${encodeURIComponent(opKey)}/dismiss`,
+    { method: "POST" });
+}
+
+export interface BulkUploadItem {
+  result_id: string;
+  coursework_id: string;
+  submission_id: string;
+  course_id: string;
+  student_id: string | null;
+  student_name: string | null;
+  assignment_title: string;
+  earned: number | null;
+  available: number | null;
+  percentage: number | null;
+  provisional_grade: string | null;
+  review_required: number;
+  manual_override: number;
+  assigned_grade: number | null;
+  draft_grade: number | null;
+  grade_status: string | null;
+  report_status: string | null;
+  report_hash: string | null;
+  report_attached: boolean;
+  report_error: string | null;
+  grade_uploaded: boolean;
+  prerequisite_error: string | null;
+  eligible: boolean;
+}
+
+export interface BulkUploadOutcome {
+  result_id: string;
+  status: "complete" | "partial" | "failed" | "running";
+  grade: string;
+  report: string;
+  grade_message?: string;
+  report_message?: string;
+  error?: string;
+}
+
+export function automationBulkUploadEligible() {
+  return api<{ items: BulkUploadItem[]; eligible_count: number }>(
+    "/automation/bulk-upload/eligible");
+}
+
+export function automationBulkUpload(resultIds: string[], confirm = false) {
+  return api<{ items: BulkUploadOutcome[]; summary: {
+    total: number; complete: number; partial: number; failed: number;
+  } }>("/automation/bulk-upload", {
+    method: "POST", body: JSON.stringify({ result_ids: resultIds, confirm }),
+  });
+}
+
+export function automationClearableJobs() {
+  return api<{ count: number }>("/automation/jobs/clearable-count");
+}
+
+export function automationClearJobs() {
+  return api<{ hidden: number; history_preserved: boolean; active_jobs: number }>(
+    "/automation/jobs/clear", {
+      method: "POST", body: JSON.stringify({ confirm: true }),
+    });
 }
 
 export function automationRunNow() {

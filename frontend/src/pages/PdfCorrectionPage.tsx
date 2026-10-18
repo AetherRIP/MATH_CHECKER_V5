@@ -6,6 +6,7 @@ import {
 } from "../api";
 import { Badge, Button, Icon, Section, useToast } from "../components";
 import { useAdaptivePoll } from "../useAdaptivePoll";
+import { startLargeJobPoll } from "../largePdfPolling";
 import { JobQueue } from "./CorrectionsPage";
 import { LargePdfJobDetail } from "./LargePdfWorkerPage";
 
@@ -56,18 +57,18 @@ export default function PdfCorrectionPage({ onOpenResult }: {
   }, []);
 
   // Follow a batched job with the real per-batch rows from the backend.
+  // The poll stops at a terminal status, backs off on errors, gives up after a
+  // bounded number of consecutive failures, and restarts after a user action.
   const largeJobId = outcome?.large_pdf_job_id ?? null;
-  const refreshLarge = useCallback(() => {
-    if (!largeJobId) return;
-    largePdfJob(largeJobId).then(setLargeJob).catch(() => {});
-  }, [largeJobId]);
+  const [largePollToken, setLargePollToken] = useState(0);
 
   useEffect(() => {
     if (!largeJobId) { setLargeJob(null); return; }
-    refreshLarge();
-    const id = setInterval(refreshLarge, 2500);
-    return () => clearInterval(id);
-  }, [largeJobId, refreshLarge]);
+    return startLargeJobPoll({
+      fetchJob: () => largePdfJob(largeJobId),
+      onJob: setLargeJob,
+    });
+  }, [largeJobId, largePollToken]);
 
   // The queued summary cards come from the real listing, so the page can say
   // how many batched documents are still running.
@@ -121,6 +122,7 @@ export default function PdfCorrectionPage({ onOpenResult }: {
     setBusy(true);
     try {
       setLargeJob(await fn());
+      setLargePollToken((t) => t + 1); // resume polling if the job moved
       toast("ok", label);
     } catch (e) {
       toast("err", (e as Error).message);

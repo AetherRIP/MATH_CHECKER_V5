@@ -67,7 +67,7 @@ def test_discrepancy_list_and_detail(fresh_state):
         listing = client.get("/api/scheme/discrepancies").json()
         assert listing["total"] == 1
         row = listing["items"][0]
-        assert row["state"] == sa.STATE_CONFIRMED
+        assert row["state"] == sa.STATE_POSSIBLE
         detail = client.get(f"/api/scheme/discrepancies/{row['id']}").json()
         assert detail["discrepancy"]["scheme_answer"] == "x=5"
 
@@ -107,7 +107,7 @@ def test_approval_requires_explicit_confirmation(fresh_state):
         again = client.post(f"/api/scheme/proposals/{proposal['id']}/approve",
                             json={"confirm": True})
         assert again.json()["applied_count"] == 1
-        assert len(db.query("SELECT * FROM result_versions WHERE result_id='r1'")) == 1
+        assert len(db.query("SELECT * FROM result_versions WHERE result_id='r1'")) == 2
 
 
 def test_rejection_via_api_keeps_grades_and_record(fresh_state):
@@ -143,5 +143,5 @@ def test_scheme_summary(fresh_state):
     with TestClient(app) as client:
         summary = client.get("/api/scheme/summary").json()
         assert summary["open_discrepancies"] == 1
-        assert summary["confirmed"] == 1
+        assert summary["confirmed"] == 0
         assert summary["awaiting_approval"] == 0

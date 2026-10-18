@@ -721,13 +721,32 @@ def extract_chunk_with_retries(client: Any, chunk: PageChunk, *,
 # ------------------------------------------------------------------- merging
 
 def _item_fingerprint(item: dict[str, Any]) -> tuple:
-    """What two reads of the SAME printed question must agree on."""
+    """What two reads of the SAME printed question must agree on.
+
+    Two levels, deliberately. ``_structural_key`` is what a teacher would have
+    to DECIDE about; this full fingerprint also includes how the labels were
+    transcribed, so a cosmetic difference can be reported as information
+    without being mistaken for a marks disagreement.
+    """
     parts = tuple(sorted(
         (str(p.get("number") or "").strip().lower(),
          int(p.get("max_marks") or 0))
         for p in (item.get("parts") or [])))
     return (str(item.get("label") or "").strip().lower(),
-            int(item.get("max_marks") or 0), parts)
+            _structural_key(item), parts)
+
+
+def _structural_key(item: dict[str, Any]) -> tuple:
+    """The marks structure: total, and each declared sub-part's marks IN ORDER.
+
+    The sub-part NUMBER is a printed label ("(b)(ii)" and "(ii)" are the same
+    marking point in the same document), so comparing it verbatim produced
+    "critical" conflicts on a document whose marks were perfectly consistent —
+    punctuation reported as a discrepancy. What cannot differ silently is the
+    total, the number of sub-parts, and what each one is worth.
+    """
+    parts = tuple(int(p.get("max_marks") or 0) for p in (item.get("parts") or []))
+    return (int(item.get("max_marks") or 0), len(parts), parts)
 
 
 def _completeness_score(item: dict[str, Any]) -> tuple:
@@ -759,6 +778,7 @@ def merge_chunks(results: list[dict[str, Any]] | None) -> dict[str, Any]:
     by_index: dict[int, list[dict[str, Any]]] = {}
     unkeyed: list[dict[str, Any]] = []
     conflicts: list[dict[str, Any]] = []
+    label_variants: list[dict[str, Any]] = []
     reread: list[int] = []
 
     for result in results:
@@ -779,6 +799,40 @@ def merge_chunks(results: list[dict[str, Any]] | None) -> dict[str, Any]:
         for item in occurrences:
             groups.setdefault(_item_fingerprint(item), []).append(item)
         seen_in = sorted({occ.get("chunk") for occ in occurrences})
+        structural = {_structural_key(group[0]) for group in groups.values()}
+        if len(groups) > 1 and len(structural) == 1:
+            # Same printed index and same marks structure: only the wording was
+            # transcribed differently — either the question label
+            # ("June 05/4H/Q11" vs "Q11") or the sub-part numbers ("(b)(ii)"
+            # vs "(ii)"). The printed index is the identity, and the marks are
+            # the thing that must not disagree, so this is NOT a decision a
+            # teacher has to make. Flagging it as one buries the conflicts that
+            # do matter. Both transcriptions are still kept, as information.
+            best = max(occurrences, key=_completeness_score)
+            entry = dict(best)
+            entry["seen_in_chunks"] = seen_in
+            labels = sorted({str(occ.get("label") or "").strip()
+                             for occ in occurrences})
+            part_labels = sorted({tuple(str(p.get("number") or "").strip()
+                                        for p in (occ.get("parts") or []))
+                                  for occ in occurrences})
+            label_differs = len({label.lower() for label in labels}) > 1
+            parts_differ = len(part_labels) > 1
+            if label_differs:
+                entry["label_variant"] = labels
+            if parts_differ:
+                entry["part_label_variant"] = [list(p) for p in part_labels]
+            items.append(entry)
+            label_variants.append({
+                "source_index": index,
+                "kind": ("both" if label_differs and parts_differ
+                         else "parts" if parts_differ else "label"),
+                "labels": labels,
+                "part_labels": [list(p) for p in part_labels] if parts_differ else [],
+                "chunks": seen_in,
+                "page": best.get("page"),
+            })
+            continue
         if len(groups) > 1:
             # The summary has to be specific enough for a human to act on:
             # "two chunks disagree" is useless, "(b)(ii) is worth 2 in one read
@@ -820,6 +874,7 @@ def merge_chunks(results: list[dict[str, Any]] | None) -> dict[str, Any]:
         "items": items,
         "indices": sorted(by_index),
         "conflicts": conflicts,
+        "label_variants": label_variants,
         "reread_indices": reread,
         "unkeyed": unkeyed,
     }
@@ -984,6 +1039,15 @@ def inventory_report(results: list[dict[str, Any]] | None, *,
         "expected_basis": expected_reason,
         "missing_indices": missing_indices,
         "conflicting_indices": [c["source_index"] for c in merged.get("conflicts") or []],
+        # Transcribed labels that differ while the marks agree: information, not
+        # a discrepancy, and deliberately not part of ``unresolved``.
+        "label_variant_indices": [v["source_index"]
+                                  for v in merged.get("label_variants") or []
+                                  if v.get("kind") in (None, "label", "both")],
+        "part_label_variant_indices": [v["source_index"]
+                                       for v in merged.get("label_variants") or []
+                                       if v.get("kind") in ("parts", "both")],
+        "label_variants": merged.get("label_variants") or [],
         "reread_indices": merged.get("reread_indices") or [],
         "unkeyed_items": len(merged.get("unkeyed") or []),
         "items_total_marks": total_marks,
@@ -1087,6 +1151,7 @@ def extract_inventory(client: Any, path: str | Path, *,
         "items": merged["items"],
         "merge": {
             "conflicts": merged["conflicts"],
+            "label_variants": merged.get("label_variants") or [],
             "reread_indices": merged["reread_indices"],
             "unkeyed": merged["unkeyed"],
         },

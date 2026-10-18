@@ -1,0 +1,397 @@
+{
+  "version": 1,
+  "generated_by": "backend/scripts/make_marking_reference.py",
+  "purpose": "Measure marking accuracy against expectations derived from the printed mark scheme. The model's own output is never ground truth.",
+  "review": {
+    "required": true,
+    "verified_by": null,
+    "verified_on": null,
+    "instructions": "A competent maths teacher must confirm every expected mark in REVIEW_SHEET.md against the scheme, then record their name and the date here. Until then the harness reports NOT CERTIFIED."
+  },
+  "categories": [
+    "alternative-method",
+    "ambiguous",
+    "equivalent-expression",
+    "follow-through",
+    "fully-correct",
+    "incorrect",
+    "method-and-accuracy",
+    "missing-answer",
+    "nested-subquestion",
+    "overlapping-lesson-id",
+    "partial-credit",
+    "scheme-total-disagrees"
+  ],
+  "covers": {
+    "fully-correct": "Q1, Q2, Q3, Q5, Q6, Q8 of paper A",
+    "incorrect": "Q7 of paper A",
+    "partially-correct-working": "Q9, Q12 of paper A; Q1c of paper B",
+    "correct-alternative-method": "Q5 of paper A (grid/area method)",
+    "equivalent-mathematical-expressions": "Q2, Q6 of paper A",
+    "method-and-accuracy-marks": "Q1, Q8, Q9, Q12 of paper A",
+    "follow-through-marking": "Q10 of paper A",
+    "missing-answers": "Q4 of paper A",
+    "ambiguous-answers": "Q11 of paper A",
+    "mark-scheme-extraction-errors": "paper B: the scheme header claims 8 marks while its parts sum to 7",
+    "nested-subquestions": "Q1a, Q1b, Q1c of paper B; Q3 of paper A",
+    "overlapping-lesson-identifiers": "both papers carry the same lesson id Ch2L3, and paper B nests parts inside question 1"
+  },
+  "papers": [
+    {
+      "id": "paper-a",
+      "title": "Reference Paper A - Algebra, Number and Ratio (O Level style)",
+      "lesson_id": "Ch2L3",
+      "scheme_pdf": "papers/paper-a-mark-scheme.pdf",
+      "student_pdf": "papers/paper-a-student.pdf",
+      "marks_available": 29,
+      "expected_total": 22,
+      "scheme_stated_total": 29,
+      "scheme_header_disagrees": false,
+      "items": [
+        {
+          "question": "1",
+          "prompt": "Solve 4x + 7 = 31.",
+          "marks_available": 3,
+          "expected": 3,
+          "categories": [
+            "fully-correct",
+            "method-and-accuracy"
+          ],
+          "scheme": [
+            "M1: 4x = 24 seen (subtract 7 from both sides)",
+            "M1: divide both sides by 4",
+            "A1: x = 6 (cao)"
+          ],
+          "student_answer": [
+            "4x + 7 = 31",
+            "4x = 24",
+            "x = 6"
+          ],
+          "ruling": "3 of 3: 4x = 24 shown (M1), division by 4 performed (M1), x = 6 stated as the answer (A1).",
+          "basis": "each of the three printed clauses is evidenced in the working"
+        },
+        {
+          "question": "2",
+          "prompt": "Write 0.36 as a fraction in its simplest form.",
+          "marks_available": 2,
+          "expected": 2,
+          "categories": [
+            "fully-correct",
+            "equivalent-expression"
+          ],
+          "scheme": [
+            "M1: 36/100 seen",
+            "A1: 9/25 (cao)"
+          ],
+          "student_answer": [
+            "0.36 = 36/100",
+            "= 9/25"
+          ],
+          "ruling": "2 of 2: 36/100 seen (M1) and reduced correctly to 9/25 (A1). An unsimplified 36/100 would earn M1 only.",
+          "basis": "both printed clauses evidenced; the answer is in the form the scheme requires (lowest terms)"
+        },
+        {
+          "question": "3",
+          "prompt": "The nth term of a sequence is 3n - 2. (a) Write down the 4th term. (b) Which term of the sequence equals 40?",
+          "marks_available": 3,
+          "expected": 3,
+          "categories": [
+            "nested-subquestion",
+            "fully-correct"
+          ],
+          "scheme": [
+            "B1: 4th term = 10",
+            "M1: sets 3n - 2 = 40",
+            "A1: n = 14 (cao)"
+          ],
+          "student_answer": [
+            "(a) 3(4) - 2 = 10",
+            "(b) 3n - 2 = 40",
+            "3n = 42",
+            "n = 14"
+          ],
+          "ruling": "3 of 3: (a) B1 for 10, (b) M1 for 3n - 2 = 40, A1 for n = 14.",
+          "basis": "the two sub-parts map onto the three printed clauses"
+        },
+        {
+          "question": "4",
+          "prompt": "Work out (2^3)^2.",
+          "marks_available": 2,
+          "expected": 0,
+          "categories": [
+            "missing-answer"
+          ],
+          "scheme": [
+            "M1: 2^6 seen (or 8 squared)",
+            "A1: 64 (cao)"
+          ],
+          "student_answer": [
+            "(blank \u2014 the candidate wrote nothing)"
+          ],
+          "ruling": "0 of 2: no attempt. Neither clause can be credited, and this must be reported as 0 rather than silently omitted.",
+          "basis": "a clause not evidenced earns nothing; a blank answer still occupies marks in the denominator"
+        },
+        {
+          "question": "5",
+          "prompt": "Expand (x + 3)(x - 5).",
+          "marks_available": 2,
+          "expected": 2,
+          "categories": [
+            "alternative-method",
+            "fully-correct"
+          ],
+          "scheme": [
+            "M1: four correct terms or a complete correct area/grid product (x^2, -5x, 3x, -15)",
+            "A1: x^2 - 2x - 15 (cao)"
+          ],
+          "student_answer": [
+            "grid:",
+            "       x      +3",
+            "  x | x^2    +3x",
+            " -5 | -5x    -15",
+            "x^2 - 5x + 3x - 15 = x^2 - 2x - 15"
+          ],
+          "ruling": "2 of 2: the grid evidences all four terms (M1) and the simplified answer matches (A1). The method is not the scheme's prose, but the clause says 'or a complete correct grid', so it earns the mark.",
+          "basis": "the scheme's own 'or' alternative admits the grid method"
+        },
+        {
+          "question": "6",
+          "prompt": "Simplify 12a^5 b^3 / (4a^2 b).",
+          "marks_available": 3,
+          "expected": 3,
+          "categories": [
+            "equivalent-expression",
+            "fully-correct"
+          ],
+          "scheme": [
+            "M1: coefficient 3",
+            "M1: a^3",
+            "A1: 3a^3 b^2 (or any equivalent ordering such as 3b^2 a^3)"
+          ],
+          "student_answer": [
+            "12 / 4 = 3",
+            "a^5 / a^2 = a^3",
+            "b^3 / b = b^2",
+            "= 3b^2a^3"
+          ],
+          "ruling": "3 of 2: all three clauses evidenced. The final answer is written 3b^2a^3 rather than 3a^3b^2 \u2014 the scheme explicitly accepts an equivalent ordering, so A1 stands.",
+          "basis": "A1's own wording admits equivalent orderings; multiplication is commutative"
+        },
+        {
+          "question": "7",
+          "prompt": "Factorise x^2 + 7x + 12.",
+          "marks_available": 2,
+          "expected": 0,
+          "categories": [
+            "incorrect"
+          ],
+          "scheme": [
+            "M1: (x + 3)(x + 4) seen",
+            "A1: both factors correct (cao)"
+          ],
+          "student_answer": [
+            "(x - 3)(x - 4)"
+          ],
+          "ruling": "0 of 2: the signs are wrong. (x - 3)(x - 4) expands to x^2 - 7x + 12, so neither the factorisation clause nor the answer clause is met. A mark would be an over-mark.",
+          "basis": "the student's product does not expand to the printed expression, so no clause is evidenced"
+        },
+        {
+          "question": "8",
+          "prompt": "Solve simultaneously: 2x + y = 11 and x - y = 1.",
+          "marks_available": 3,
+          "expected": 3,
+          "categories": [
+            "fully-correct",
+            "method-and-accuracy"
+          ],
+          "scheme": [
+            "M1: adds (or otherwise eliminates) to get 3x = 12",
+            "M1: x = 4",
+            "A1: y = 3 (cao, dependent on a correct x)"
+          ],
+          "student_answer": [
+            "2x + y = 11",
+            "x - y = 1",
+            "adding: 3x = 12",
+            "x = 4",
+            "8 + y = 11 so y = 3"
+          ],
+          "ruling": "3 of 3: 3x = 12 (M1), x = 4 (M1), y = 3 (A1).",
+          "basis": "all three printed clauses evidenced in order"
+        },
+        {
+          "question": "9",
+          "prompt": "A triangle has base 12 cm and perpendicular height 9 cm. Work out its area.",
+          "marks_available": 2,
+          "expected": 1,
+          "categories": [
+            "partial-credit",
+            "method-and-accuracy"
+          ],
+          "scheme": [
+            "M1: 1/2 x 12 x 9 (correct substitution)",
+            "A1: 54 cm^2 (cao, units required)"
+          ],
+          "student_answer": [
+            "= 1/2 x 12 x 9",
+            "= 108 cm^2"
+          ],
+          "ruling": "1 of 2: the correct formula with correct substitution earns M1. The arithmetic and the answer are wrong, so A1 (54 cm^2) is not earned.",
+          "basis": "M1 follows the printed substitution clause; A1 requires the cao value 54, which the student did not produce"
+        },
+        {
+          "question": "10",
+          "prompt": "Hence solve x^2 + 7x + 12 = 0.",
+          "marks_available": 2,
+          "expected": 2,
+          "categories": [
+            "follow-through"
+          ],
+          "scheme": [
+            "M1 (ft): solves their own factorisation from the previous part",
+            "A1 (ft): the two roots consistent with that factorisation"
+          ],
+          "student_answer": [
+            "using my factors: (x - 3)(x - 4) = 0",
+            "x = 3 or x = 4"
+          ],
+          "ruling": "2 of 2 by follow-through: this candidate's earlier factorisation was wrong, but the scheme marks this part from THEIR work. x = 3 and x = 4 are exactly the roots of (x - 3)(x - 4), so both ft marks are earned even though the final values differ from the correct pair -4 and -3.",
+          "basis": "the scheme's (ft) clauses are printed against 'their own factorisation', so the correct pair is not required here",
+          "trap": "a marker that applies the correct roots (-4, -3) rather than the candidate's has not done follow-through marking"
+        },
+        {
+          "question": "11",
+          "prompt": "Solve 5x - 3 = 2x + 9.",
+          "marks_available": 2,
+          "expected": 1,
+          "categories": [
+            "ambiguous"
+          ],
+          "scheme": [
+            "M1: 3x = 12 seen",
+            "A1: x = 4 (cao, a single unambiguous value required)"
+          ],
+          "student_answer": [
+            "5x - 3 = 2x + 9",
+            "3x = 12",
+            "x = 4 or 12"
+          ],
+          "ruling": "1 of 2: 3x = 12 earns M1. The final line offers two values and does not identify one, so the answer is not unambiguous and A1 cannot be awarded. Accepted without comment only when the working names the required value.",
+          "basis": "A1 is 'cao' - correct answer only - which cannot be met by an answer that leaves the correct value unresolved"
+        },
+        {
+          "question": "12",
+          "prompt": "A car travels 150 km in 2.5 hours. Work out its average speed.",
+          "marks_available": 3,
+          "expected": 2,
+          "categories": [
+            "partial-credit",
+            "method-and-accuracy"
+          ],
+          "scheme": [
+            "M1: 150 / 2.5 seen",
+            "A1: 60 (cao)",
+            "B1: km/h stated"
+          ],
+          "student_answer": [
+            "150 / 2.5 = 60"
+          ],
+          "ruling": "2 of 3: the division earns M1 and the value 60 earns A1. The unit km/h is never written, so B1 is not earned.",
+          "basis": "B1 is a printed clause about stating the unit; the student did not state it"
+        }
+      ]
+    },
+    {
+      "id": "paper-b",
+      "title": "Reference Paper B - Nested subquestions, repeated lesson id and a defective scheme header",
+      "lesson_id": "Ch2L3",
+      "scheme_pdf": "papers/paper-b-mark-scheme.pdf",
+      "student_pdf": "papers/paper-b-student.pdf",
+      "marks_available": 7,
+      "expected_total": 6,
+      "scheme_stated_total": 8,
+      "scheme_header_disagrees": true,
+      "items": [
+        {
+          "question": "1a",
+          "prompt": "1 (a) Write down the value of 3^2.",
+          "marks_available": 1,
+          "expected": 1,
+          "categories": [
+            "nested-subquestion",
+            "overlapping-lesson-id"
+          ],
+          "scheme": [
+            "B1: 9"
+          ],
+          "student_answer": [
+            "(a) 9"
+          ],
+          "ruling": "1 of 1: the single printed clause is met.",
+          "basis": "clause evidenced exactly"
+        },
+        {
+          "question": "1b",
+          "prompt": "1 (b) Write down the value of 2^5.",
+          "marks_available": 1,
+          "expected": 1,
+          "categories": [
+            "nested-subquestion",
+            "overlapping-lesson-id"
+          ],
+          "scheme": [
+            "B1: 32"
+          ],
+          "student_answer": [
+            "(b) 32"
+          ],
+          "ruling": "1 of 1: the single printed clause is met.",
+          "basis": "clause evidenced exactly"
+        },
+        {
+          "question": "1c",
+          "prompt": "1 (c) Work out 3^2 + 2^5.",
+          "marks_available": 2,
+          "expected": 1,
+          "categories": [
+            "nested-subquestion",
+            "partial-credit",
+            "overlapping-lesson-id"
+          ],
+          "scheme": [
+            "M1: 9 + 32 seen",
+            "A1: 41 (cao)"
+          ],
+          "student_answer": [
+            "(c) 9 + 32",
+            "= 42"
+          ],
+          "ruling": "1 of 2: 9 + 32 is correct substitution (M1). The total 42 is wrong and 41 is the cao value, so A1 fails. Note the parts are nested inside question 1 and must be marked individually, against 1a/1b/1c.",
+          "basis": "M1 from the substitution clause; A1 requires the cao value"
+        },
+        {
+          "question": "2",
+          "prompt": "2 Solve 7x = 42.",
+          "marks_available": 3,
+          "expected": 3,
+          "categories": [
+            "nested-subquestion",
+            "fully-correct",
+            "scheme-total-disagrees"
+          ],
+          "scheme": [
+            "M1: divide both sides by 7",
+            "M1: 42 / 7",
+            "A1: x = 6"
+          ],
+          "student_answer": [
+            "x = 42 / 7",
+            "x = 6"
+          ],
+          "ruling": "3 of 3: both method clauses and the answer clause are evidenced. The scheme HEADER states a total that disagrees with the sum of its own per-question marks, so the app should flag the scheme rather than silently trusting either number.",
+          "basis": "clauses evidenced; the header/sum disagreement is a scheme-integrity observation, not a marking judgement"
+        }
+      ]
+    }
+  ]
+}

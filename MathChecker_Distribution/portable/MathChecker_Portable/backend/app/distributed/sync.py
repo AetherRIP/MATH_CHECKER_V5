@@ -65,6 +65,9 @@ def events_since(since: int, *, limit: int = 500,
     params: list = [int(since)]
     if account is not None:
         schools, classes = accounts.scoped_ids(account)
+        if not schools and not classes and not (
+                set(accounts.account_roles(account)) & {"TEACHER", "DEVELOPER"}):
+            return []
         if schools or classes:
             # Build the visible-predicate: class visible, or school visible
             # (whole-school scope) for events without a class.
@@ -188,6 +191,9 @@ def list_correction_results(*, account: dict | None = None, limit: int = 200,
         params.append(school_id)
     if account is not None:
         schools, classes = accounts.scoped_ids(account)
+        if not schools and not classes and not (
+                set(accounts.account_roles(account)) & {"TEACHER", "DEVELOPER"}):
+            return []
         if schools or classes:
             # A limited role (CO_TEACHER/ASSISTANT) sees its own scoped
             # schools/classes PLUS the records shared by its assistant team

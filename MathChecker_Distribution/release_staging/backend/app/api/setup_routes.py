@@ -377,12 +377,18 @@ def review_queue(limit: int = 100):
         SELECT r.id, r.student_name, r.student_id, r.coursework_id,
                r.submission_id, r.earned, r.available, r.percentage,
                r.confidence, r.confidence_reasons, r.review_required,
-               r.manual_override, r.created_at, w.title AS assignment_title
+               r.manual_override, r.created_at, w.title AS assignment_title,
+               EXISTS(SELECT 1 FROM automation_jobs a WHERE a.result_id = r.id
+                      AND a.status = 'ATTENTION_REQUIRED'
+                      AND a.error_code = 'review_mode_await_teacher') AS automation_hold
         FROM results r
         LEFT JOIN coursework w ON w.id = r.coursework_id
-        WHERE (r.review_required = 1
+        WHERE ((r.review_required = 1
                OR r.confidence IN ('LOW', 'VALIDATION_FAILED', 'LARGE_SCORE_CHANGE'))
-          AND r.manual_override = 0
+               AND r.manual_override = 0)
+           OR EXISTS(SELECT 1 FROM automation_jobs a WHERE a.result_id = r.id
+                     AND a.status = 'ATTENTION_REQUIRED'
+                     AND a.error_code = 'review_mode_await_teacher')
         ORDER BY r.created_at DESC
         LIMIT ?
         """,

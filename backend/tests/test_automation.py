@@ -333,12 +333,19 @@ def make_runner(*, attach=None, publish=None, grade=8, submission_state="RETURNE
 
 
 def _make_job(**over) -> dict:
+    """One workflow job. A second call must name another submission (or
+    version): a job already exists for s1/v1, and create_job returns None
+    rather than a duplicate - which is exactly the §11 guarantee."""
+    submission_id = over.pop("submission_id", "s1")
+    student_id = over.pop("student_id", "u1")
     seed_coursework()
-    seed_tracking()
-    persist_result(over.pop("result_id", "r1"))
+    seed_tracking(submission_id, user=student_id, name=over.pop("name", "Ada"))
+    persist_result(over.pop("result_id", "r1"), submission_id=submission_id,
+                   student_id=student_id)
     job = store.create_job(
         course_id="c1", coursework_id="w1", assignment_title="Algebra Lesson 1",
-        student_id="u1", student_name="Ada", submission_id="s1",
+        student_id=student_id, student_name=over.pop("name", "Ada"),
+        submission_id=submission_id,
         submission_version=over.pop("version", "v1"))
     return job
 
@@ -987,3 +994,53 @@ def test_approve_rejects_a_job_that_is_not_waiting_for_approval():
     assert final["status"] == states.COMPLETE      # already finished
     with pytest.raises(StepFailure):
         r.approve(job["id"])
+
+
+def test_active_job_count_counts_live_workflow_lease_only_once():
+    """Three moves through one job's stages are still ONE job in flight."""
+    from app import db
+    job = _make_job()
+    now_ts = time.time()
+    for _ in range(3):
+        db.execute("UPDATE automation_jobs SET status = ?, claimed_by = ?, claimed_at = ? WHERE id = ?",
+                   (states.CORRECTING, "worker", now_ts, job["id"]))
+        assert store.execution_counts(now_ts)["active"] == 1
+    store.set_status(job["id"], states.COMPLETE)
+    assert store.execution_counts(now_ts)["active"] == 0
+    # A finished job is not waiting either; only the retryable one is.
+    assert store.execution_counts(now_ts)["waiting"] == 0
+    failed = _make_job(submission_id="s2", student_id="u2", result_id="r2")
+    store.set_status(failed["id"], states.REPORT_UPLOAD_FAILED,
+                     next_attempt_at=now_ts + 30)
+    assert store.execution_counts(now_ts)["active"] == 0
+    assert store.execution_counts(now_ts)["waiting"] == 1
+
+
+def test_active_job_count_ignores_stale_claims_and_deduplicates_child_stages():
+    from app import db
+    now_ts = time.time()
+    first = _make_job()
+    second = _make_job(submission_id="s2", student_id="u2", result_id="r2")
+    db.execute("UPDATE automation_jobs SET status=?, claimed_by=?, claimed_at=? WHERE id=?",
+               (states.CORRECTING, "stale", now_ts - store.CLAIM_LEASE_SECONDS - 1, first["id"]))
+    db.execute("UPDATE automation_jobs SET status=?, correction_job_id=? WHERE id=?",
+               (states.CORRECTING, "child-active", second["id"]))
+    db.execute("INSERT INTO correction_jobs(id,status,created_at,updated_at) VALUES(?,?,?,?)",
+               ("child-active", "MARKING", now_ts, now_ts))
+    assert store.execution_counts(now_ts)["active"] == 1
+
+
+def test_clear_recent_hides_terminal_jobs_but_preserves_active_and_results():
+    from app import db
+    active = _make_job()
+    terminal = _make_job(submission_id="s2", student_id="u2", result_id="r2")
+    result_id = persist_result("archive-result", submission_id="s2",
+                               student_id="u2")
+    store.set_status(terminal["id"], states.COMPLETE, result_id=result_id)
+    before = store.clear_recent_count()
+    assert before >= 1
+    assert store.clear_recent_jobs() >= 1
+    assert store.get(terminal["id"]) is not None
+    assert db.query_one("SELECT id FROM results WHERE id=?", (result_id,)) is not None
+    assert terminal["id"] not in {j["id"] for j in store.list_jobs()}
+    assert active["id"] in {j["id"] for j in store.list_jobs()}

@@ -1,0 +1,46 @@
+{
+  "manifest": "E:\\MATH_CHECKER_V5\\docs\\reference-marking\\manifest.json",
+  "review": {
+    "required": true,
+    "verified_by": null,
+    "verified_on": null,
+    "instructions": "A competent maths teacher must confirm every expected mark in REVIEW_SHEET.md against the scheme, then record their name and the date here. Until then the harness reports NOT CERTIFIED."
+  },
+  "papers": [
+    {
+      "paper": "paper-b",
+      "title": "Reference Paper B - Nested subquestions, repeated lesson id and a defective scheme header",
+      "exit_code": 1,
+      "seconds": 12.7,
+      "unverified_in_harness": true,
+      "model": null,
+      "app_earned": null,
+      "app_available": null,
+      "app_percentage": null,
+      "app_grade": null,
+      "harness_verdict": null,
+      "result_id": null,
+      "stdout_tail": "aper-b-harness.txt\n\n== isolated run ==\n  [PASS] the run works in its own throwaway data directory \u2014 C:\\Users\\Rudransha011_\\AppData\\Local\\MC5-Live-Marking-20261016-220703\\Data (settings copied from E:\\MATH_CHECKER_V5\\data)\n  [PASS] Testing-only mode is forced ON for the run \u2014 every Classroom/Drive write is blocked while certifying\n\n== start the app (live, not demo) ==\n  [PASS] the app starts and answers /api/health \u2014 http://127.0.0.1:53775\n  [PASS] the copy signs in \u2014 signed in through /api/auth/login\n  [PASS] the app reports its engine state \u2014 GET /api/settings \u2192 200\n  [PASS] the app is NOT in mock mode \u2014 the marking is live \u2014 mock_mode=False, models=['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite']\n  [PASS] Testing-only is ON in the running app \u2014 Testing only mode is ON: results from this run are private to this machine and must not be released.\n\n== live correction ==\n  [PASS] the app accepts a real PDF and mark scheme \u2014 pipeline=standard pages=1 job=37dec61b1e304df69893be34bddec183\n  [FAIL] the live model completes the correction \u2014 job 37dec61b1e304df69893be34bddec183 \u2192 FAILED (All configured Gemini models failed. gemini-3.8-flash: No usable Gemini keys remain (all invalid or disabled). | gemini-3.7-flash: No usable Gemini keys remain (all invalid or disabled). | gemini-3.6-)\n  [PASS] the throwaway data (and its copy of the key) is deleted \u2014 C:\\Users\\Rudransha011_\\AppData\\Local\\MC5-Live-Marking-20261016-220703 removed\n",
+      "stderr_tail": "",
+      "harness_report": "C:\\Users\\RUDRAN~1\\AppData\\Local\\Temp\\mc5-reference-g87es2tu\\paper-b-harness.txt"
+    }
+  ],
+  "aggregate": {
+    "papers_run": 1,
+    "papers_with_a_usable_outcome": 0,
+    "items_compared": 0,
+    "exact_agreement": 0,
+    "over": 0,
+    "under": 0,
+    "rejected_alternatives": 0,
+    "matching_errors": 0,
+    "allocation_disagreements": 0,
+    "exact_agreement_rate": null,
+    "mean_absolute_error_per_item": null,
+    "mean_absolute_error_overall": null,
+    "human_verified_by": null,
+    "failures": [
+      "paper-b: no usable outcome (harness exit 1)"
+    ]
+  }
+}

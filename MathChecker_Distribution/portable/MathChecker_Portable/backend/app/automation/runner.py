@@ -1021,7 +1021,7 @@ class WorkflowRunner:
         except Exception as exc:  # noqa: BLE001
             raise classify_exception(exc, states.RETURN_FAILED)
         state = (submission.get("state") or "").upper()
-        if state != "RETURNED" and not submission.get("assignedGrade"):
+        if state != "RETURNED":
             raise StepFailure(
                 f"Classroom did not report the submission as returned (state="
                 f"{state or 'unknown'}).", transient=True,

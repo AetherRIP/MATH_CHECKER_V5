@@ -43,12 +43,13 @@ def build() -> bytes:
                                  meta="3 students"))
     D.add(story, D.data_table(
         theme, styles, ["Student Name", "Missing Homework"],
-        [["Mo", "L2 / L4"], ["Ahmed", "L4"], ["Sara Mohamed", "L1"]],
+        [["Mo", "CH1L2 / CH1L4"], ["Ahmed", "CH1L4"],
+         ["Sara Mohamed", "CH1L1"]],
         widths=D.fit_widths(theme, [40, 60])))
     D.add(story, D.group_divider(theme, styles, "CLASS 10B", meta="1 student"))
     D.add(story, D.data_table(
         theme, styles, ["Student Name", "Missing Homework"],
-        [["Mariam", "L3 / L5"]], widths=D.fit_widths(theme, [40, 60])))
+        [["Mariam", "CH2L1 / CH2L3"]], widths=D.fit_widths(theme, [40, 60])))
 
     D.add(story, D.section(theme, styles, "STUDENTS WITH GRADE 1"))
     D.add(story, D.empty_state(

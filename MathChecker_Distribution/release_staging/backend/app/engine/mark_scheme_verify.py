@@ -43,6 +43,8 @@ VERIFY_SCHEMA: dict[str, Any] = {
                     "question_number": {"type": "string"},
                     "max_marks": {"type": "integer"},
                     "criteria": {"type": "string"},
+                    "answers": {"type": "array", "items": {"type": "string"}},
+                    "page": {"type": "integer"},
                     "parts": {
                         "type": "array",
                         "items": {
@@ -50,6 +52,13 @@ VERIFY_SCHEMA: dict[str, Any] = {
                             "properties": {
                                 "number": {"type": "string"},
                                 "max_marks": {"type": "integer"},
+                                # Per-subquestion evidence. Without these the
+                                # sub-part's own answer and marking points never
+                                # reach the marker or the checker (§2/§4/§5).
+                                "criteria": {"type": "string"},
+                                "answers": {"type": "array",
+                                            "items": {"type": "string"}},
+                                "page": {"type": "integer"},
                             },
                             "required": ["number", "max_marks"],
                         },
@@ -79,6 +88,15 @@ Rules:
 - List every top-level question exactly once with the marks the scheme
   allocates to it. If the scheme splits a question into labelled parts, put
   them in "parts"; the parent max_marks will be recomputed as their sum.
+- EVERY labelled sub-part must be its own entry in "parts" (a, b, c, and the
+  nested i, ii, iii), spelled as the scheme prints it, with its own max_marks
+  and its own criteria. Never merge (b)(i) and (b)(ii), and never move an
+  answer or a mark from one part to another.
+- Give each part's own accepted answers in "answers" (one string per accepted
+  alternative) and its own marking points in "criteria" (the M/A/B codes and
+  the working they reward). Put the parent's answers in the parent's
+  "answers" only when the scheme states them for the question as a whole.
+- Set "page" to the page number the row was read from when it is visible.
 - Never invent a question that only appears as a page number or mark value.
 - The evidence preserves page and block order. For a two-column page the blocks
   are already in reading order (left column first) - do not re-interleave them.
@@ -158,6 +176,7 @@ def canonicalize(parsed: Any) -> dict | None:
     by_number: dict[str, dict] = {}
     duplicates: list[str] = []
     rejected: list[str] = []
+    parts_disagreements: list[str] = []
 
     for item in raw:
         if not isinstance(item, dict):
@@ -182,8 +201,24 @@ def canonicalize(parsed: Any) -> dict | None:
             except (TypeError, ValueError):
                 continue
             if pnum and pm > 0:
-                parts.append({"number": pnum, "max_marks": pm})
+                part: dict[str, Any] = {"number": pnum, "max_marks": pm}
+                # The sub-part's OWN evidence travels with it. Dropping it here
+                # is what forced every part's answer and M/A/B rules into the
+                # parent's one free-text field.
+                part_criteria = str(p.get("criteria", "") or "").strip()
+                if part_criteria:
+                    part["criteria"] = part_criteria
+                part_answers = [str(a).strip()
+                                for a in (p.get("answers") or [])
+                                if str(a).strip()]
+                if part_answers:
+                    part["answers"] = part_answers
+                part_page = _as_int(p.get("page"))
+                if part_page:
+                    part["page"] = part_page
+                parts.append(part)
         parts.sort(key=lambda p: ms.order_key(p["number"]))
+        parts_stated = max_marks
         if parts:
             max_marks = sum(p["max_marks"] for p in parts)
 
@@ -195,8 +230,24 @@ def canonicalize(parsed: Any) -> dict | None:
             "max_marks": max_marks,
             "criteria": str(item.get("criteria", "") or "").strip(),
         }
+        answers = [str(a).strip() for a in (item.get("answers") or [])
+                   if str(a).strip()]
+        if answers:
+            entry["answers"] = answers
+        page = _as_int(item.get("page"))
+        if page:
+            entry["page"] = page
         if parts:
             entry["parts"] = parts
+            if parts_stated and parts_stated != max_marks:
+                # The statement and its own parts disagree. The parts win (they
+                # are the finer evidence) but the disagreement is recorded: an
+                # incomplete parts list silently shrinking a question is how a
+                # denominator goes missing.
+                entry["parts_disagreement"] = {
+                    "stated": parts_stated, "summed_from_parts": max_marks}
+                parts_disagreements.append(
+                    f"{number}: stated {parts_stated}, parts sum to {max_marks}")
         by_number[number] = entry
 
     if not by_number:
@@ -214,6 +265,7 @@ def canonicalize(parsed: Any) -> dict | None:
                      if isinstance(w, (str, int, float))],
         "duplicates_rejected": sorted(set(duplicates)),
         "invalid_rejected": sorted(set(rejected)),
+        "parts_disagreements": parts_disagreements,
     }
 
 
@@ -266,6 +318,30 @@ def cross_validate(structure: dict | None, evidence: dict | None = None) -> dict
         "missing_questions": seq["missing"],
         "duplicates_rejected": structure.get("duplicates_rejected") or [],
     }
+
+    # --- subquestion structure (§2/§3/§8) ---------------------------------
+    # Only meaningful when the scheme actually declares sub-parts: a flat
+    # scheme of 33 whole questions has nothing to say here, and inventing
+    # findings for it would bury the real ones.
+    sub_report: dict[str, Any] = {"anomalies": [], "counts": {}}
+    if any(q.get("parts") for q in questions):
+        from . import scheme_structure as st
+        built = st.build_structure(questions)
+        sub_report = st.validate_structure(built["questions"])
+        checks["subquestion_counts"] = sub_report["counts"]
+        checks["subquestions"] = [
+            {"id": s["id"], "label": s["label"], "parent_id": s["parent_id"],
+             "max_marks": s["max_marks"], "answers": s["answers"],
+             "mark_codes": (s.get("marks") or {}).get("codes") or [],
+             "validation": s.get("validation")}
+            for s in built["subquestions"]]
+        for issue in sub_report["anomalies"]:
+            if issue.get("severity") == st.SEVERITY_REVIEW:
+                anomalies.append(issue["message"])
+    for disagreement in (structure.get("parts_disagreements") or []):
+        anomalies.append(
+            f"The stated marks and the sub-part marks disagree for question "
+            f"{disagreement} — a sub-part may be missing from the scheme.")
 
     if not questions:
         anomalies.append("No questions were reconstructed from the mark scheme.")

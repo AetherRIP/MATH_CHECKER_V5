@@ -1,14 +1,22 @@
-# docs/ — reports, evidence, logs and archived notes
+# docs/ — developer guides, reports, evidence, logs and archived notes
 
-Everything in this folder is **documentation produced while building the app**.
+Start with [ARCHITECTURE.md](ARCHITECTURE.md) for the current component map,
+[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for the repository inventory,
+[MARK_SCHEME_SUBQUESTIONS.md](MARK_SCHEME_SUBQUESTIONS.md) for how mark-scheme
+subquestions are detected and mapped, and [SERVER_LIFECYCLE.md](SERVER_LIFECYCLE.md)
+for startup/supervision details.
+Historical reports and evidence below are retained for context; they are not a
+substitute for the current README and architecture guide.
+
+Everything else in this folder is **documentation produced while building the app**.
 Nothing here is imported, served or packaged: the release allowlist
 (`MathChecker_Distribution/scripts/release_allowlist.py`) never copies `docs/`,
 so keeping reports here also guarantees they cannot leak into a portable build.
 
-The project root deliberately holds only the app's entry points plus the two
-documents that source code links to by name (`README.md`,
-`DISTRIBUTED_DEPLOYMENT.md`). See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)
-for the whole layout and the cleanup policy.
+The project root holds the app entry points plus documents referenced by the
+application (`README.md`, `DISTRIBUTED_DEPLOYMENT.md`). See
+[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for the whole layout and cleanup
+policy.
 
 ## reports/ — audit and delivery reports (markdown)
 
@@ -32,8 +40,7 @@ for the whole layout and the cleanup policy.
 ## results/ — machine-readable run results
 
 * [LIVE_ACCESS_SWITCHES_RESULTS.json](results/LIVE_ACCESS_SWITCHES_RESULTS.json) —
-  57 live checks from `backend/scripts/live_verify_access_switches.py`
-  (the script writes here).
+  57 live checks from `backend/scripts/live_verify_access_switches.py` (the script writes here).
 * [two_env_e2e_results.json](results/two_env_e2e_results.json) — raw results from
   `scripts/two_env_e2e.py` (the script writes here).
 
@@ -43,7 +50,7 @@ Both files are outputs: delete them and re-run the script to regenerate.
 
 Console/log output captured while running the app, the suites and the packaging
 pipeline (`server.log`, `backend_run.log`, `backend_preview.log`,
-`backend_run.log`, `e2e_backend.log`, `full_suite_after_branding_fix.log`,
+`e2e_backend.log`, `full_suite_after_branding_fix.log`,
 `PORTABLE_TEST_SUITE_20261012.log`, `PORTABLE_VERIFY_REPORT_20261012.txt`).
 
 Runtime logs of the **live** app are not here — they live next to the data they
@@ -71,3 +78,9 @@ longer need that comparison.
 
 * `_moves.log` — the exact `mv` output of the 2026-10-12 workspace
   reorganisation (a receipt of what moved where; safe to delete).
+* `ARCHITECTURE.md` — current source/runtime boundaries and subsystem dependencies.
+* `MARK_SCHEME_SUBQUESTIONS.md` — how a mark scheme's subquestions are detected,
+  how answers and marking criteria are mapped to their identifier, and what is
+  still left to review.
+* `SERVER_LIFECYCLE.md` — lifecycle guide and a historical verification record; its
+  test counts and checkout-specific findings may age and should be rechecked.

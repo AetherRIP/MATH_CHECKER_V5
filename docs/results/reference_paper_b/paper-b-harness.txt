@@ -1,0 +1,24 @@
+========================================================================
+LIVE MARKING VERIFICATION — opt-in, real key, real PDF, real model
+========================================================================
+app        : E:\MATH_CHECKER_V5
+key        : 69f30bbe2d09 (from E:\MATH_CHECKER_V5\data\secrets.toml)
+student PDF: E:\MATH_CHECKER_V5\docs\reference-marking\papers\paper-b-student.pdf
+mark scheme: E:\MATH_CHECKER_V5\docs\reference-marking\papers\paper-b-mark-scheme.pdf
+ground truth: --expected C:\Users\RUDRAN~1\AppData\Local\Temp\mc5-reference-asbaobh9\paper-b-expected.json
+tolerance  : ±0 mark(s) per question
+report     : C:\Users\Rudransha011_\AppData\Local\Temp\mc5-reference-asbaobh9\paper-b-harness.txt
+
+== isolated run ==
+  [PASS] the run works in its own throwaway data directory — C:\Users\Rudransha011_\AppData\Local\MC5-Live-Marking-20261016-211737\Data (settings copied from E:\MATH_CHECKER_V5\data)
+  [PASS] Testing-only mode is forced ON for the run — every Classroom/Drive write is blocked while certifying
+
+== start the app (live, not demo) ==
+  [PASS] the app starts and answers /api/health — http://127.0.0.1:50081
+  [PASS] the copy signs in — signed in through /api/auth/login
+  [PASS] the app reports its engine state — GET /api/settings → 200
+  [PASS] the app is NOT in mock mode — the marking is live — mock_mode=False, models=['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite']
+  [PASS] Testing-only is ON in the running app — Testing only mode is ON: results from this run are private to this machine and must not be released.
+
+== live correction ==
+  [PASS] the app accepts a real PDF and mark scheme — pipeline=standard pages=1 job=a3049a768fc54564a88fa1ee51c7ef39
