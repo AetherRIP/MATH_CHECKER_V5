@@ -1,0 +1,60 @@
+<UserControl x:Class="MathChecker.Desktop.Views.SchemeReviewView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="160" />
+            <RowDefinition Height="180" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0">
+            <StackPanel DockPanel.Dock="Left">
+                <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" />
+                <TextBlock Text="{Binding Summary}" Style="{StaticResource Muted}" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top"
+                        HorizontalAlignment="Right">
+                <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                <Button Content="Stage correction" Command="{Binding ProposeCommand}" />
+                <Button Content="Record decision…" Command="{Binding DecideCommand}" />
+                <Button Content="Approve proposal" Command="{Binding ApproveProposalCommand}" />
+                <Button Content="Reject proposal" Command="{Binding RejectProposalCommand}" />
+            </StackPanel>
+        </DockPanel>
+
+        <TextBlock Grid.Row="1" Style="{StaticResource SectionTitle}" Margin="0,10,0,2"
+                   Text="Discrepancies" />
+
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Discrepancies}"
+                  SelectedItem="{Binding SelectedDiscrepancy}" Margin="0,34,0,0">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="180" />
+                <DataGridTextColumn Header="Question" Binding="{Binding Title}" Width="220" />
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="160" />
+                <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <TextBlock Grid.Row="2" Style="{StaticResource SectionTitle}" Margin="0,10,0,2"
+                   Text="Staged proposals" VerticalAlignment="Top" />
+        <DataGrid Grid.Row="2" ItemsSource="{Binding Proposals}"
+                  SelectedItem="{Binding SelectedProposal}" Margin="0,34,0,0">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="180" />
+                <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="220" />
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="160" />
+                <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}"
+                           Text="A staged proposal changes nothing until it is explicitly approved. The backend records every decision." />
+                <TextBox Style="{StaticResource JsonBox}" Text="{Binding DetailText, Mode=OneWay}" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

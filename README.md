@@ -30,6 +30,23 @@ is unchanged. See [Productisation](#productisation-51) below.
 | UI | React + Vite glassmorphism UI (`frontend/`): Dashboard, Classroom, Students, Corrections, Results, **Report**, API Keys, Settings, Developer Diagnostics |
 | Local-first | Courses/assignments/submissions/students cached in SQLite with TTL; no background polling; event-driven SSE updates |
 
+## Native Windows desktop client
+
+A C# / WPF client lives in `desktop/` and drives the same backend over its
+existing HTTP API — the correction engine, marking rules, database and
+Classroom integration are untouched. It starts (or attaches to) the Python
+backend itself, so the desktop app is the whole product, not a wrapper around a
+browser page.
+
+```powershell
+dotnet build desktop\src\MathChecker.Desktop\MathChecker.Desktop.csproj
+dotnet run   --project desktop\src\MathChecker.Desktop\MathChecker.Desktop.csproj
+powershell -ExecutionPolicy Bypass -File desktop\build_release.ps1   # bundle + ZIP
+```
+
+Architecture, feature inventory, verification evidence, packaging and the
+handoff to the UI design phase: [docs/desktop-migration](docs/desktop-migration).
+
 ## Run
 
 ```bash

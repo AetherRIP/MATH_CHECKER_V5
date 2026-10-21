@@ -1,0 +1,93 @@
+<UserControl x:Class="MathChecker.Desktop.Views.ResultsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0">
+            <StackPanel DockPanel.Dock="Left">
+                <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" />
+                <TextBlock Text="{Binding Summary}" Style="{StaticResource Muted}" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top"
+                        HorizontalAlignment="Right">
+                <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                <Button Content="Open paper" Style="{StaticResource PrimaryButton}"
+                        Command="{Binding OpenDeskCommand}" />
+                <Button Content="Export PDF" Command="{Binding ExportPdfCommand}" />
+                <Button Content="CSV" Command="{Binding ExportCsvCommand}" />
+                <Button Content="Markdown" Command="{Binding ExportMarkdownCommand}" />
+            </StackPanel>
+        </DockPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
+            <TextBlock Text="Search" Style="{StaticResource FieldLabel}" />
+            <TextBox Width="240" Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" />
+            <Button Content="Apply" Command="{Binding SearchCommand}" />
+            <TextBlock Text="Status" Style="{StaticResource FieldLabel}" Margin="10,0,4,0" />
+            <ComboBox Width="150" ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding StatusFilter}" />
+        </StackPanel>
+
+        <Grid Grid.Row="2" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="10" />
+                <ColumnDefinition Width="1.6*" />
+            </Grid.ColumnDefinitions>
+
+            <DataGrid Grid.Column="0" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Student" Binding="{Binding Name}" Width="125" />
+                    <DataGridTextColumn Header="Assignment" Binding="{Binding AssignmentTitle}" Width="*" MinWidth="130" />
+                    <DataGridTextColumn Header="Score" Binding="{Binding ScoreText}" Width="66" />
+                    <DataGridTextColumn Header="%" Binding="{Binding PercentageText}" Width="54" />
+                    <DataGridTextColumn Header="Status" Binding="{Binding StatusLabel}" Width="112" />
+                    <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="140" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border Grid.Column="2" Style="{StaticResource Card}" Margin="0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="{Binding DetailHeader}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding DetailNote}" Style="{StaticResource Muted}" Margin="0,4,0,0" />
+
+                        <WrapPanel Margin="0,8,0,0">
+                            <Button Content="Re-mark with AI" Command="{Binding RemarkCommand}" />
+                            <Button Content="Use new attempt" Command="{Binding AcceptRemarkCommand}" />
+                            <Button Content="Restore attempt" Command="{Binding RestoreLatestVersionCommand}" />
+                            <Button Content="Override mark…" Command="{Binding OverrideCommand}" />
+                            <Button Content="Set question mark…" Command="{Binding SetQuestionMarkCommand}" />
+                        </WrapPanel>
+
+                        <TextBlock Text="Questions" Style="{StaticResource SectionTitle}" />
+                        <DataGrid ItemsSource="{Binding Questions}" SelectedItem="{Binding SelectedQuestion}"
+                                  Height="220">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Q" Binding="{Binding NumberText}" Width="60" />
+                                <DataGridTextColumn Header="Mark" Binding="{Binding MarkText}" Width="80" />
+                                <DataGridTextColumn Header="Topic" Binding="{Binding Topic}" Width="140" />
+                                <DataGridTextColumn Header="Loss reason" Binding="{Binding LossReason}" Width="*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <TextBlock Text="Attempts" Style="{StaticResource SectionTitle}" />
+                        <DataGrid ItemsSource="{Binding Versions}" Height="140">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="#" Binding="{Binding Version}" Width="50" />
+                                <DataGridTextColumn Header="Score" Binding="{Binding ScoreText}" Width="90" />
+                                <DataGridTextColumn Header="Confidence" Binding="{Binding Confidence}" Width="130" />
+                                <DataGridTextColumn Header="Model" Binding="{Binding MarkingModel}" Width="*" />
+                                <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="130" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

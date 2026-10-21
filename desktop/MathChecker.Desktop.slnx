@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MathChecker.Desktop/MathChecker.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MathChecker.Desktop.Tests/MathChecker.Desktop.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/MathChecker.Desktop.E2E/MathChecker.Desktop.E2E.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,82 @@
+<Application x:Class="MathChecker.Desktop.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MathChecker.Desktop.ViewModels"
+             xmlns:views="clr-namespace:MathChecker.Desktop.Views"
+             xmlns:conv="clr-namespace:MathChecker.Desktop.Converters">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Controls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <BooleanToVisibilityConverter x:Key="BoolToVis" />
+            <conv:NullToVisibilityConverter x:Key="NullToVisibility" />
+            <conv:EmptyStringToVisibilityConverter x:Key="EmptyToVisibility" />
+            <conv:InverseBoolConverter x:Key="InverseBool" />
+
+            <!-- View-model to view mapping. Navigation shows a view model; WPF
+                 picks the view. Adding a page never changes the shell. -->
+            <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+                <views:DashboardView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:SearchViewModel}">
+                <views:SearchView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:CorrectionViewModel}">
+                <views:CorrectionView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:JobsViewModel}">
+                <views:JobsView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:LargePdfViewModel}">
+                <views:LargePdfView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:AutomationViewModel}">
+                <views:AutomationView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:ReviewViewModel}">
+                <views:ReviewView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:SchemeReviewViewModel}">
+                <views:SchemeReviewView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:MarkingDeskViewModel}">
+                <views:MarkingDeskView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:ResultsViewModel}">
+                <views:ResultsView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:ReportsViewModel}">
+                <views:ReportsView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:UsageViewModel}">
+                <views:UsageView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:ClassroomViewModel}">
+                <views:ClassroomView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:ClassesViewModel}">
+                <views:ClassesView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:StudentsViewModel}">
+                <views:StudentsView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:AssignmentsViewModel}">
+                <views:AssignmentsView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+                <views:SettingsView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:AiKeysViewModel}">
+                <views:AiKeysView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:PromptsViewModel}">
+                <views:PromptsView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:JsonPageViewModel}">
+                <views:JsonPageView />
+            </DataTemplate>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

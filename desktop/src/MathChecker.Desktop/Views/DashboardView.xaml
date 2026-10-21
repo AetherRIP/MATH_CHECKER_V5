@@ -1,0 +1,212 @@
+<UserControl x:Class="MathChecker.Desktop.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+        <StackPanel>
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Left">
+                    <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" />
+                    <TextBlock Text="{Binding LastUpdated, StringFormat=Updated {0}}"
+                               Style="{StaticResource Muted}" FontSize="12" />
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top"
+                            Margin="0,4,0,0">
+                    <Button Content="Refresh" Style="{StaticResource GhostButton}"
+                            Command="{Binding RefreshCommand}" />
+                    <Button Content="New correction" Style="{StaticResource PrimaryButton}"
+                            Command="{Binding OpenCorrectionCommand}" />
+                    <Button Content="Review queue" Command="{Binding OpenReviewCommand}" Margin="0" />
+                </StackPanel>
+            </DockPanel>
+
+            <!-- The hero row: today in lime, queue pressure in orange,
+                 system state in the quiet neutral card. -->
+            <Grid Margin="0,24,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2.05*" />
+                    <ColumnDefinition Width="1.3*" />
+                    <ColumnDefinition Width="1.1*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource Card}"
+                        Background="{StaticResource LimeBrush}"
+                        BorderBrush="{StaticResource LimeBrush}"
+                        Padding="22,20" Margin="0,0,14,12">
+                    <Grid TextElement.Foreground="{StaticResource LimeInkBrush}">
+                        <Border Background="{StaticResource DotPatternBrush}" IsHitTestVisible="False"
+                                Width="150" Height="130" HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom" Margin="0,0,-20,-20" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="TODAY" FontSize="10.5" FontWeight="SemiBold"
+                                       Opacity="0.62" TextWrapping="NoWrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                <StackPanel Margin="0,0,38,0">
+                                    <TextBlock Text="{Binding TodayText}" Style="{StaticResource StatValue}"
+                                               Foreground="{StaticResource LimeInkBrush}" />
+                                    <TextBlock Text="Corrections" Style="{StaticResource StatLabel}"
+                                               Foreground="{StaticResource LimeInkBrush}" Opacity="0.65" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,38,0">
+                                    <TextBlock Text="{Binding PendingText}" Style="{StaticResource StatValue}"
+                                               Foreground="{StaticResource LimeInkBrush}" />
+                                    <TextBlock Text="Pending" Style="{StaticResource StatLabel}"
+                                               Foreground="{StaticResource LimeInkBrush}" Opacity="0.65" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding ProcessingText}" Style="{StaticResource StatValue}"
+                                               Foreground="{StaticResource LimeInkBrush}" />
+                                    <TextBlock Text="In progress" Style="{StaticResource StatLabel}"
+                                               Foreground="{StaticResource LimeInkBrush}" Opacity="0.65" />
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource Card}"
+                        Background="{StaticResource OrangeBrush}"
+                        BorderBrush="{StaticResource OrangeBrush}"
+                        Padding="22,20" Margin="0,0,14,12">
+                    <Grid TextElement.Foreground="{StaticResource OrangeInkBrush}">
+                        <Border Background="{StaticResource DotPatternBrush}" IsHitTestVisible="False"
+                                Width="130" Height="130" HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom" Margin="0,0,-14,-16" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="QUEUE" FontSize="10.5" FontWeight="SemiBold"
+                                       Opacity="0.62" TextWrapping="NoWrap" />
+                            <TextBlock Text="{Binding CompletedText}" Style="{StaticResource StatValue}"
+                                       FontSize="46" Margin="0,14,0,0"
+                                       Foreground="{StaticResource OrangeInkBrush}" />
+                            <TextBlock Text="Completed today" Style="{StaticResource StatLabel}"
+                                       Foreground="{StaticResource OrangeInkBrush}" Opacity="0.65" />
+                            <Border Height="1" Background="#33000000" Margin="0,14,0,10" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Failed" FontSize="11" Opacity="0.65" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding FailedText}" FontSize="14"
+                                           FontWeight="SemiBold" TextAlignment="Right" />
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource Card}" Padding="20,18"
+                        Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="SYSTEM" Style="{StaticResource StatLabel}" />
+                        <StackPanel Margin="0,14,0,0">
+                            <TextBlock Text="{Binding ApiHealthText, StringFormat=AI keys · {0}}"
+                                       FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding ClassroomText, StringFormat=Classroom · {0}}"
+                                       FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                       Margin="0,7,0,0" />
+                            <TextBlock Text="{Binding VersionText}" FontSize="10"
+                                       Foreground="{StaticResource TextMutedBrush}" Margin="0,4,0,0" />
+                        </StackPanel>
+                        <Border Height="1" Background="{StaticResource HairlineBrush}" Margin="0,12,0,8" />
+                        <WrapPanel>
+                            <Button Content="AI &amp; keys" Style="{StaticResource GhostButton}"
+                                    Command="{Binding OpenAiKeysCommand}" Padding="8,4" Height="28" />
+                            <Button Content="Job log" Style="{StaticResource GhostButton}"
+                                    Command="{Binding OpenJobsCommand}" Padding="8,4" Height="28"
+                                    Margin="0" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Grid Margin="0,4,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.9*" />
+                    <ColumnDefinition Width="1.1*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,14,12">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                            <StackPanel>
+                                <TextBlock Text="Recent jobs" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="The newest corrections and where they stopped."
+                                           Style="{StaticResource Muted}" FontSize="11.5"
+                                           Margin="0,2,0,0" />
+                            </StackPanel>
+                            <Button DockPanel.Dock="Right" Content="All jobs"
+                                    Style="{StaticResource GhostButton}"
+                                    Command="{Binding OpenJobsCommand}" Height="30" Padding="10,5"
+                                    VerticalAlignment="Top" />
+                        </DockPanel>
+                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Content="Cancel job" Command="{Binding CancelSelectedJobCommand}" />
+                            <Button Content="Retry job" Command="{Binding RetrySelectedJobCommand}" />
+                        </StackPanel>
+                        <DataGrid ItemsSource="{Binding RecentJobs}"
+                                  SelectedItem="{Binding SelectedJob}" Height="250">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Student" Binding="{Binding StudentName}" Width="160" />
+                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="120" />
+                                <DataGridTextColumn Header="Stage" Binding="{Binding StageText}" Width="*" />
+                                <DataGridTextColumn Header="Attempt" Binding="{Binding Attempts}" Width="70" />
+                                <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="130" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Needs attention" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding AttentionSummary}" Style="{StaticResource Muted}"
+                                           FontSize="11.5" Margin="0,2,0,0" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Style="{StaticResource WarningChip}"
+                                    Padding="9,3" VerticalAlignment="Top" HorizontalAlignment="Right">
+                                <TextBlock Text="{Binding AttentionItems.Count, StringFormat={}{0} open}"
+                                           FontSize="10.5" Foreground="{StaticResource OrangeTextBrush}" />
+                            </Border>
+                        </Grid>
+
+                        <ItemsControl Grid.Row="1" ItemsSource="{Binding AttentionItems}" Margin="0,10,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="{StaticResource HairlineBrush}"
+                                            BorderThickness="0,0,0,1" Padding="0,9">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}" FontSize="12.5"
+                                                       FontWeight="Medium" TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Detail}" FontSize="11"
+                                                       Foreground="{StaticResource TextMutedBrush}"
+                                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                       Margin="0,2,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Button Grid.Row="2" Content="Review queue"
+                                Style="{StaticResource PrimaryButton}"
+                                Command="{Binding OpenReviewCommand}" HorizontalAlignment="Left"
+                                Height="34" Padding="16,6" Margin="0,12,0,0" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

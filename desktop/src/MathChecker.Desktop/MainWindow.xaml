@@ -1,0 +1,229 @@
+<Window x:Class="MathChecker.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Math Checker" Height="860" Width="1360"
+        MinHeight="600" MinWidth="900"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource CanvasGradientBrush}"
+        TextOptions.TextFormattingMode="Ideal">
+    <Window.Resources>
+        <CollectionViewSource x:Key="NavSource" Source="{Binding Pages}">
+            <CollectionViewSource.GroupDescriptions>
+                <PropertyGroupDescription PropertyName="Group" />
+            </CollectionViewSource.GroupDescriptions>
+        </CollectionViewSource>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="252" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ============================================================
+             The rail: brand, grouped destinations, backend state.
+             ============================================================ -->
+        <Border Grid.Row="0" Grid.Column="0" Background="#100F0C"
+                BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="22,22,18,18">
+                    <Border Width="34" Height="34" CornerRadius="11"
+                            Background="{StaticResource LimeBrush}">
+                        <TextBlock Text="∑" FontFamily="{StaticResource DisplayFont}"
+                                   FontSize="20" FontWeight="Bold"
+                                   Foreground="{StaticResource LimeInkBrush}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Margin="11,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Math Checker" FontFamily="{StaticResource DisplayFont}"
+                                   FontSize="17" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextBrush}" TextWrapping="NoWrap" />
+                        <TextBlock Text="MARKING WORKSPACE" FontSize="9" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Margin="0,2,0,0" TextWrapping="NoWrap" />
+                    </StackPanel>
+                </StackPanel>
+
+                <Border DockPanel.Dock="Bottom" Margin="12,8,12,14" Padding="12,10"
+                        Background="{StaticResource SurfaceBrush}"
+                        BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1"
+                        CornerRadius="16">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding BackendAvailable}" Value="True">
+                                                <Setter Property="Fill" Value="{StaticResource LimeBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                            <TextBlock Text="{Binding BackendShort}" FontSize="10.5"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                       MaxWidth="198" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding AppVersion, StringFormat=Desktop {0}}"
+                                   FontSize="9.5" Foreground="{StaticResource TextMutedBrush}"
+                                   Margin="0,7,0,0" TextWrapping="NoWrap" />
+                    </StackPanel>
+                </Border>
+
+                <ListBox ItemsSource="{Binding Source={StaticResource NavSource}}"
+                         SelectedItem="{Binding Current, Mode=TwoWay}"
+                         Style="{StaticResource NavListBox}"
+                         ItemContainerStyle="{StaticResource NavItem}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         AutomationProperties.Name="Navigation">
+                    <ListBox.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" FontSize="10" FontWeight="SemiBold"
+                                               Typography.Capitals="AllSmallCaps"
+                                               Foreground="{StaticResource TextMutedBrush}"
+                                               Margin="22,15,0,5" TextWrapping="NoWrap" />
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListBox.GroupStyle>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <!-- ============================================================
+             Content column: floating header, honest status, page host.
+             ============================================================ -->
+        <Grid Grid.Row="0" Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="28,20,28,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border HorizontalAlignment="Left" Style="{StaticResource Chip}"
+                        Background="#171B11" Padding="12,7">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE707;" Style="{StaticResource IconGlyph}"
+                                   FontSize="12" Margin="0,0,8,0" />
+                        <TextBlock Text="{Binding DataFolder}" FontSize="10.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   MaxWidth="430" TextTrimming="CharacterEllipsis"
+                                   TextWrapping="NoWrap" VerticalAlignment="Center"
+                                   ToolTip="{Binding DataFolder}" />
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Border Style="{StaticResource Chip}" Padding="11,6" Margin="0,0,10,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding BackendAvailable}" Value="True">
+                                                <Setter Property="Fill" Value="{StaticResource LimeBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                            <TextBlock Text="{Binding BackendSummary}" FontSize="10.5"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       MaxWidth="210" TextTrimming="CharacterEllipsis"
+                                       TextWrapping="NoWrap" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <Button Style="{StaticResource IconButton}" Command="{Binding OpenDataFolderCommand}"
+                            ToolTip="Open the data folder" AutomationProperties.Name="Data folder">
+                        <TextBlock Text="&#xE8B7;" Style="{StaticResource IconGlyph}" FontSize="14" />
+                    </Button>
+                    <Button Style="{StaticResource IconButton}" Command="{Binding OpenLogsCommand}"
+                            ToolTip="Open the desktop log" AutomationProperties.Name="Open logs">
+                        <TextBlock Text="&#xE9D9;" Style="{StaticResource IconGlyph}" FontSize="14" />
+                    </Button>
+                    <Button Style="{StaticResource IconButton}" Command="{Binding RestartBackendCommand}"
+                            Margin="0" ToolTip="Restart the backend" AutomationProperties.Name="Restart backend">
+                        <TextBlock Text="&#xE72C;" Style="{StaticResource IconGlyph}" FontSize="14" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <StackPanel Grid.Row="1" Margin="28,10,28,0">
+                <!-- A backend failure is a first-class state, not a toast. -->
+                <Border Style="{StaticResource ErrorBanner}" Margin="0,0,0,8"
+                        Visibility="{Binding BackendUnavailable, Converter={StaticResource BoolToVis}}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="Retry" Style="{StaticResource PrimaryButton}"
+                                Command="{Binding RestartBackendCommand}" Height="32" Padding="14,5"
+                                Margin="12,0,0,0" />
+                        <StackPanel>
+                            <TextBlock Text="The correction backend is not available."
+                                       FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
+                            <TextBlock Text="{Binding BackendDetail}" Margin="0,3,0,0" FontSize="12"
+                                       Foreground="{StaticResource DangerTextBrush}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <Border Style="{StaticResource ErrorBanner}"
+                        Visibility="{Binding Current.HasError, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding Current.Error}" Style="{StaticResource ErrorText}" />
+                </Border>
+
+                <ProgressBar Height="3" IsIndeterminate="True" Margin="0,0,0,10" MaxWidth="280"
+                             HorizontalAlignment="Left"
+                             Visibility="{Binding Current.IsBusy, Converter={StaticResource BoolToVis}}" />
+
+                <Border Background="{StaticResource LimeSoftBrush}" BorderBrush="#4A5A18"
+                        BorderThickness="1" CornerRadius="10" Padding="12,7" Margin="0,0,0,8"
+                        Visibility="{Binding Toast, Converter={StaticResource NullToVisibility}}">
+                    <TextBlock Text="{Binding Toast}" FontSize="12"
+                               Foreground="{StaticResource LimeBrush}" />
+                </Border>
+            </StackPanel>
+
+            <ContentControl Grid.Row="2" Content="{Binding Current}" Margin="28,8,28,0"
+                            TextElement.Foreground="{StaticResource TextBrush}" />
+        </Grid>
+
+        <!-- ============================================================
+             Footer: the quiet facts, not a second header.
+             ============================================================ -->
+        <Border Grid.Row="1" Grid.ColumnSpan="2" Background="#0C0E09"
+                BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,1,0,0"
+                Padding="22,7">
+            <DockPanel LastChildFill="False">
+                <TextBlock DockPanel.Dock="Left" FontSize="10.5"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           Text="{Binding DataFolder, StringFormat=DATA  {0}}"
+                           TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                           MaxWidth="620" />
+                <TextBlock DockPanel.Dock="Right" FontSize="10.5"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           Text="{Binding AppVersion, StringFormat=Desktop {0}}"
+                           TextWrapping="NoWrap" />
+                <TextBlock DockPanel.Dock="Right" FontSize="10.5"
+                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,20,0"
+                           Text="{Binding Current.Status}" TextWrapping="NoWrap"
+                           MaxWidth="520" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,177 @@
+<UserControl x:Class="MathChecker.Desktop.Controls.PaperPaneView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header + zoom. Zoom is disabled while there is no paper to zoom. -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,10">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Ellipse Width="6" Height="6" Fill="{StaticResource LimeBrush}"
+                         Margin="0,0,8,0" VerticalAlignment="Center" />
+                <TextBlock DockPanel.Dock="Left" Text="{Binding HeaderText}" FontSize="11.5"
+                           FontWeight="Medium" Foreground="{StaticResource TextSecondaryBrush}"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           TextWrapping="NoWrap" MaxWidth="280"
+                           ToolTip="{Binding HeaderText}" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right"
+                        IsEnabled="{Binding IsAvailable}">
+                <Button Content="−" Command="{Binding ZoomOutCommand}" Style="{StaticResource IconButton}"
+                        Width="30" Height="30" Margin="0,0,4,0" ToolTip="Zoom out (Ctrl -)"
+                        AutomationProperties.Name="Zoom out" />
+                <TextBlock Text="{Binding ZoomText}" Width="48" TextAlignment="Center" FontSize="10.5"
+                           Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+                <Button Content="+" Command="{Binding ZoomInCommand}" Style="{StaticResource IconButton}"
+                        Width="30" Height="30" Margin="0,0,6,0" ToolTip="Zoom in (Ctrl +)"
+                        AutomationProperties.Name="Zoom in" />
+                <Button Content="Fit width" Command="{Binding FitWidthCommand}"
+                        Height="30" Padding="12,4" Margin="0"
+                        ToolTip="Fit the page to this pane (Ctrl 0)" />
+            </StackPanel>
+        </DockPanel>
+
+        <Border Grid.Row="1" Background="{StaticResource PaperSurroundBrush}"
+                BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1"
+                CornerRadius="14" ClipToBounds="True">
+            <Grid>
+                <ScrollViewer x:Name="PageScroll"
+                              Visibility="{Binding IsAvailable, Converter={StaticResource BoolToVis}}"
+                              Focusable="True" IsTabStop="True"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              PanningMode="Both"
+                              AutomationProperties.Name="Student's work page viewer">
+                    <Image Source="{Binding CurrentImage}" Width="{Binding DisplayWidth}"
+                           Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Top"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           AutomationProperties.Name="{Binding ImageAutomationName}" />
+                </ScrollViewer>
+
+                <!-- Page load: the previous page is covered, never shrunk. -->
+                <Border Background="{StaticResource PaperSurroundBrush}"
+                        Visibility="{Binding IsPageLoading, Converter={StaticResource BoolToVis}}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="Loading page…" Foreground="{StaticResource TextSecondaryBrush}"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Text="The paper stays in place while the next page arrives."
+                                   FontSize="10.5" Foreground="{StaticResource TextMutedBrush}"
+                                   Margin="0,4,0,0" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{StaticResource PaperSurroundBrush}"
+                        Visibility="{Binding IsChecking, Converter={StaticResource BoolToVis}}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="Checking the stored original…" Foreground="{StaticResource TextSecondaryBrush}"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Text="The marks are separate and will load independently."
+                                   Foreground="{StaticResource TextMutedBrush}" FontSize="10.5"
+                                   Margin="0,4,0,0" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+
+                <!-- The backend's authoritative reason, shown verbatim. -->
+                <Border Background="{StaticResource PaperSurroundBrush}" Padding="28"
+                        Visibility="{Binding IsMissing, Converter={StaticResource BoolToVis}}">
+                    <StackPanel MaxWidth="440" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="{Binding MissingTitle}" FontFamily="{StaticResource DisplayFont}"
+                                   FontSize="18" FontWeight="Medium"
+                                   TextAlignment="Center" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding MissingBody}" Margin="0,8,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextAlignment="Center" TextWrapping="Wrap" FontSize="12" />
+                        <Button Content="{Binding MissingActionLabel}"
+                                Command="{Binding MissingActionCommand}"
+                                HorizontalAlignment="Center" Margin="0,16,0,0" MinWidth="0"
+                                Padding="14,6"
+                                Visibility="{Binding HasMissingAction, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{StaticResource PaperSurroundBrush}" Padding="28"
+                        Visibility="{Binding IsFailed, Converter={StaticResource BoolToVis}}">
+                    <StackPanel MaxWidth="440" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="The paper could not be checked"
+                                   FontFamily="{StaticResource DisplayFont}" FontSize="18"
+                                   FontWeight="Medium" TextAlignment="Center" />
+                        <TextBlock Text="{Binding FailureMessage}" Margin="0,8,0,0"
+                                   Foreground="{StaticResource DangerTextBrush}"
+                                   TextAlignment="Center" TextWrapping="Wrap" FontSize="12" />
+                        <Button Content="Try again" Command="{Binding RetryCommand}"
+                                HorizontalAlignment="Center" Margin="0,16,0,0" MinWidth="0"
+                                Padding="14,6" />
+                    </StackPanel>
+                </Border>
+
+                <!-- One page failed, the rest of the paper is fine. -->
+                <Border Background="{StaticResource PaperSurroundBrush}" Padding="28"
+                        Visibility="{Binding IsPageFailed, Converter={StaticResource BoolToVis}}">
+                    <StackPanel MaxWidth="440" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="This page could not be shown"
+                                   FontFamily="{StaticResource DisplayFont}" FontSize="18"
+                                   FontWeight="Medium" TextAlignment="Center" />
+                        <TextBlock Text="{Binding PageError}" Margin="0,8,0,0"
+                                   Foreground="{StaticResource DangerTextBrush}"
+                                   TextAlignment="Center" TextWrapping="Wrap" FontSize="12" />
+                        <Button Content="Retry this page" Command="{Binding RetryPageCommand}"
+                                HorizontalAlignment="Center" Margin="0,16,0,0" MinWidth="0"
+                                Padding="14,6" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <DockPanel Grid.Row="2" Margin="0,10,0,0"
+                   Visibility="{Binding ShowPager, Converter={StaticResource BoolToVis}}">
+            <TextBlock DockPanel.Dock="Left" Text="{Binding PageLabel}"
+                       Foreground="{StaticResource TextMutedBrush}" FontSize="10.5"
+                       VerticalAlignment="Center" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="‹" Command="{Binding PreviousPageCommand}" Style="{StaticResource IconButton}"
+                        Width="30" Height="30" Margin="0,0,2,0"
+                        ToolTip="Previous page (PgUp)" AutomationProperties.Name="Previous page" />
+                <ItemsControl ItemsSource="{Binding PageChips}" VerticalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Content="{Binding Number}"
+                                    Command="{Binding DataContext.GoToPageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding Number}"
+                                    Width="30" Height="30" Padding="0" Margin="3,0,0,0">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+                                        <Setter Property="Width" Value="30" />
+                                        <Setter Property="Height" Value="30" />
+                                        <Setter Property="Padding" Value="0" />
+                                        <Setter Property="Margin" Value="3,0,0,0" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource LimeBrush}" />
+                                                <Setter Property="BorderBrush" Value="{StaticResource LimeBrush}" />
+                                                <Setter Property="Foreground" Value="{StaticResource LimeInkBrush}" />
+                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Content="›" Command="{Binding NextPageCommand}" Style="{StaticResource IconButton}"
+                        Width="30" Height="30" Margin="6,0,0,0"
+                        ToolTip="Next page (PgDn)" AutomationProperties.Name="Next page" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</UserControl>

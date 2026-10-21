@@ -1,0 +1,136 @@
+WINDOW  title='Math Checker' class=Window
+SIZE    1775x1102
+NAV ITEMS 26
+NAV NAMES Today | Search | New correction | Tasks | Job log | Batched jobs | Automatic | Queue | Scheme mismatches | Results | Reports | Bandwidth | Classroom | Classes | Students | Assignments | Settings | AI & keys | Storage | Privacy & data | Diagnostics | Prompts | Accuracy audit | Multi-school | Remote access | Updates
+PAGE  Today
+  VIEW    DashboardView
+  TEXT    Today | Updated 20:22:28 | Refresh | New correction | Review queue | Corrections today | 8 | Pending | 0 | Processing | Completed | Failed | System | AI keys: No Gemini API keys configured | Classroom: Not configured (no OAuth client) | v5.2.1 (build 20261013-rc1) ú DEMO data ú mock marking | Open AI & keys | Job log | Results | Needs attention | 2 items need attention | 1 student has not submitted - Demo - Quadratics Paper
+  BUTTONS Refresh | New correction | Review queue | Open AI & keys | Job log | Results | Cancel job | Retry job
+  ROWS    10
+PAGE  Search
+  VIEW    SearchView
+  TEXT    Search | Local database only - no Google request is made. | Type a student, class, assignment or result id. | Type | Name | Detail
+  BUTTONS Search
+  ROWS    0
+PAGE  New correction
+  VIEW    CorrectionView
+  TEXT    New correction | Uploads go to the existing correction engine through /api/corrections/unified. | Open job log | Routing | Documents up to 30 pages use the single-pass pipeline; longer documents are split into balanced batches and merged. The batched pipeline is currently enabled. The backend decides the route from the student PDF's real page count. | Method | The student PDF's page count decides: up to 30 pages uses the standard pipeline, more is split into balanced batches. | Files | Drag a PDF or image onto this panel, or use the buttons. Accepted: PDF, PNG, JPG, WEBP up to 200 MB. | Student work | Choose. | Mark scheme | Student name | Clear | Start correction | Most recent jobs | Student | Status | Stage | Created | Student A | COMPLETED
+  BUTTONS Open job log | Choose. | Clear | Start correction
+  ROWS    5
+PAGE  Tasks
+  VIEW    JobsView
+  TEXT    Tasks | Updates:  polling | Refresh | Cancel job | Retry job | Open result | Status | Worker pool | Running 0 of 0 requested (recommended 2) | Size | Resize | Student | Stage | Progress | Attempt | Created | Result | Student A | COMPLETED | 100% | 1 | 2026-10-21 18:29
+  BUTTONS Refresh | Cancel job | Retry job | Open result | Resize
+  ROWS    8
+PAGE  Job log
+  VIEW    JobsView
+  TEXT    Job log | Updates:  polling | Refresh | Cancel job | Retry job | Open result | Status | Student | Stage | Progress | Attempt | Created | Result | Student A | COMPLETED | 100% | 1 | 2026-10-21 18:29 | demo-result-1 | Student B | demo-result-2 | Student C
+  BUTTONS Refresh | Cancel job | Retry job | Open result
+  ROWS    8
+PAGE  Batched jobs
+  VIEW    LargePdfView
+  TEXT    Batched jobs | Batched pipeline enabled ú threshold 30 pages ú batches 24-28 pages ú concurrency 2 | Refresh | Process | Retry job | Retry a batch | Cancel | New batched job | Student work | Choose. | Mark scheme | Student name | Create and plan | Student | Status | Step | Pages | Batches | Attempts | Created | Error | #
+  BUTTONS Refresh | Process | Retry job | Retry a batch | Cancel | Choose. | Create and plan
+  ROWS    0
+PAGE  Automatic
+  VIEW    AutomationView
+  TEXT    Automatic | Automation OFF ú worker stopped ú interval 10 min ú last check never ú next - | pending 0 ú active 0 ú enabled assignments 0 ú total 0 ú completed 0 ú processing 0 ú waiting 0 ú failed 0 ú needs_attention 0 | Refresh | Worker on/off | Run now | Reconcile | Settings | Automation enabled | Review mode (wait for a teacher) | Draft grades only | Attach report | Submit grade | Return work | Interval (min) | Report detail | Save settings | Approve selected | Retry selected | Student | Status | Pipeline
+  BUTTONS Refresh | Worker on/off | Run now | Reconcile | Save settings | Approve selected | Retry selected | Clear log
+  ROWS    0
+PAGE  Queue
+  VIEW    ReviewView
+  TEXT    Queue | Nothing is waiting for review. | Refresh | Accept result | Override mark. | Open in Results | Reports | Student | Assignment | Score | Confidence | Reasons | Created | Accepting records a teacher decision that later automated runs cannot replace. Overriding stores the mark you enter, through the same backend endpoint the browser UI uses.
+  BUTTONS Refresh | Accept result | Override mark. | Open in Results | Reports
+  ROWS    0
+PAGE  Scheme mismatches
+  VIEW    SchemeReviewView
+  TEXT    Scheme mismatches | 0 discrepancies awaiting review ú 0 proposals awaiting approval | Refresh | Stage correction | Record decision. | Approve proposal | Reject proposal | Discrepancies | Id | Question | Status | Detail | Staged proposals | Title | A staged proposal changes nothing until it is explicitly approved. The backend records every decision.
+  BUTTONS Refresh | Stage correction | Record decision. | Approve proposal | Reject proposal
+  ROWS    0
+PAGE  Results
+  VIEW    ResultsView
+  TEXT    Results | 8 corrections stored ú showing 8 | Refresh | Export PDF | CSV | Markdown | Search | Apply | Status | Student | Assignment | Score | % | Created | Student A | Demo - Algebra Homework | 16 / 20 | 80% | Corrected | 2026-10-21 18:31 | Student B | 18 / 20
+  BUTTONS Refresh | Export PDF | CSV | Markdown | Apply | Re-mark with AI | Use new attempt | Restore attempt | Override mark. | Set question mark.
+  ROWS    8
+PAGE  Reports
+  VIEW    ReportsView
+  TEXT    Reports | Report | Class | Assignment | Build report | Export PDF | Export CSV | Student | Status | Score | Percentage | Note | The backend's exact payload is kept below for verification. | Raw report payload
+  BUTTONS Build report | Export PDF | Export CSV | Raw report payload
+  ROWS    0
+PAGE  Bandwidth
+  VIEW    UsageView
+  TEXT    Bandwidth | Refresh | This hour: 0 MB | Today: 0 MB | Hourly limit: 500 MB | Daily limit: 2000 MB | 500 MB this hour ú 2000 MB today | AI provider traffic | 0 requests ú 0 ok ú 0 failed ú 0 retries ú 0 failovers | Hourly history | Hour | Up (bytes) | Down (bytes) | Total (MB) | 10-20 21:00 | 0 | 10-20 22:00 | 10-20 23:00 | 10-21 00:00 | 10-21 01:00 | 10-21 02:00 | 10-21 03:00
+  BUTTONS Refresh
+  ROWS    14
+PAGE  Classroom
+  VIEW    ClassroomView
+  TEXT    Classroom | OAuth client not configured | OAuth client JSON missing - copy the Google client secret to data/secrets/google_oauth_client.json. | Last sync: never | Refresh | Connect | Disconnect | Sync now | Open Classroom | Course | Assignment | Correct selected submission | Correct whole assignment | Allow-list assignment | Upload mark scheme. | Push draft grades | Student | State | Grade | Submission id | Last backend response
+  BUTTONS Refresh | Connect | Disconnect | Sync now | Open Classroom | Correct selected submission | Correct whole assignment | Allow-list assignment | Upload mark scheme. | Push draft grades
+  ROWS    0
+PAGE  Classes
+  VIEW    ClassesView
+  TEXT    Classes | 2 classes ú 7 students | Refresh | Open students | Open assignments | Export class report | Class | Students | Assignments | Submitted | Missing | Checked | Review | Average | Last sync | Demo - Year 10 Mathematics - 10A | 4 | 2 | 5 | 0 | 78% | 2026-10-21 19:29
+  BUTTONS Refresh | Open students | Open assignments | Export class report
+  ROWS    2
+PAGE  Students
+  VIEW    StudentsView
+  TEXT    Students | Search | Class | Refresh | Edit details | Open report | Results | Name | Email | Submitted | Corrections | Total | Pending | Student A | Demo - Year 10 Mathematics - 10A | student.a@demo.invalid | 3 | 56 / 65 (86.2%) | 0 | Student B | student.b@demo.invalid | 2
+  BUTTONS Refresh | Edit details | Open report | Results
+  ROWS    5
+PAGE  Assignments
+  VIEW    AssignmentsView
+  TEXT    Assignments | Search | Kind | 3 assignments ú 0 with a mark scheme | Refresh | Recheck mark scheme | Open first page image | Assignment | Class | Students | Checked | Review | Average | Scheme | Due | Demo - Algebra Homework | Demo - Year 10 Mathematics - 10A | External | 4 | 3 | 0 | 76.7%
+  BUTTONS Refresh | Recheck mark scheme | Open first page image | Create
+  ROWS    3
+PAGE  Settings
+  VIEW    SettingsView
+  TEXT    Settings | Refresh | Save settings | Teacher and report branding | Teacher name | School | Report centre | Title | Academic year | Document label | Workers and limits | Workers | Max retries | Keep originals (days) | Hourly MB | Daily MB | 0 means unlimited. | Behaviour | Mock marking (no AI calls; results are marked as mock) | Debug logging | Google Classroom enabled | Write draft grades back to Classroom
+  BUTTONS Refresh | Save settings
+  ROWS    0
+PAGE  AI & keys
+  VIEW    AiKeysView
+  TEXT    AI & keys | 0 keys ú 0 healthy ú 0 cooling ú 0 invalid ú 0 disabled | Refresh | Test selected | Test all | Disable | Re-enable | Remove | Add keys | One key per line. Keys are sent to the backend, tested against the real API and stored in its secret store - the desktop app never keeps a copy. | Submit keys | Worker pool | Running 0 of 0 requested (recommended 2) | Resize | Label | Fingerprint | Status | Cooldown | Error | Message | Backend response
+  BUTTONS Refresh | Test selected | Test all | Disable | Re-enable | Remove | Submit keys | Resize
+  ROWS    0
+PAGE  Storage
+  VIEW    JsonPageView
+  TEXT    Storage | What is stored, its size, and the versioned student/result export. Secrets are never included. | Refresh | Copy | Export student/result package | Preview an import | Import (add new records only) | Open the data folder | Inventory | GET /api/data/inventory
+  BUTTONS Refresh | Copy | Export student/result package | Preview an import | Import (add new records only) | Open the data folder
+  ROWS    5
+PAGE  Privacy & data
+  VIEW    JsonPageView
+  TEXT    Privacy & data | Where the data lives, and the reset/export controls the backend exposes. | Refresh | Copy | Download diagnostics bundle | Factory reset (removes local data) | Privacy | GET /api/privacy/info
+  BUTTONS Refresh | Copy | Download diagnostics bundle | Factory reset (removes local data)
+  ROWS    3
+PAGE  Diagnostics
+  VIEW    JsonPageView
+  TEXT    Diagnostics | Developer-only endpoints. A 403 here means the signed-in role is not a developer. | Refresh | Copy | Clear backend logs | GET /api/diagnostics | Logs | GET /api/diagnostics/logs | Database | GET /api/diagnostics/db | Self check | GET /api/diagnostics/selfcheck
+  BUTTONS Refresh | Copy | Clear backend logs
+  ROWS    5
+PAGE  Prompts
+  VIEW    PromptsView
+  TEXT    Prompts | Refresh | Save overrides | Restore built-in | System prompt override | User prompt override
+  BUTTONS Refresh | Save overrides | Restore built-in
+  ROWS    0
+PAGE  Accuracy audit
+  VIEW    JsonPageView
+  TEXT    Accuracy audit | Read-only audit of recorded corrections. Nothing here changes a result. | Refresh | Copy | Audit summary | GET /api/audit/summary | Audit reports | GET /api/audit/reports
+  BUTTONS Refresh | Copy
+  ROWS    2
+PAGE  Multi-school
+  VIEW    JsonPageView
+  TEXT    Multi-school | The distributed layer: accounts, schools, devices, teams and workers. | Refresh | Copy | Capabilities | GET /api/distributed/capabilities | Schools | GET /api/distributed/schools | Accounts | GET /api/distributed/accounts | Teams | GET /api/distributed/teams | Devices | GET /api/distributed/devices | Workers | GET /api/distributed/workers
+  BUTTONS Refresh | Copy
+  ROWS    6
+PAGE  Remote access
+  VIEW    JsonPageView
+  TEXT    Remote access | Whether this desk is reachable from outside the machine, and the address the backend publishes. | Refresh | Copy | Enable public address | Disable public address | Remote status | GET /api/remote/status | Access state | GET /api/access/state | Public address | GET /api/access/public-address
+  BUTTONS Refresh | Copy | Enable public address | Disable public address
+  ROWS    5
+PAGE  Updates
+  VIEW    JsonPageView
+  TEXT    Updates | Release records and installations from the distributed layer (developer view). | Refresh | Copy | Overview | GET /api/distributed/releases/overview | Releases | GET /api/distributed/releases
+  BUTTONS Refresh | Copy
+  ROWS    2
+SEARCH  Search | Local database only - no Google request is made. | 12 matches | Type | Name | Detail | Students | Student A | student.a@demo.invalid ú 3 assignments | Student B | student.b@demo.invalid ú 3 assignments | Student C
+CLOSED  process-alive=False

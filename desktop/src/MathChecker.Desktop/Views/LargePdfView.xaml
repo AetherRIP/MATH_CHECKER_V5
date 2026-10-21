@@ -1,0 +1,82 @@
+<UserControl x:Class="MathChecker.Desktop.Views.LargePdfView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="2*" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0">
+            <StackPanel DockPanel.Dock="Left">
+                <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" />
+                <TextBlock Text="{Binding ConfigText}" Style="{StaticResource Muted}" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top"
+                        HorizontalAlignment="Right">
+                <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                <Button Content="Process" Command="{Binding ProcessCommand}" />
+                <Button Content="Retry job" Command="{Binding RetryCommand}" />
+                <Button Content="Retry a batch" Command="{Binding RetryBatchCommand}" />
+                <Button Content="Cancel" Command="{Binding CancelCommand}" />
+            </StackPanel>
+        </DockPanel>
+
+        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,8,0,0">
+            <StackPanel>
+                <TextBlock Text="New batched job" Style="{StaticResource SectionTitle}" Margin="0,0,0,2" />
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <TextBlock Text="Student work" Width="100" Style="{StaticResource FieldLabel}" />
+                    <Button Content="Choose…" Command="{Binding PickSubmissionCommand}" />
+                    <TextBox Width="360" Text="{Binding SubmissionLabel, Mode=OneWay}" IsReadOnly="True" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <TextBlock Text="Mark scheme" Width="100" Style="{StaticResource FieldLabel}" />
+                    <Button Content="Choose…" Command="{Binding PickMarkSchemeCommand}" />
+                    <TextBox Width="360" Text="{Binding MarkSchemeLabel, Mode=OneWay}" IsReadOnly="True" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Student name" Style="{StaticResource FieldLabel}" />
+                    <TextBox Width="220" Text="{Binding StudentName, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Content="Create and plan" Command="{Binding CreateCommand}" />
+                    <TextBlock Text="{Binding ProgressText}" Style="{StaticResource Muted}"
+                               VerticalAlignment="Center" MaxWidth="420" />
+                </StackPanel>
+                <ProgressBar Height="8" Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}" Margin="0,6,0,0" />
+            </StackPanel>
+        </Border>
+
+        <DataGrid Grid.Row="2" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" Margin="0,8,0,0">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Student" Binding="{Binding Name}" Width="160" />
+                <DataGridTextColumn Header="Status" Binding="{Binding StatusLabel}" Width="140" />
+                <DataGridTextColumn Header="Step" Binding="{Binding StepDetail}" Width="*" />
+                <DataGridTextColumn Header="Pages" Binding="{Binding PageCount}" Width="70" />
+                <DataGridTextColumn Header="Batches" Binding="{Binding BatchCount}" Width="70" />
+                <DataGridTextColumn Header="Attempts" Binding="{Binding Attempts}" Width="70" />
+                <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="140" />
+                <DataGridTextColumn Header="Error" Binding="{Binding Error}" Width="200" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Batches" Style="{StaticResource SectionTitle}"
+                           Margin="0,0,0,2" />
+                <DataGrid ItemsSource="{Binding Batches}" Height="150">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="#" Binding="{Binding BatchNumber}" Width="50" />
+                        <DataGridTextColumn Header="Pages" Binding="{Binding PagesText}" Width="110" />
+                        <DataGridTextColumn Header="Status" Binding="{Binding StatusLabel}" Width="140" />
+                        <DataGridTextColumn Header="Questions" Binding="{Binding ValidatedQuestions}" Width="100" />
+                        <DataGridTextColumn Header="Missing" Binding="{Binding MissingText}" Width="*" />
+                        <DataGridTextColumn Header="Attempts" Binding="{Binding Attempts}" Width="80" />
+                        <DataGridTextColumn Header="Error" Binding="{Binding Error}" Width="200" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

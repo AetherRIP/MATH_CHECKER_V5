@@ -1,0 +1,52 @@
+<UserControl x:Class="MathChecker.Desktop.Views.StudentsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="{Binding Title}" Style="{StaticResource PageTitle}" />
+
+        <DockPanel Grid.Row="1" Margin="0,4,0,4">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                <TextBlock Text="Search" Style="{StaticResource FieldLabel}" />
+                <TextBox Width="220" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock Text="Class" Style="{StaticResource FieldLabel}" />
+                <ComboBox Width="220" ItemsSource="{Binding ClassFilters}" SelectedItem="{Binding ClassFilter}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                <Button Content="Edit details" Command="{Binding EditDetailsCommand}" />
+                <Button Content="Open report" Command="{Binding OpenReportCommand}" />
+                <Button Content="Results" Command="{Binding OpenResultsCommand}" />
+            </StackPanel>
+        </DockPanel>
+
+        <DataGrid Grid.Row="2" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="200" />
+                <DataGridTextColumn Header="Class" Binding="{Binding ClassLabel}" Width="220" />
+                <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="*" />
+                <DataGridTextColumn Header="Submitted" Binding="{Binding Submitted}" Width="90" />
+                <DataGridTextColumn Header="Corrections" Binding="{Binding Corrections}" Width="100" />
+                <DataGridTextColumn Header="Total" Binding="{Binding TotalText}" Width="150" />
+                <DataGridTextColumn Header="Pending" Binding="{Binding Pending}" Width="80" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- The profile payload only earns space once a student is chosen. -->
+        <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0"
+                Visibility="{Binding Selected, Converter={StaticResource NullToVisibility}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="{Binding Summary}" Style="{StaticResource Muted}"
+                           Margin="0,0,0,4" />
+                <TextBox Style="{StaticResource JsonBox}" Text="{Binding ProfileText, Mode=OneWay}"
+                         MinHeight="120" MaxHeight="220" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

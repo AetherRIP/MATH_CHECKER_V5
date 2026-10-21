@@ -51,6 +51,16 @@ MathChecker_Distribution/portable/
 MathChecker_Distribution/release_staging/
 MathChecker_Distribution/previous_builds/
 
+# --- .NET / WPF desktop client ------------------------------------------------
+# Build output and the ~300 MB staged release (client + backend + Python runtime)
+# are reproducible with desktop\build_release.ps1 and must never be committed.
+desktop/**/bin/
+desktop/**/obj/
+desktop/artifacts/
+.vs/
+*.user
+*.suo
+
 # --- Logs and temp ------------------------------------------------------------
 logs/
 *.log

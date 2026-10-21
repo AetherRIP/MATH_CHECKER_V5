@@ -1,0 +1,75 @@
+<UserControl x:Class="MathChecker.Desktop.Views.AutomationView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="140" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0">
+            <StackPanel DockPanel.Dock="Left">
+                <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" />
+                <TextBlock Text="{Binding WorkerText}" Style="{StaticResource Muted}" />
+                <TextBlock Text="{Binding CountsText}" Style="{StaticResource Muted}" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top"
+                        HorizontalAlignment="Right">
+                <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                <Button Content="Worker on/off" Command="{Binding ToggleWorkerCommand}" />
+                <Button Content="Run now" Command="{Binding RunNowCommand}" />
+                <Button Content="Reconcile" Command="{Binding ReconcileCommand}" />
+            </StackPanel>
+        </DockPanel>
+
+        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,8,0,0">
+            <StackPanel>
+                <TextBlock Text="Settings" Style="{StaticResource SectionTitle}" Margin="0,0,0,4" />
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <CheckBox Content="Automation enabled" IsChecked="{Binding Enabled}" />
+                    <CheckBox Content="Review mode (wait for a teacher)" IsChecked="{Binding ReviewMode}" />
+                    <CheckBox Content="Draft grades only" IsChecked="{Binding DraftOnly}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <CheckBox Content="Attach report" IsChecked="{Binding AttachReport}" />
+                    <CheckBox Content="Submit grade" IsChecked="{Binding SubmitGrade}" />
+                    <CheckBox Content="Return work" IsChecked="{Binding ReturnWork}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Interval (min)" Style="{StaticResource FieldLabel}" />
+                    <ComboBox Width="80" ItemsSource="{Binding Intervals}" SelectedItem="{Binding IntervalMinutes}" />
+                    <TextBlock Text="Report detail" Style="{StaticResource FieldLabel}" Margin="10,0,4,0" />
+                    <ComboBox Width="120" ItemsSource="{Binding ReportDetails}" SelectedItem="{Binding ReportDetail}" />
+                    <Button Content="Save settings" Command="{Binding SaveSettingsCommand}" />
+                    <Button Content="Approve selected" Command="{Binding ApproveCommand}" />
+                    <Button Content="Retry selected" Command="{Binding RetryCommand}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <DataGrid Grid.Row="2" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" Margin="0,8,0,0">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Student" Binding="{Binding Name}" Width="160" />
+                <DataGridTextColumn Header="Status" Binding="{Binding StatusLabel}" Width="150" />
+                <DataGridTextColumn Header="Pipeline" Binding="{Binding PipelineLabel}" Width="200" />
+                <DataGridTextColumn Header="Stage" Binding="{Binding StageIndex}" Width="70" />
+                <DataGridTextColumn Header="Grade" Binding="{Binding Grade}" Width="70" />
+                <DataGridTextColumn Header="Retry from" Binding="{Binding RetryFrom}" Width="140" />
+                <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="140" />
+                <DataGridTextColumn Header="Error" Binding="{Binding Error}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+                    <TextBlock Text="Automation log" Style="{StaticResource SectionTitle}" Margin="0,0,12,0" />
+                    <Button Content="Clear log" Command="{Binding ClearLogCommand}" />
+                </StackPanel>
+                <TextBox Style="{StaticResource JsonBox}" Text="{Binding LogText, Mode=OneWay}" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,43 @@
+<UserControl x:Class="MathChecker.Desktop.Views.ReviewView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0">
+            <StackPanel DockPanel.Dock="Left">
+                <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" />
+                <TextBlock Text="{Binding Summary}" Style="{StaticResource Muted}" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top"
+                        HorizontalAlignment="Right">
+                <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                <Button Content="Accept result" Command="{Binding AcceptCommand}" />
+                <Button Content="Override mark…" Command="{Binding OverrideCommand}" />
+                <Button Content="Open in Results" Command="{Binding OpenResultCommand}" />
+                <Button Content="Reports" Command="{Binding OpenReportsCommand}" />
+            </StackPanel>
+        </DockPanel>
+
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}"
+                  Margin="0,10,0,0">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Student" Binding="{Binding StudentName}" Width="180" />
+                <DataGridTextColumn Header="Assignment" Binding="{Binding AssignmentTitle}" Width="*" />
+                <DataGridTextColumn Header="Score" Binding="{Binding ScoreText}" Width="100" />
+                <DataGridTextColumn Header="Confidence" Binding="{Binding Confidence}" Width="140" />
+                <DataGridTextColumn Header="Reasons" Binding="{Binding ReasonsText}" Width="240" />
+                <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="140" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,10,0,0">
+            <TextBlock Style="{StaticResource Muted}"
+                       Text="Accepting records a teacher decision that later automated runs cannot replace. Overriding stores the mark you enter, through the same backend endpoint the browser UI uses." />
+        </Border>
+    </Grid>
+</UserControl>

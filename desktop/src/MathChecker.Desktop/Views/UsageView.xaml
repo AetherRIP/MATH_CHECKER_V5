@@ -1,0 +1,40 @@
+<UserControl x:Class="MathChecker.Desktop.Views.UsageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <DockPanel>
+            <TextBlock DockPanel.Dock="Left" Text="{Binding Title}" Style="{StaticResource PageTitle}" />
+            <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshCommand}"
+                    HorizontalAlignment="Right" VerticalAlignment="Top" />
+        </DockPanel>
+
+        <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+            <StackPanel>
+                <TextBlock Text="{Binding HourText, StringFormat=This hour: {0}}" />
+                <TextBlock Text="{Binding DayText, StringFormat=Today: {0}}" />
+                <TextBlock Text="{Binding HourlyLimitText, StringFormat=Hourly limit: {0}}" />
+                <TextBlock Text="{Binding DailyLimitText, StringFormat=Daily limit: {0}}" />
+                <TextBlock Text="{Binding RemainingText}" Style="{StaticResource Muted}" />
+                <TextBlock Text="{Binding LimitWarning}" Style="{StaticResource WarningText}"
+                           Margin="0,4,0,0" />
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Text="AI provider traffic" Style="{StaticResource SectionTitle}" Margin="0,0,0,2" />
+                <TextBlock Text="{Binding ApiText}" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="Hourly history" Style="{StaticResource SectionTitle}" />
+        <DataGrid ItemsSource="{Binding History}" Height="360">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Hour" Binding="{Binding BucketText}" Width="160" />
+                <DataGridTextColumn Header="Up (bytes)" Binding="{Binding Up}" Width="120" />
+                <DataGridTextColumn Header="Down (bytes)" Binding="{Binding Down}" Width="130" />
+                <DataGridTextColumn Header="Total (MB)" Binding="{Binding Megabytes, StringFormat={}{0:0.###}}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </StackPanel>
+</UserControl>

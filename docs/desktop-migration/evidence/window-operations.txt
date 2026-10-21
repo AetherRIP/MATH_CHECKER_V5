@@ -1,0 +1,9 @@
+STATE   Normal
+SIZE    1125x760
+MAXIMIZED Maximized 1938x1098
+MINIMIZED Minimized
+RESTORED  Normal
+RESIZED   1125x760 -> 1600x900
+RESIZE OK
+MIN CLAMP 1125x750 (physical pixels)
+CLOSED    process-alive=False
