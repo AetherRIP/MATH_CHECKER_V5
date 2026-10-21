@@ -1,0 +1,16 @@
+=== application source changed? (expect 0 files) ===
+0
+=== tracked modifications, application paths (expect empty) ===
+=== all tracked modifications ===
+ .gitignore                | 12 ++++++++++++
+ docs/ARCHITECTURE.md      |  4 ++--
+ docs/PROJECT_STRUCTURE.md |  6 +++---
+ 3 files changed, 17 insertions(+), 5 deletions(-)
+=== deletions by top-level path ===
+   3832 MathChecker_Distribution/portable
+   3829 MathChecker_Distribution/release_staging
+   3827 MathChecker_Distribution/previous_builds
+=== code references to removed paths ===
+(none outside the new size tooling)
+=== pip check ===
+No broken requirements found.

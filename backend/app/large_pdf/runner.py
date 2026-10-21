@@ -48,8 +48,8 @@ from ..engine.verify import verify_result
 from ..logging_setup import log_event
 from . import planner, prompt as large_prompt, states, store
 from .validate import (
-    batch_coverage, merge_batches, score_breakdown, scheme_total_marks,
-    totals_for, validate_batch,
+    as_mark, batch_coverage, coverage_inventory, merge_batches, score_breakdown,
+    scheme_total_marks, totals_for, validate_batch,
 )
 
 log = logging.getLogger("large_pdf.runner")
@@ -193,6 +193,9 @@ class LargePdfRunner:
         self._recovery_engine = recovery_engine or default_recovery_engine
         self._lock = threading.RLock()
         self._batch_paths: dict[str, dict[int, str]] = {}
+        #: (path, mtime, purpose) -> optimized or original path. A cheap memo
+        #: so per-batch/per-chunk calls do not re-hash the same source.
+        self._pdf_memo: dict[tuple[str, float, str], str] = {}
 
     # -- enqueue (idempotent) ------------------------------------------------
 
@@ -257,6 +260,37 @@ class LargePdfRunner:
 
     # -- inspection + planning ----------------------------------------------
 
+    def _processing_pdf(self, job: dict, purpose: str = "submission") -> str:
+        """The verified optimized copy to SEND TO THE MODEL, or the original.
+
+        The source file recorded on the job row is never replaced: it is what
+        the student actually submitted, and retention keeps it. The cache key
+        is the content hash, so re-preparing, retrying a batch, or marking a
+        second student with the same scheme reuses one artifact instead of
+        compressing again.
+        """
+        source = (job.get("student_pdf_path") if purpose == "submission"
+                  else job.get("mark_scheme_path"))
+        if not source:
+            return ""
+        try:
+            stamp = Path(source).stat().st_mtime
+        except OSError:
+            return source
+        memo_key = (source, stamp, purpose)
+        known = self._pdf_memo.get(memo_key)
+        if known and Path(known).is_file():
+            return known
+        try:
+            from ..engine.pdf_optimize import optimize_pdf
+            role = "submission" if purpose == "submission" else "mark_scheme"
+            chosen = optimize_pdf(source, role=role, job_id=job.get("id")).path
+        except Exception:  # noqa: BLE001 — optimization must never block work
+            log.exception("pdf optimization skipped for %s", job.get("id"))
+            chosen = source
+        self._pdf_memo[memo_key] = chosen
+        return chosen
+
     def prepare(self, job_id: str) -> dict:
         """Inspect the document and persist the complete plan (no marking)."""
         job = store.get_job(job_id)
@@ -268,8 +302,15 @@ class LargePdfRunner:
             # the batches, so the saved plan is authoritative.
             return job
         store.set_status(job_id, states.INSPECTING, detail="Preparing document")
-        prepared = planner.prepare(job["student_pdf_path"],
-                                   job["mark_scheme_path"])
+        inspect_started = time.monotonic()
+        prepared = planner.prepare(self._processing_pdf(job, "submission"),
+                                   self._processing_pdf(job, "scheme"))
+        # Local PDF work is cheap (measured: ~0.1 s for 50 + 30 pages on a text
+        # PDF); recording it separately from the AI time is what makes a slow
+        # run diagnosable instead of guesswork.
+        log_event("large_pdf", "inspection finished", job_id=job_id,
+                  elapsed_ms=int((time.monotonic() - inspect_started) * 1000),
+                  pages=prepared.page_count)
         if prepared.blocked:
             store.set_status(job_id, states.FAILED, detail="Inspection failed",
                              error=prepared.block_reason,
@@ -363,7 +404,8 @@ class LargePdfRunner:
             (max(1, b["page_start"] - (b["context_before"] or 0)),
              b["page_end"] + (b["context_after"] or 0))
             for b in batches]
-        paths = split_pdf(job["student_pdf_path"], read_ranges, out_dir,
+        paths = split_pdf(self._processing_pdf(job, "submission"),
+                          read_ranges, out_dir,
                           prefix=f"job{job['id'][:8]}")
         mapping = {b["batch_index"]: path for b, path in zip(batches, paths)}
         self._batch_paths[job["id"]] = mapping
@@ -393,18 +435,29 @@ class LargePdfRunner:
         # No mark is ever invented — both attempts are the marker's own work.
         best: tuple[int, dict, dict] | None = None
         attempts_ran = 0
+        # A provider that answers a batch with the SAME truncated rows twice is
+        # not going to answer differently on a third identical request. Real
+        # live run: three attempts of the same 25-page batch each returned the
+        # same 6-mark stub, costing ~3 minutes and changing nothing.
+        seen_stubs: set[tuple] = set()
         while True:
             attempts_ran += 1
+            started = time.monotonic()
             try:
                 outcome = self.engine(
                     batch_pdf=batch["_batch_pdf"],
-                    mark_scheme_pdf=job["mark_scheme_path"],
+                    mark_scheme_pdf=self._processing_pdf(job, "scheme"),
                     job=job, batch=batch)
             except Exception as exc:  # noqa: BLE001 — never lose the batch
                 from ..errors import classify_gemini_error
                 outcome = BatchOutcome(
                     ok=False, error=str(exc)[:800],
                     error_kind=classify_gemini_error(exc).get("kind", "unknown"))
+            log_event("large_pdf", "batch attempt finished",
+                      job_id=job["id"], batch_index=batch["batch_index"],
+                      attempt=attempts_ran, ok=outcome.ok,
+                      elapsed_ms=int((time.monotonic() - started) * 1000),
+                      error_kind=outcome.error_kind)
 
             if outcome.ok and outcome.result is not None:
                 coverage = batch_coverage(
@@ -424,13 +477,31 @@ class LargePdfRunner:
                     # never answered became UNMARKED questions counted as 0.
                     # Re-mark the SAME batch within the existing bounded retry
                     # budget, then keep whichever attempt covered more.
+                    # A malformed row must not crash the retry decision: an
+                    # unreadable mark is fingerprinted as -1 so it never looks
+                    # identical to a real one.
+                    fingerprint = tuple(sorted(
+                        (str(q.get("question_number") or ""),
+                         as_mark(q.get("awarded_marks")) if
+                         as_mark(q.get("awarded_marks")) is not None else -1,
+                         as_mark(q.get("max_marks")) if
+                         as_mark(q.get("max_marks")) is not None else -1)
+                        for q in outcome.result.get("questions") or []
+                        if isinstance(q, dict)))
+                    repeated = fingerprint in seen_stubs
+                    seen_stubs.add(fingerprint)
                     log_event("large_pdf", "incomplete batch response",
                               job_id=job["id"],
                               batch_index=batch["batch_index"],
-                              coverage=coverage,
+                              coverage=coverage, repeated=repeated,
                               attempts=batch["attempts"] or 1)
                     attempts_used = int(batch["attempts"] or 1)
-                    if attempts_used <= cfg.max_retries:
+                    if repeated:
+                        # Identical incomplete answer: another request cannot
+                        # add information, so keep the best attempt and stop
+                        # spending minutes on it.
+                        pass
+                    elif attempts_used <= cfg.max_retries:
                         store.fail_batch(
                             job["id"], batch["batch_index"],
                             error="The marker returned an incomplete result "
@@ -631,11 +702,12 @@ class LargePdfRunner:
                     job, purpose="mark_scheme", client=client)
                 try:
                     for chunk in plan.chunks:
+                        chunk_started = time.monotonic()
                         outcome = self._recovery_engine(
                             client=client, chunk=chunk.questions,
                             student_remote=[student_remote],
                             scheme_remote=scheme_remote,
-                            mark_scheme_path=job["mark_scheme_path"],
+                            mark_scheme_path=self._processing_pdf(job, "scheme"),
                             context_note=(f"Chunk {chunk.index + 1} of "
                                           f"{len(plan.chunks)}"))
                         attempts_used += 1
@@ -654,6 +726,8 @@ class LargePdfRunner:
                                   job_id=job_id, chunk=chunk.index,
                                   questions=chunk.questions,
                                   recovered=sorted(outcome.recovered),
+                                  elapsed_ms=int((time.monotonic()
+                                                  - chunk_started) * 1000),
                                   error=outcome.error)
                         # Persist AFTER EACH chunk: a crash or a repeated call
                         # can never re-spend a request that already ran.
@@ -673,6 +747,11 @@ class LargePdfRunner:
                                  if q not in recovered_rows]
                         if not still:
                             break            # nothing left to recover
+                        # NOTE: an empty chunk is NOT a reason to stop. On the
+                        # live 50-page run, chunks 1-2 recovered nothing but
+                        # chunks 3 and 6 recovered four questions, so stopping
+                        # early would have thrown away real marks to save time.
+                        # The budget (max_chunks) is the only bound.
                 finally:
                     for remote in (student_remote, scheme_remote):
                         try:
@@ -769,10 +848,15 @@ class LargePdfRunner:
                     continue
                 q["review_reason"] = unresolved_note
                 q["retry_outcome"] = dict(retry_outcome)
+        # The label is applied to every evidence-backed blank, including rows
+        # reconciliation already marked VALID: a genuinely unanswered question
+        # is a settled 0, and the coverage record must count it as ``unanswered``
+        # rather than as generic marked work. ``confirmed_zero_status`` refuses
+        # to label an unresolved row, so no gap is ever laundered into a 0.
         zero_rows = 0
         for q in result.get("questions") or []:
             if confirmed_zero_status(q) == "CONFIRMED_ZERO" and \
-                    not q.get("status"):
+                    q.get("status") != "CONFIRMED_ZERO":
                 q["status"] = "CONFIRMED_ZERO"
                 zero_rows += 1
         if zero_rows:
@@ -798,31 +882,54 @@ class LargePdfRunner:
                       unresolved_marks=breakdown["unresolved_marks"])
         earned = breakdown["earned"]
         available = breakdown["available"]
-        percentage = breakdown["percentage"]
+        # A PARTIAL correction must never look like a score. Reporting
+        # earned/available over the marked subset alone (the 22/22 that started
+        # this audit: 22 marks from the 7 rows that survived out of 67
+        # questions / 255 marks) reads to a teacher as full marks. So a partial
+        # keeps the marked-only fraction in ``marked_percentage`` (used only as
+        # "of the questions marked"), carries no provisional grade, and its
+        # ``percentage`` is the share of the PAPER those marked questions
+        # earned. Only a complete, validated paper gets a percentage + band that
+        # can be read as a result.
+        partial = bool(breakdown["partial"])
+        percentage = (breakdown["paper_percentage"] if partial
+                      else breakdown["percentage"])
+        provisional = (None if partial
+                       else legacy.percentage_band_grade(percentage))
+        coverage = coverage_inventory(result, blueprint_report)
         verification = dict(verification)
         verification.update({
             "earned": earned,
             "available": available,
             "percentage": round(percentage, 2),
-            "provisional_grade": legacy.percentage_band_grade(percentage),
+            "marked_percentage": round(breakdown["marked_percentage"], 2),
+            "provisional_grade": provisional,
+            "partial": partial,
             "score_basis": breakdown["score_basis"],
             "paper_total_marks": breakdown["paper_available"],
             "unresolved_questions": breakdown["unresolved_questions"],
             "unresolved_count": breakdown["unresolved_count"],
             "unresolved_marks": breakdown["unresolved_marks"],
+            "coverage": coverage,
         })
-        if breakdown["unresolved_marks"]:
+        if partial:
+            verification["status"] = "REVIEW"
             verification.setdefault("anomalies", []).append(
-                f"{breakdown['unresolved_count']} question(s) worth "
-                f"{breakdown['unresolved_marks']} marks are UNMARKED (the "
-                f"marker returned no result). The score shown is over the "
-                f"{available} marks that WERE marked; it is not a score out "
-                f"of {breakdown['paper_available']} and must not be published "
+                f"INCOMPLETE CORRECTION: {coverage['requires_review']} of "
+                f"{coverage['expected']} questions have no final mark "
+                f"({breakdown['unresolved_marks']} of "
+                f"{breakdown['paper_available']} marks unmarked). The "
+                f"{breakdown['earned']}/{breakdown['available']} shown is only "
+                f"the work that WAS marked and is not a score out of "
+                f"{breakdown['paper_available']}; nothing may be published "
                 f"until the unmarked questions are resolved.")
         result["totals"] = {
             "earned": earned, "available": available,
             "paper_available": breakdown["paper_available"],
             "percentage": round(percentage, 2),
+            "marked_percentage": round(breakdown["marked_percentage"], 2),
+            "partial": partial,
+            "coverage": coverage,
             "score_basis": breakdown["score_basis"],
             "unresolved_questions": breakdown["unresolved_questions"],
             "unresolved_marks": breakdown["unresolved_marks"],
@@ -849,11 +956,13 @@ class LargePdfRunner:
             and not breakdown["unresolved_marks"])
 
         needs_review = (
-            bool(review_batches)
+            partial
+            or bool(review_batches)
             or (bool(incomplete_batches or thin_batches) and not coverage_verified)
             or bool(remaining_missing)
             or bool(report["cross_owned"])
             or bool(breakdown["unresolved_marks"])
+            or not coverage["verified"]
             or verification.get("status") == "REVIEW")
         recovered_by_retry = (coverage_verified
                               and bool(incomplete_batches or thin_batches
@@ -953,26 +1062,21 @@ class LargePdfRunner:
         self._batch_paths.pop(job_id, None)
 
     def _cleanup_delegated(self, job_id: str) -> None:
-        """Remove the source files a ROUTED long document no longer needs.
+        """Remove the source files a long document no longer needs.
 
-        A document delegated from the normal pipeline shares its id with a
-        ``correction_jobs`` row and owns the uploaded/downloaded student PDF and
-        mark scheme. Once the large job is truly terminal those inputs are
-        removed by the SAME cleanup the normal pipeline uses, so privacy
-        retention is identical whichever pipeline corrected the document. A
-        job merely AWAITING_REVIEW keeps its inputs, because a teacher may
+        Both a document delegated from the normal pipeline AND a manual Large
+        PDF upload own files this cleanup understands (``pending_manual_files``
+        rows plus ``data/tmp/job-<id>``). Running the SAME cleanup function here
+        is what makes privacy retention identical whichever pipeline corrected
+        the document: kept when the teacher asked to keep it, deleted when not.
+        A job merely AWAITING_REVIEW keeps its inputs, because a teacher may
         still re-mark it.
         """
         try:
-            # Only a DELEGATED job (one sharing an id with the normal pipeline)
-            # owns source files this cleanup understands.
-            if db.query_one("SELECT id FROM correction_jobs WHERE id = ?",
-                            (job_id,)) is None:
-                return
             from ..engine.service import cleanup_job_files
             cleanup_job_files(job_id)
         except Exception:  # noqa: BLE001 — cleanup must never fail the job
-            log.exception("delegated source cleanup failed for %s", job_id)
+            log.exception("source cleanup failed for %s", job_id)
 
     # -- helpers -------------------------------------------------------------
 
@@ -987,8 +1091,7 @@ class LargePdfRunner:
         loses that tracking, so a chunk routed to another key died with
         ``403 PERMISSION_DENIED`` on this very file (observed on real runs).
         """
-        path = (job["student_pdf_path"] if purpose == "submission"
-                else job["mark_scheme_path"])
+        path = self._processing_pdf(job, purpose)
         if client is None:
             if get_config().mock_mode:
                 from ..gemini.mock import MockGeminiClient
@@ -1020,7 +1123,7 @@ class LargePdfRunner:
                 from ..gemini.client_proxy import KeyAwareClient
                 from ..gemini.tester import KeyManagerHolder
                 client = KeyAwareClient(KeyManagerHolder.instance())
-            return get_blueprint(client, job["mark_scheme_path"])
+            return get_blueprint(client, self._processing_pdf(job, "scheme"))
         except Exception as exc:  # noqa: BLE001
             return None, {"source": "unavailable", "error": str(exc)[:200]}
 
@@ -1093,9 +1196,16 @@ class LargePdfRunner:
     def _persist_result(self, job: dict, result: dict, verification: dict,
                         earned: int, available: int, percentage: float,
                         *, review: int) -> str:
-        """Persist the merged result with the same columns the pool uses."""
-        provisional = legacy.percentage_band_grade(percentage)
-        review_flag = int(review)
+        """Persist the merged result with the same columns the pool uses.
+
+        A PARTIAL correction is written with ``review_required = 1`` and NO
+        provisional grade, whatever the caller passed: a result that is missing
+        questions can never be stored as a publishable, graded correction.
+        """
+        partial = bool((verification or {}).get("partial"))
+        provisional = (None if partial
+                       else legacy.percentage_band_grade(percentage))
+        review_flag = 1 if partial else int(review)
         now_ts = time.time()
         with db.transaction() as conn:
             self._ensure_correction_job(conn, job)

@@ -651,7 +651,28 @@ def cleanup_job_files(job_id: str) -> None:
         "SELECT path, kind, filename FROM pending_manual_files WHERE job_id = ?",
         (job_id,),
     )
-    _retain_originals(job_id, rows)
+    # Retain EVERY submission the job actually marked, not only manual uploads:
+    # a Classroom job stages the downloaded PDF under data/tmp/job-<id>/ and
+    # registers no pending row at all, which is why "keep submissions" used to
+    # delete a Classroom paper anyway.
+    retain_job_submissions(job_id, rows=rows)
+    if retention_incomplete(job_id, rows=rows):
+        # The teacher asked to keep this paper and the copy FAILED (disk full,
+        # permissions, locked file). Deleting the only copy now would silently
+        # destroy it, so nothing is removed; the next cleanup or startup sweep
+        # retries the retention step.
+        log_event("engine.service",
+                  "retention failed; inputs preserved instead of deleted",
+                  job_id=job_id, level=logging.WARNING)
+        return
+    # Optimized SUBMISSION copies are processing artifacts, not retained data:
+    # drop them now (the original was either retained above or is being deleted
+    # per the setting). Mark-scheme artifacts stay in the bounded shared cache.
+    try:
+        from .pdf_optimize import release_job
+        release_job(job_id)
+    except Exception:  # noqa: BLE001 — cache hygiene must never fail cleanup
+        pass
     for row in rows:
         try:
             Path(row["path"]).unlink(missing_ok=True)
@@ -691,45 +712,129 @@ _ACTIVE_JOB_STATUSES = (
 )
 
 
-def _retain_originals(job_id: str, rows) -> None:
-    """Honour the retention setting for original submission files (§19).
+def retention_incomplete(job_id: str, *, rows=None,
+                         directory: Path | None = None) -> bool:
+    """Retention is ON, a submission exists, and no copy was stored.
 
-    Only the SUBMISSION is retained — never the mark scheme (a shared, non-
-    personal reference document) and never the temporary normalized copies.
-    ``until_complete``/``never`` retain nothing (the default: files are
-    deleted as soon as the job finishes); ``days`` copies the file into a
-    retained store with an expiry; ``always`` retains it with no expiry.
+    Used to refuse deletion: a failed copy must never take the only copy of a
+    paper the teacher asked to keep with it.
+    """
+    if not retention_keeps():
+        return False
+    has_submission = any(row["kind"] == "submission" for row in rows or [])
+    if not has_submission:
+        job_dir = directory or (data_dir() / "tmp" / f"job-{job_id}")
+        has_submission = bool(_staged_submission_files(job_dir))
+    if not has_submission:
+        return False
+    try:
+        row = db.query_one(
+            "SELECT 1 AS ok FROM retained_files WHERE job_id = ? "
+            "AND kind = 'submission' LIMIT 1", (job_id,))
+    except Exception:  # noqa: BLE001 — a DB hiccup must not delete anything
+        return True
+    return row is None
+
+
+def retention_keeps() -> bool:
+    """Does the CURRENT setting ask for submissions to be kept?"""
+    try:
+        return get_config().retention.keep_submissions in ("days", "always")
+    except Exception:  # noqa: BLE001 — never fail a cleanup over config
+        return False
+
+
+def _staged_submission_files(job_dir: Path) -> list[Path]:
+    """The submission file(s) a job was actually marked from.
+
+    A Classroom job downloads and normalizes the attachment into
+    ``data/tmp/job-<id>/submission_*``; that file (the copy the marker saw) is
+    the only local original such a job has. The mark scheme is never matched.
     """
     try:
+        if not job_dir.is_dir():
+            return []
+        return sorted(p for p in job_dir.glob("submission_*")
+                      if p.is_file())
+    except OSError:
+        return []
+
+
+def retain_job_submissions(job_id: str, *, rows=None,
+                           directory: Path | None = None) -> int:
+    """Copy this job's submission file(s) into the retained store (§19).
+
+    THE one place that honours ``retention.keep_submissions``. It is called by
+    terminal cleanup AND by the startup temp sweep, so no deletion path can
+    discard a paper the teacher asked to keep. Only SUBMISSIONS are retained:
+    never a mark scheme (a shared reference document) and never a question
+    paper. ``days`` stores an expiry, ``always`` stores none, and
+    ``never``/``until_complete`` store nothing and delete as before.
+
+    If a Classroom job had no staged copy left, the file simply cannot be
+    retained; nothing is invented and the viewer reports the genuine gap.
+    """
+    if not retention_keeps():
+        return 0
+    try:
         cfg = get_config().retention
-        mode = cfg.keep_submissions
-        if mode not in ("days", "always"):
-            return
         import shutil
         retain_dir = data_dir() / "retained" / job_id
-        retain_dir.mkdir(parents=True, exist_ok=True)
-        retain_until = 0.0 if mode == "always" else time.time() + max(0, cfg.keep_days) * 86400
-        for row in rows:
+        retain_until = (0.0 if cfg.keep_submissions == "always"
+                        else time.time() + max(0, cfg.keep_days) * 86400)
+        candidates: list[tuple[Path, str]] = []
+        for row in rows or []:
             if row["kind"] != "submission":
                 continue
-            src = Path(row["path"])
-            if not src.exists():
-                continue
-            dest = retain_dir / src.name
             try:
+                filename = row["filename"]
+            except (IndexError, KeyError):
+                filename = None
+            candidates.append((Path(row["path"]),
+                               filename or Path(row["path"]).name))
+        job_dir = directory or (data_dir() / "tmp" / f"job-{job_id}")
+        for path in _staged_submission_files(job_dir):
+            candidates.append((path, path.name))
+
+        retained = 0
+        for src, filename in candidates:
+            try:
+                if not src.is_file():
+                    continue
+                dest = retain_dir / src.name
+                retain_dir.mkdir(parents=True, exist_ok=True)
+                if dest.resolve() == src.resolve():
+                    continue          # already the retained copy
+                if dest.exists() and dest.stat().st_size != src.stat().st_size:
+                    dest = retain_dir / f"{len(list(retain_dir.iterdir()))}-{src.name}"
                 shutil.copy2(src, dest)
             except OSError:
+                log_event("engine.service", "retention copy failed",
+                          job_id=job_id, level=logging.WARNING)
                 continue
             db.execute(
                 "INSERT OR REPLACE INTO retained_files"
                 "(job_id, path, kind, filename, retain_until, created_at)"
                 " VALUES(?,?,?,?,?,?)",
-                (job_id, str(dest), "submission", row["filename"],
+                (job_id, str(dest), "submission", filename,
                  retain_until, time.time()),
             )
-    except Exception:  # noqa: BLE001 — retention must never break a job
+            retained += 1
+        if retained:
+            log_event("engine.service", "submission retained", job_id=job_id,
+                      files=retained, mode=cfg.keep_submissions,
+                      until=retain_until)
+        return retained
+    except Exception as exc:  # noqa: BLE001 — retention must never break a job
         log_event("engine.service", "retention step skipped", job_id=job_id,
+                  error=f"{type(exc).__name__}: {exc}"[:200],
                   level=logging.WARNING)
+        return 0
+
+
+def _retain_originals(job_id: str, rows) -> None:
+    """Backwards-compatible wrapper around :func:`retain_job_submissions`."""
+    retain_job_submissions(job_id, rows=rows)
 
 
 def sweep_expired_retained() -> int:
@@ -802,6 +907,19 @@ def sweep_stale_temp(max_age_seconds: float = 24 * 3600) -> int:
                 # Terminal/missing jobs go immediately; unknown dirs age out.
                 if job_id not in _known_job_ids(job_id) \
                         and age < max_age_seconds:
+                    continue
+                # A sweep must not be a second, retention-blind deletion path:
+                # a job that never reached terminal cleanup (awaiting review,
+                # cancelled, crashed) would otherwise lose the only copy of a
+                # paper the teacher asked to keep.
+                try:
+                    retain_job_submissions(job_id, directory=entry)
+                    if retention_incomplete(job_id, directory=entry):
+                        log_event("engine.service",
+                                  "sweep kept a job dir: retention failed",
+                                  job_id=job_id, level=logging.WARNING)
+                        continue
+                except Exception:  # noqa: BLE001 — never block the sweep
                     continue
                 shutil.rmtree(entry, ignore_errors=True)
                 removed += 1

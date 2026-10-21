@@ -411,12 +411,19 @@ def tracking_rows(course_id: str | None = None,
             if cur is None or (j["updated_at"] or 0) >= (cur["updated_at"] or 0):
                 jobs_by_sub[j["submission_id"]] = dict(j)
         for res in db.query(
-            f"SELECT id, submission_id, earned, available, percentage, created_at "
-            f"FROM results WHERE submission_id IN ({marks}) "
+            f"SELECT id, submission_id, earned, available, percentage, created_at, "
+            f"verification_json FROM results WHERE submission_id IN ({marks}) "
             f"ORDER BY created_at DESC",
             sub_ids,
         ):
-            results_by_sub.setdefault(res["submission_id"], dict(res))
+            row_result = dict(res)
+            # A partial correction has no publishable score. Every consumer of
+            # this projection (tracking table, reports, class report) gets the
+            # coverage instead of a fraction that reads as a mark.
+            from ..engine.verify import partial_summary
+            row_result["partial"] = partial_summary(
+                db.loads(row_result.pop("verification_json", None), {}))
+            results_by_sub.setdefault(res["submission_id"], row_result)
 
     out_rows: list[dict] = []
     counts: dict[str, int] = {s: 0 for s in STATUSES}
@@ -479,7 +486,8 @@ def tracking_rows(course_id: str | None = None,
                     "error_code": job.get("error_code")} if job else None,
             "result": {"id": result["id"], "earned": result["earned"],
                        "available": result["available"],
-                       "percentage": result["percentage"]} if result else None,
+                       "percentage": result["percentage"],
+                       "partial": result.get("partial")} if result else None,
         })
 
     return {

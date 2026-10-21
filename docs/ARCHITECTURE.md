@@ -163,8 +163,8 @@ data: do not treat them as generated build output or move/delete them during
 source cleanup.
 
 Configuration is managed by the setup wizard and Settings and serialized by
-`backend/app/config.py`. `MathChecker_Distribution/portable/MathChecker_Portable/Data/config.toml.example`
-is the sanitized, packaged configuration reference. It is not an environment
+`backend/app/config.py`. `MathChecker_Distribution/documentation/config.toml.example`
+is the sanitized configuration reference shipped with a build. It is not an environment
 file and does not contain credential values. Keep live API and OAuth secrets
 outside source and generated public packages.
 
@@ -196,5 +196,7 @@ legacy assembler, not the canonical release path.
    data, test and generated-artifact locations.
 3. [Main README](../README.md) for Windows setup, configuration, tests and
    developer commands.
-4. [Server lifecycle runbook](SERVER_LIFECYCLE.md) for process supervision and
+4. [Submission retention](submission-retention.md) for which copy of a paper is
+   kept, where it lives, and what the viewer reports.
+5. [Server lifecycle runbook](SERVER_LIFECYCLE.md) for process supervision and
    lifecycle-specific behavior.

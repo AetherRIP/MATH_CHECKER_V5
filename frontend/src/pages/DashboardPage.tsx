@@ -4,7 +4,7 @@ import {
   type AssignmentOverview, type Dashboard, type Job, type UsageState,
 } from "../api";
 import {
-  Badge, Button, Empty, Icon, Progress, StatusBadge,
+  Badge, Button, Empty, Icon, Metric, PageHeader, Progress, StatusBadge,
 } from "../components";
 import { AttentionPanel } from "../attention";
 import { BarChart, ChartEmpty, Donut, Gauge, LineChart, type ChartTone } from "../charts/Charts";
@@ -32,18 +32,16 @@ const JOB_TONES: Record<string, ChartTone> = {
 };
 
 /**
- * Dashboard (§9): an editorial layout, not a card wall.
+ * The Desk (blueprint §9): the day's work, read as a ledger.
  *
- * Row 1  hero band — today's throughput, count-up on first load.
- * Row 2  marking queue (left) | what needs attention (right).
- * Row 3  charts — throughput over time (real /analytics/activity data) and
- *        the current pipeline distribution. Operational stats are visually
- *        separate from academic performance and never mixed.
- * Row 4  live job activity (SSE + poll fallback) | system health.
- * Row 5  class/assignment comparison from real assignment aggregates.
+ * Row 1  the day in numbers — corrected, waiting, to decide, failed.
+ * Row 2  waiting on you (left) | what needs attention (right).
+ * Row 3  throughput over time | pipeline right now.
+ * Row 4  live work | system health, as a compact strip rather than a wall.
+ * Row 5  class averages, from real assignment aggregates.
  *
- * Nothing is estimated or mocked: every number comes from the API fields
- * named beside it, and charts with no data say so instead of drawing a lie.
+ * Every number comes from the API field named beside it. Nothing is
+ * estimated, and an empty chart says so instead of drawing a lie.
  */
 export default function DashboardPage({ onNavigate, data }: {
   onNavigate: (r: Route) => void;
@@ -53,6 +51,10 @@ export default function DashboardPage({ onNavigate, data }: {
   const [liveJobs, setLiveJobs] = useState<Job[]>([]);
   const [activity, setActivity] = useState<ActivityFeed | null>(null);
   const [usage, setUsage] = useState<UsageState | null>(null);
+  // The REVIEW QUEUE total, which is a different question from "assignments
+  // flagged needs_review": results waiting for a decision can exist without
+  // an assignment-level flag. The nav badge and this metric must agree.
+  const [reviewTotal, setReviewTotal] = useState<number | null>(null);
   const sourceRef = useRef<EventSource | null>(null);
 
   const correctionsToday = useCountUp(data?.corrections_today ?? 0);
@@ -71,6 +73,11 @@ export default function DashboardPage({ onNavigate, data }: {
     const loadUsage = () => api<UsageState>("/usage").then(setUsage).catch(() => {});
     loadUsage();
     const usageTimer = setInterval(loadUsage, 60_000);
+
+    const loadReview = () => api<{ total: number }>("/review?limit=1")
+      .then((r) => setReviewTotal(r.total)).catch(() => {});
+    loadReview();
+    const reviewTimer = setInterval(loadReview, 30_000);
 
     const source = new EventSource("/api/jobs/stream");
     sourceRef.current = source;
@@ -102,7 +109,7 @@ export default function DashboardPage({ onNavigate, data }: {
     }, 6_000);
     return () => {
       clearInterval(timer); clearInterval(activityTimer);
-      clearInterval(usageTimer); clearInterval(poll); source.close();
+      clearInterval(usageTimer); clearInterval(reviewTimer); clearInterval(poll); source.close();
     };
   }, []);
 
@@ -126,9 +133,8 @@ export default function DashboardPage({ onNavigate, data }: {
 
   const active = liveJobs.filter((j) => ACTIVE_STATUSES.includes(j.status));
 
-  // Marking queue: the assignments that still have work, most urgent first.
-  // Everything shown here is a real count from /assignments — nothing is
-  // estimated, and an assignment with nothing outstanding is not listed.
+  // Waiting on you: assignments that still have work, most urgent first.
+  // Everything shown here is a real count from /assignments.
   const queue = useMemo(() => {
     const list = assignments ?? [];
     const outstanding = (a: AssignmentOverview) =>
@@ -147,8 +153,7 @@ export default function DashboardPage({ onNavigate, data }: {
       }));
   }, [assignments]);
 
-  // Pipeline distribution for the donut: the CURRENT job state, operational
-  // (never mixed into the academic charts).
+  // Pipeline distribution: the CURRENT job state, operational only.
   const pipeline = useMemo(() => {
     const jobs = data?.jobs ?? {};
     const entries = Object.entries(jobs).filter(([, n]) => n > 0);
@@ -162,322 +167,300 @@ export default function DashboardPage({ onNavigate, data }: {
   if (!data) {
     return (
       <div className="skeleton-lines" aria-busy="true">
-        <div className="skeleton" />
-        <div className="skeleton" style={{ height: 120 }} />
-        <div className="skeleton" style={{ height: 180 }} />
+        <div className="skeleton" style={{ height: 40, maxWidth: 280 }} />
+        <div className="skeleton" style={{ height: 92 }} />
+        <div className="skeleton" style={{ height: 260 }} />
       </div>
     );
   }
 
   const keyOk = data.api_health.has_keys && data.api_health.healthy > 0;
+  const today = new Date();
+  const dayLabel = today.toLocaleDateString(undefined, {
+    weekday: "long", day: "numeric", month: "long",
+  });
+  const openWork = agg.submittedNotChecked;
 
   return (
     <>
-      <div className="row between wrap" style={{ marginBottom: 18, gap: 12 }}>
-        <div>
-          <h1 className="page-title" style={{ marginBottom: 2 }}>Dashboard</h1>
-          <p className="page-sub" style={{ marginBottom: 0 }}>
-            {data.mock_mode
-              ? "Mock mode active — AI calls are simulated"
-              : "Your classes, corrections and Classroom at a glance"}
-          </p>
-        </div>
-        <div className="row wrap">
-          <Button variant="ghost" icon="alert" onClick={() => onNavigate("review")}>
-            Review queue
-          </Button>
-          <Button variant="secondary" icon="sync" onClick={() => onNavigate("classroom")}>
-            Sync Classroom
-          </Button>
-          <Button variant="primary" icon="plus" onClick={() => onNavigate("assignments")}>
-            New Assignment
-          </Button>
-        </div>
+      <PageHeader
+        title="Today"
+        sub={data.mock_mode
+          ? "Mock mode is active: AI calls are simulated, so these numbers describe a rehearsal, not real marking."
+          : "Everything you have to mark, in one place. Start with what is waiting."}
+        meta={
+          <>
+            <span>{dayLabel}</span>
+            <span aria-hidden="true">·</span>
+            <span>{agg.count} assignments tracked</span>
+            <span aria-hidden="true">·</span>
+            <span>Classroom {data.classroom.connected ? `synced ${timeAgo(data.classroom.last_sync)}` : "not connected"}</span>
+          </>
+        }
+      >
+        <Button variant="secondary" icon="review" onClick={() => onNavigate("review")}>
+          Review queue{reviewTotal ? ` · ${reviewTotal}` : ""}
+        </Button>
+        <Button variant="primary" icon="wand" onClick={() => onNavigate("correct")}>
+          Correct a PDF
+        </Button>
+      </PageHeader>
+
+      <div className="metric-row enter" style={{ marginBottom: "var(--s4)" }}>
+        <Metric value={Math.round(correctionsToday)} label="Corrected today"
+          scope="finished correction jobs"
+          tone={correctionsToday > 0 ? "ok" : undefined} />
+        <Metric value={openWork} label="Submitted, not marked" scope="from Classroom" />
+        <Metric value={reviewTotal ?? "—"} label="Waiting on a decision"
+          scope="review queue" tone={reviewTotal ? "warn" : undefined} />
+        <Metric value={data.failed} label="Failed" scope="needs a retry"
+          tone={data.failed > 0 ? "mark" : undefined} />
+        <Metric value={agg.average != null ? `${Math.round(agg.average)}%` : "—"}
+          label="Class average" scope={agg.checked > 0 ? `${agg.checked} marked` : "nothing marked yet"} />
       </div>
 
-      {/* ---- Row 1: today's throughput (hero band) ---- */}
-      <div className="hero-band enter" style={{ marginBottom: 18 }}>
-        <div>
-          <div className="hero-label">Corrections completed today</div>
-          <div className="hero-value">{Math.round(correctionsToday)}</div>
-          <div className="faint small" style={{ marginTop: 2 }}>
-            counted from finished correction jobs
-          </div>
-        </div>
-        <div className="hero-side">
-          <div className="hero-stat">
-            <div className="n">{data.pending}</div>
-            <div className="l">Pending</div>
-          </div>
-          <div className="hero-stat">
-            <div className="n" style={{ color: data.processing > 0 ? "var(--accent)" : undefined }}>
-              {data.processing}
+      <div className="desk-grid">
+        <div style={{ minWidth: 0 }} className="stack">
+          <section className="card" aria-labelledby="waiting-heading">
+            <div className="row between wrap" style={{ marginBottom: "var(--s3)" }}>
+              <h2 id="waiting-heading" style={{ margin: 0, fontSize: "var(--fs-md)" }}>
+                Waiting on you
+              </h2>
+              <Button size="sm" variant="ghost" iconRight="arrow-right"
+                onClick={() => onNavigate("assignments")}>
+                All assignments
+              </Button>
             </div>
-            <div className="l">Processing</div>
-          </div>
-          <div className="hero-stat">
-            <div className="n" style={{ color: "var(--ok)" }}>{data.completed}</div>
-            <div className="l">Completed</div>
-          </div>
-          <div className="hero-stat">
-            <div className="n" style={{ color: data.failed > 0 ? "var(--err)" : undefined }}>
-              {data.failed}
-            </div>
-            <div className="l">Failed</div>
-          </div>
-        </div>
-      </div>
 
-      {/* ---- Row 2: marking queue (7) | attention (5) ---- */}
-      <div className="grid enter-stagger"
-        style={{ gridTemplateColumns: "minmax(0, 7fr) minmax(0, 5fr)", marginBottom: 18 }}>
-        <div className="card">
-          <div className="row between wrap">
-            <h3 style={{ margin: 0 }}>
-              <Icon name="inbox" size={16} style={{ color: "var(--accent)" }} />
-              Marking queue
-              {queue.length > 0 && <span className="hint">{queue.length} assignment(s) with work outstanding</span>}
-            </h3>
-            <Button size="sm" variant="ghost" icon="arrow-right"
-              onClick={() => onNavigate("assignments")}>
-              All assignments
-            </Button>
-          </div>
+            {assignments === null ? (
+              <div className="skeleton-lines" aria-busy="true">
+                <div className="skeleton" style={{ height: 40 }} />
+                <div className="skeleton" style={{ height: 40 }} />
+                <div className="skeleton" style={{ height: 40 }} />
+              </div>
+            ) : queue.length === 0 ? (
+              <Empty icon="check-circle" art="check" title="Nothing waiting"
+                hint="Everything tracked in Assignments is marked. New work appears here as it syncs from Google Classroom." />
+            ) : (
+              <div className="table-wrap" style={{ border: "none" }}>
+                <table className="table table-stack">
+                  <thead>
+                    <tr>
+                      <th scope="col">Assignment</th>
+                      <th scope="col">Progress</th>
+                      <th scope="col" className="num">Outstanding</th>
+                      <th scope="col"><span className="visually-hidden">Open</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {queue.map(({ a, todo, done }) => (
+                      <tr key={a.id} className="clickable"
+                        onClick={() => { window.location.hash = `#/assignments/${a.id}`; }}
+                        {...{
+                          tabIndex: 0,
+                          onKeyDown: (e: React.KeyboardEvent) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              window.location.hash = `#/assignments/${a.id}`;
+                            }
+                          },
+                        }}>
+                        <td data-label="Assignment" className="wrap-cell">
+                          <span className="cell-strong">{a.title}</span>
+                          <span className="cell-sub">
+                            {a.course_name ?? "No class"}
+                            {a.due_date ? ` · due ${a.due_date}` : ""}
+                          </span>
+                        </td>
+                        <td data-label="Progress" style={{ minWidth: 120 }}>
+                          <div className="row" style={{ gap: 8 }}>
+                            <Progress value={done} thin label={`${a.title} marked`} />
+                            <span className="small mono nowrap">
+                              {a.checked}/{a.students_total}
+                            </span>
+                          </div>
+                        </td>
+                        <td data-label="Outstanding" className="num">
+                          <div className="row end wrap" style={{ gap: 4 }}>
+                            {a.processing > 0 && <Badge tone="info">{a.processing} running</Badge>}
+                            {a.needs_review > 0 && <Badge tone="review" icon="review">{a.needs_review} to decide</Badge>}
+                            {a.failed > 0 && <Badge tone="err" icon="alert">{a.failed} failed</Badge>}
+                            {todo > 0 && (
+                              <span className="small mono" style={{ color: "var(--text-dim)" }}>
+                                {todo} to mark
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ width: 24 }}>
+                          <Icon name="chevron-right" size={15} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
 
-          {assignments === null ? (
-            <div className="skeleton-lines" style={{ marginTop: 12 }} aria-busy="true">
-              <div className="skeleton" style={{ height: 44 }} />
-              <div className="skeleton" style={{ height: 44 }} />
+          <section className="card" aria-labelledby="throughput-heading">
+            <div className="row between wrap" style={{ marginBottom: "var(--s2)" }}>
+              <div className="row wrap" style={{ gap: 8 }}>
+                <h2 id="throughput-heading" style={{ margin: 0, fontSize: "var(--fs-md)" }}>
+                  Marking throughput
+                </h2>
+                <span className="faint small">papers per day, last 30 days</span>
+              </div>
+              {activity && (
+                <span className="faint small">{activity.totals.results} papers corrected</span>
+              )}
             </div>
-          ) : queue.length === 0 ? (
-            <Empty icon="check-circle" art="check" title="Nothing waiting to be marked"
-              hint="Everything tracked in Assignments is marked — new work appears here as it syncs from Google Classroom." />
-          ) : (
-            <div className="stack" style={{ marginTop: 12 }}>
-              {queue.map(({ a, todo, done }) => (
-                <button key={a.id} type="button"
-                  className="attention-item clickable"
-                  style={{ width: "100%", textAlign: "left", font: "inherit", color: "inherit" }}
-                  onClick={() => { window.location.hash = `#/assignments/${a.id}`; }}>
-                  <span className="col" style={{ flex: 1, minWidth: 0, gap: 6 }}>
-                    <span className="row between wrap" style={{ gap: 8 }}>
-                      <span className="ai-title" style={{ minWidth: 0, overflowWrap: "anywhere" }}>
-                        {a.title}
+            {activity == null ? (
+              <div className="skeleton" style={{ height: 170 }} aria-busy="true" />
+            ) : activity.totals.results === 0 ? (
+              <ChartEmpty>No papers have been corrected in the last 30 days.</ChartEmpty>
+            ) : (
+              <LineChart
+                title="Papers corrected per day"
+                hint={`${activity.totals.results} in 30 days`}
+                summary={`Papers corrected per day over the last 30 days: ${activity.totals.results} total.`}
+                points={activity.days.map((d) => ({
+                  label: formatDayLabel(d.day), value: d.results,
+                }))}
+              />
+            )}
+            {activity && activity.totals.needs_review > 0 && (
+              <div className="notice review small" style={{ marginTop: "var(--s3)" }}>
+                <Icon name="review" size={15} />
+                <span>{activity.totals.needs_review} of those results are waiting for your decision.</span>
+              </div>
+            )}
+          </section>
+
+          <section className="card" aria-labelledby="averages-heading">
+            <div className="row wrap" style={{ gap: 8, marginBottom: "var(--s2)" }}>
+              <h2 id="averages-heading" style={{ margin: 0, fontSize: "var(--fs-md)" }}>
+                Class averages
+              </h2>
+              <span className="faint small">per assignment, marked work only</span>
+            </div>
+            {assignments === null ? (
+              <div className="skeleton" style={{ height: 170 }} aria-busy="true" />
+            ) : agg.checked === 0 ? (
+              <ChartEmpty>Correct some work and assignment averages appear here.</ChartEmpty>
+            ) : (
+              <BarChart
+                title="Average percentage per assignment"
+                hint="only assignments with corrected work"
+                summary={`Average Math Checker percentage per assignment: ${
+                  assignments.filter((a) => a.checked > 0)
+                    .map((a) => `${a.title} ${Math.round(a.average ?? 0)}%`).join(", ")}.`}
+                valueFormat={(v) => `${Math.round(v)}%`}
+                bars={assignments.filter((a) => a.checked > 0).slice(0, 8).map((a) => ({
+                  label: a.title.length > 14 ? `${a.title.slice(0, 13)}…` : a.title,
+                  value: a.average ?? 0,
+                }))}
+              />
+            )}
+          </section>
+        </div>
+
+        <aside className="stack" style={{ minWidth: 0 }} aria-label="Attention and system state">
+          <section className="card" aria-labelledby="attention-heading">
+            <div className="row between" style={{ marginBottom: "var(--s3)" }}>
+              <h2 id="attention-heading" style={{ margin: 0, fontSize: "var(--fs-md)" }}>
+                Needs your attention
+              </h2>
+              <Button size="sm" variant="ghost" onClick={() => onNavigate("review")}>
+                Review queue
+              </Button>
+            </div>
+            <AttentionPanel compact onNavigate={(hash) => { window.location.hash = hash; }} />
+          </section>
+
+          <section className="card" aria-labelledby="live-heading">
+            <h2 id="live-heading" style={{ margin: "0 0 var(--s3)", fontSize: "var(--fs-md)" }}>
+              Running now
+            </h2>
+            {active.length === 0 ? (
+              <Empty icon="wand" art="inbox" title="No corrections running"
+                hint="Started jobs appear here in real time." />
+            ) : (
+              <div className="stack" style={{ gap: "var(--s3)" }}>
+                {active.slice(0, 4).map((job) => (
+                  <div key={job.id} className="stack" style={{ gap: 6 }}>
+                    <div className="row between" style={{ gap: 8 }}>
+                      <span className="truncate" style={{ fontWeight: 500 }}>{displayName(job)}</span>
+                      <StatusBadge status={job.status} />
+                    </div>
+                    <Progress value={job.progress} thin label={`Correcting ${displayName(job)}`} />
+                    <div className="row between small faint">
+                      <span className="truncate">{job.stage_detail ?? job.status}</span>
+                      <span className="mono nowrap">
+                        {elapsed(job.created_at, job.finished_at)}
                       </span>
-                      <span className="row" style={{ gap: 6 }}>
-                        {a.processing > 0 && <Badge tone="info" icon="activity">{a.processing} processing</Badge>}
-                        {a.failed > 0 && <Badge tone="err" icon="alert">{a.failed} failed</Badge>}
-                        {a.needs_review > 0 && <Badge tone="review" icon="review">{a.needs_review} review</Badge>}
-                        {todo > 0 && <Badge tone="mute" icon="inbox">{todo} to mark</Badge>}
-                      </span>
-                    </span>
-                    <Progress value={done} thin />
-                    <span className="row between wrap small faint" style={{ gap: 8 }}>
-                      <span>{a.course_name ?? "No class"} · {a.checked}/{a.students_total} checked</span>
-                      {a.due_date ? <span>due {a.due_date}</span> : null}
-                    </span>
-                  </span>
-                  <Icon name="chevron-right" size={16} style={{ marginTop: 2, color: "var(--text-faint)" }} />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="card">
-          <div className="row between" style={{ marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>
-              <Icon name="alert" size={16} style={{ color: "var(--warn)" }} />
-              What needs my attention?
-            </h3>
-            <Button size="sm" variant="ghost" onClick={() => onNavigate("review")}>
-              Review queue{agg.review > 0 ? ` (${agg.review})` : ""}
-            </Button>
-          </div>
-          <AttentionPanel compact onNavigate={(hash) => { window.location.hash = hash; }} />
-        </div>
-      </div>
-
-      {/* ---- Row 3: throughput chart (academic) | pipeline (operational) ---- */}
-      <div className="grid grid-2 enter-stagger"
-        style={{ marginBottom: 18, alignItems: "start" }}>
-        <div className="card">
-          <h3>
-            <Icon name="trending" size={16} style={{ color: "var(--accent)" }} />
-            Marking throughput <span className="hint">papers corrected per day, last 30 days</span>
-          </h3>
-          {activity == null ? (
-            <div className="skeleton" style={{ height: 170 }} aria-busy="true" />
-          ) : activity.totals.results === 0 ? (
-            <ChartEmpty>No papers have been corrected in the last 30 days.</ChartEmpty>
-          ) : (
-            <LineChart
-              title="Papers corrected per day"
-              hint={`${activity.totals.results} in 30 days`}
-              summary={`Papers corrected per day over the last 30 days: ${activity.totals.results} total.`}
-              points={activity.days.map((d) => ({
-                label: formatDayLabel(d.day), value: d.results,
-              }))}
-            />
-          )}
-          {activity && activity.totals.needs_review > 0 && (
-            <div className="notice review small" style={{ marginTop: 10 }}>
-              <Icon name="review" size={15} />
-              <span>{activity.totals.needs_review} of those results are waiting for a teacher decision.</span>
-            </div>
-          )}
-        </div>
-
-        <div className="card">
-          <h3>
-            <Icon name="cpu" size={16} style={{ color: "var(--accent)" }} />
-            Pipeline right now <span className="hint">operational job state</span>
-          </h3>
-          {pipeline.length === 0 ? (
-            <ChartEmpty>No jobs recorded yet.</ChartEmpty>
-          ) : (
-            <Donut
-              title="Job states"
-              summary={`Current job states: ${pipeline.map((p) => `${p.label} ${p.value}`).join(", ")}.`}
-              slices={pipeline}
-              centerLabel={String(pipeline.reduce((n, p) => n + p.value, 0))}
-            />
-          )}
-          <div className="row wrap" style={{ marginTop: 10, gap: 8 }}>
-            <Button size="sm" variant="ghost" icon="cpu" onClick={() => onNavigate("tasks")}>
-              Task Manager
-            </Button>
-            <Button size="sm" variant="ghost" icon="wand" onClick={() => onNavigate("correct")}>
-              Correct a PDF
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* ---- Row 4: live activity | system health ---- */}
-      <div className="grid grid-2 enter-stagger"
-        style={{ marginBottom: 18, alignItems: "start" }}>
-        <div className="card">
-          <h3>
-            <Icon name="activity" size={16} style={{ color: "var(--accent)" }} />
-            Live job activity <span className="hint">updates as work progresses</span>
-          </h3>
-          {active.length === 0 ? (
-            <Empty icon="wand" art="inbox" title="No active corrections"
-              hint="Started jobs appear here in real time." />
-          ) : (
-            <div className="stack">
-              {active.slice(0, 5).map((job) => (
-                <div key={job.id} className="stack" style={{ gap: 6 }}>
-                  <div className="row between">
-                    <span style={{ fontWeight: 650 }}>{displayName(job)}</span>
-                    <StatusBadge status={job.status} />
+                    </div>
                   </div>
-                  <Progress value={job.progress} thin
-                    label={`Correcting ${displayName(job)}`} />
-                  <div className="row between small muted">
-                    <span>{job.stage_detail ?? job.status}</span>
-                    <span className="faint mono">
-                      {elapsed(job.created_at, job.finished_at)} · attempt {job.attempts}/{job.max_attempts}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {agg.failed > 0 && (
-            <div className="notice err small" style={{ marginTop: 12 }}>
-              <Icon name="alert" size={15} />
-              <span>{agg.failed} correction(s) failed. </span>
-              <button className="btn ghost sm" onClick={() => onNavigate("tasks")}>
-                Review failures
-              </button>
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </section>
 
-        <div className="card">
-          <div className="row between wrap">
-            <h3 style={{ margin: 0 }}>
-              <Icon name="cpu" size={16} style={{ color: "var(--accent)" }} />
-              System health
-            </h3>
-            <div className="row wrap">
+          <section className="card" aria-labelledby="system-heading">
+            <div className="row between" style={{ marginBottom: "var(--s2)" }}>
+              <h2 id="system-heading" style={{ margin: 0, fontSize: "var(--fs-md)" }}>System</h2>
               <Button size="sm" variant="ghost" icon="key" onClick={() => onNavigate("ai")}>
-                Manage keys
-              </Button>
-              <Button size="sm" variant="ghost" icon="gear" onClick={() => onNavigate("settings")}>
-                Diagnostics
+                Keys
               </Button>
             </div>
-          </div>
-          <div className="grid grid-2" style={{ marginTop: 12, gap: 10 }}>
-            <div className="stat compact">
-              <div className="label">Classroom</div>
-              <div className="value" style={{ fontSize: "var(--fs-lg)" }}>
-                <Badge tone={data.classroom.connected ? "ok" : data.classroom.configured ? "warn" : "err"}
-                  icon="classroom">
+            <div className="kv">
+              <span className="k">Google Classroom</span>
+              <span className="v">
+                <Badge tone={data.classroom.connected ? "ok" : data.classroom.configured ? "warn" : "err"}>
                   {data.classroom.connected ? "Connected"
                     : data.classroom.configured ? "Offline" : "Not set up"}
                 </Badge>
-              </div>
-              <div className="faint small" style={{ marginTop: 4 }}>
-                Last sync {timeAgo(data.classroom.last_sync)}
-              </div>
+              </span>
             </div>
-            <div className="stat compact">
-              <div className="label">AI keys healthy</div>
-              <div className={`value ${keyOk ? "ok" : data.api_health.has_keys ? "err" : "warn"}`}
-                style={{ fontSize: "var(--fs-lg)" }}>
-                {data.api_health.has_keys ? `${data.api_health.healthy}/${data.api_health.total}` : "—"}
-              </div>
-              <div className="faint small" style={{ marginTop: 4 }}>
-                {!data.api_health.has_keys ? "no keys added yet"
-                  : keyOk ? "ready to correct" : "needs attention"}
-              </div>
+            <div className="kv">
+              <span className="k">AI keys</span>
+              <span className="v">
+                {data.api_health.has_keys ? `${data.api_health.healthy}/${data.api_health.total} healthy` : "not added"}
+                {data.api_health.has_keys && !keyOk && (
+                  <Icon name="alert" size={13} style={{ color: "var(--err)", marginLeft: 5 }} />
+                )}
+              </span>
             </div>
-          </div>
-          {usage && (
-            <div className="stack" style={{ marginTop: 12 }}>
-              <Gauge label="Internet usage — this hour" used={usage.hour.total}
-                cap={usage.limits.hourly_bytes}
-                detail={usage.limits.hourly_mb > 0
-                  ? `${(usage.hour.total / 1_048_576).toFixed(1)} / ${usage.limits.hourly_mb} MB`
-                  : "no limit"} />
-              <Gauge label="Internet usage — today" used={usage.day.total}
-                cap={usage.limits.daily_bytes}
-                detail={usage.limits.daily_mb > 0
-                  ? `${(usage.day.total / 1_048_576).toFixed(1)} / ${usage.limits.daily_mb} MB`
-                  : "no limit"} />
+            <div className="kv">
+              <span className="k">Pipeline</span>
+              <span className="v">{data.pending} queued · {data.processing} running</span>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* ---- Row 5: academic comparison (real /assignments aggregates) ---- */}
-      <div className="card">
-        <h3>
-          <Icon name="chart" size={16} style={{ color: "var(--accent)" }} />
-          Class performance <span className="hint">average Math Checker percentage per assignment</span>
-        </h3>
-        {assignments === null ? (
-          <div className="skeleton" style={{ height: 170 }} aria-busy="true" />
-        ) : agg.checked === 0 ? (
-          <ChartEmpty>Correct some work and assignment averages appear here.</ChartEmpty>
-        ) : (
-          <BarChart
-            title="Average percentage per assignment"
-            hint="only assignments with corrected work"
-            summary={`Average Math Checker percentage per assignment: ${
-              assignments.filter((a) => a.checked > 0)
-                .map((a) => `${a.title} ${Math.round(a.average ?? 0)}%`).join(", ")}.`}
-            valueFormat={(v) => `${Math.round(v)}%`}
-            bars={assignments.filter((a) => a.checked > 0).slice(0, 8).map((a) => ({
-              label: a.title.length > 14 ? `${a.title.slice(0, 13)}…` : a.title,
-              value: a.average ?? 0,
-            }))}
-          />
-        )}
+            {pipeline.length > 0 && (
+              <div style={{ marginTop: "var(--s3)" }}>
+                <Donut
+                  title="Job states"
+                  summary={`Current job states: ${pipeline.map((p) => `${p.label} ${p.value}`).join(", ")}.`}
+                  slices={pipeline}
+                  centerLabel={String(pipeline.reduce((n, p) => n + p.value, 0))}
+                />
+              </div>
+            )}
+            {usage && (
+              <div className="stack" style={{ marginTop: "var(--s3)" }}>
+                <Gauge label="Bandwidth — this hour" used={usage.hour.total}
+                  cap={usage.limits.hourly_bytes}
+                  detail={usage.limits.hourly_mb > 0
+                    ? `${(usage.hour.total / 1_048_576).toFixed(1)} / ${usage.limits.hourly_mb} MB`
+                    : "no limit"} />
+                <Gauge label="Bandwidth — today" used={usage.day.total}
+                  cap={usage.limits.daily_bytes}
+                  detail={usage.limits.daily_mb > 0
+                    ? `${(usage.day.total / 1_048_576).toFixed(1)} / ${usage.limits.daily_mb} MB`
+                    : "no limit"} />
+              </div>
+            )}
+          </section>
+        </aside>
       </div>
     </>
   );

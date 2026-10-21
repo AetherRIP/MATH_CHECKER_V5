@@ -181,6 +181,10 @@ export default function DiagnosticsPage() {
       <>
         <PageHeader title="Diagnostics" sub="Developer-only technical view." />
         <div className="notice err">{error}</div>
+        <p className="page-sub" style={{ marginTop: "var(--s4)" }}>
+          Request logs, worker timings and model health appear here once this
+          installation is signed in with the Developer role.
+        </p>
       </>
     );
   }

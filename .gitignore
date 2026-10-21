@@ -22,6 +22,9 @@ __pycache__/
 !MathChecker_Distribution/**/*.pyd
 *.egg-info/
 .venv/
+# setup.bat moves a foreign-platform environment aside instead of deleting it.
+# It is recreated on demand and must never be committed.
+.venv.foreign/
 venv/
 .pytest_cache/
 .mypy_cache/
@@ -39,6 +42,15 @@ frontend/node_modules/
 dist/
 portable.flag
 
+# --- Release pipeline working copies ------------------------------------------
+# build_release.bat wipes and rewrites these on every build; they are never
+# handed to a recipient. Only the finished files in release/ and the bundled
+# runtime input in build/ belong in the repository. Keeping several 200 MB
+# working copies in history is what once grew .git past 1 GB.
+MathChecker_Distribution/portable/
+MathChecker_Distribution/release_staging/
+MathChecker_Distribution/previous_builds/
+
 # --- Logs and temp ------------------------------------------------------------
 logs/
 *.log
@@ -50,6 +62,10 @@ Thumbs.db
 dev_local/
 .live_verify/
 frontend/tsconfig.tsbuildinfo
+
+# Design-review screenshots were captured against the teacher's live data set and
+# therefore show student names; they stay on the machine that captured them.
+docs/ui-ux-redesign/screenshots/
 
 # Kept verification evidence stays visible even though dev logs are ignored above.
 !docs/logs/*.log

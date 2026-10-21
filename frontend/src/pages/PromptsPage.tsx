@@ -184,8 +184,30 @@ export default function PromptsPage() {
     }
   }
 
-  if (error) return <div className="notice err">{error}</div>;
-  if (!data) return <Loading label="Loading prompts…" />;
+  if (error) {
+    // Still a real page: a heading, what is wrong, and the way back.
+    return (
+      <>
+        <PageHeader title="Gemini Prompts" icon="ai"
+          sub="Developer only — the exact texts every correction sends to Gemini" />
+        <div className="notice err" role="alert">
+          <span>
+            <strong>Developer-only page.</strong>{" "}
+            Prompts are readable from the local Developer role only.
+          </span>
+        </div>
+      </>
+    );
+  }
+  if (!data) {
+    return (
+      <>
+        <PageHeader title="Gemini Prompts" icon="ai"
+          sub="Developer only — the exact texts every correction sends to Gemini" />
+        <Loading label="Loading prompts…" />
+      </>
+    );
+  }
 
   return (
     <div className="stack">

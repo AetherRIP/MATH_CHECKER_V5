@@ -149,7 +149,9 @@ function FlowNodeRow({ node, onOpenJob, last }: {
           if (job) onOpenJob(job);
         }}
         aria-label={`${node.label} — ${node.status}${
-          node.jobs.length ? `, ${node.jobs.length} job(s)` : ""}`}
+          node.jobs.length
+            ? `, ${node.jobs.length} ${node.jobs.length === 1 ? "job" : "jobs"}`
+            : ""}`}
       >
         <span className="ring" aria-hidden="true" />
         <Icon name={icon} size={17} />
@@ -250,7 +252,9 @@ export function LiveJobs({ jobs, totalStages, onOpenJob }: {
 }) {
   const active = jobs.filter(isActiveJob);
   const waiting = jobs.filter((j) => WAITING_STATES.has(j.status));
-  if (active.length === 0 && waiting.length === 0) {
+  // A job can be both active and waiting (RETRYING); one row per job.
+  const shown = [...new Map([...active, ...waiting].map((j) => [j.id, j])).values()];
+  if (shown.length === 0) {
     return (
       <div className="flow-card live-empty">
         <h3 style={{ margin: 0 }}>Live students</h3>
@@ -265,10 +269,10 @@ export function LiveJobs({ jobs, totalStages, onOpenJob }: {
     <div className="flow-card">
       <div className="flow-card-head">
         <h3 style={{ margin: 0 }}>Live students</h3>
-        <span className="faint small">{active.length + waiting.length} shown</span>
+        <span className="faint small">{shown.length} shown</span>
       </div>
       <div className="live-jobs">
-        {[...active, ...waiting].map((j) => (
+        {shown.map((j) => (
           <button key={j.id} type="button" className="live-job"
             onClick={() => onOpenJob(j)}>
             <div className="lj-top">

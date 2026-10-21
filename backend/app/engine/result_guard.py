@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ..text import count as _count
+
 # A drop of this many percentage points (or more) between runs is treated as
 # a suspicious score change that requires human review rather than a silent
 # overwrite. Deliberately conservative: legitimate re-marks rarely move more
@@ -118,18 +120,19 @@ def assess_confidence(result: dict, verification: dict, earned: int,
     if verification.get("status") and verification["status"] != "VALID":
         reasons.append("Verification requested review for this correction.")
     if review_questions:
-        reasons.append(f"{len(review_questions)} question(s) flagged for review "
+        reasons.append(f"{_count(len(review_questions), 'question')} flagged for review "
                        f"(e.g. {', '.join(str(q) for q in review_questions[:5])}).")
     anomalies = verification.get("anomalies") or []
     if anomalies:
-        reasons.append(f"{len(anomalies)} structural anomaly(ies) reported.")
+        reasons.append(f"{_count(len(anomalies), 'structural anomaly', 'structural anomalies')} "
+                       f"reported.")
 
     if verification.get("status") != "VALID" or anomalies:
         return LOW, reasons
 
     warnings = verification.get("warnings") or []
     if warnings:
-        reasons.append(f"{len(warnings)} warning(s) — marks are valid but worth a check.")
+        reasons.append(f"{_count(len(warnings), 'warning')} — marks are valid but worth a check.")
         return MEDIUM, reasons
 
     reasons.append("All checks passed: totals consistent, no structural warnings.")

@@ -1274,7 +1274,11 @@ function SubmissionRow({ row, checked, onCheck, onOpenStudent }: {
       </td>
       <td data-label="Submitted" className="small faint">{timeAgo(row.state_changed_at ?? row.last_synced_at)}</td>
       <td data-label="Mark" className="num">
-        {row.result ? `${row.result.earned}/${row.result.available}` : "—"}
+        {row.result
+          ? (row.result.partial
+            ? <span className="small faint" title="Questions are still unmarked">incomplete</span>
+            : `${row.result.earned}/${row.result.available}`)
+          : "—"}
         {row.assigned_grade != null && (
           <div className="faint small">Classroom {row.assigned_grade}</div>
         )}
@@ -1285,7 +1289,9 @@ function SubmissionRow({ row, checked, onCheck, onOpenStudent }: {
           : <span className="faint">—</span>}
       </td>
       <td data-label="Corrected" className="small faint">
-        {row.result ? "yes" : row.job ? row.job.status.toLowerCase() : "no"}
+        {row.result
+          ? (row.result.partial ? "incomplete" : "yes")
+          : row.job ? row.job.status.toLowerCase() : "no"}
       </td>
     </tr>
   );

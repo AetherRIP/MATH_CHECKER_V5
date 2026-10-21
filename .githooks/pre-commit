@@ -1,0 +1,17 @@
+#!/bin/sh
+# Warn — never block — when a commit stages generated build output or very large
+# files. History cannot be shrunk by deleting a file later, so this is the only
+# point where the repository's size can still be decided.
+#
+# Opt in once per clone:
+#     git config core.hooksPath .githooks
+#
+# Bypass a single commit with `git commit --no-verify`.
+cd "$(git rev-parse --show-toplevel)" 2>/dev/null || exit 0
+for py in python python3; do
+    if command -v "$py" >/dev/null 2>&1; then
+        "$py" scripts/size_guard.py
+        break
+    fi
+done
+exit 0

@@ -241,9 +241,11 @@ class TestIncompleteBatchResponse:
 
         final = runner.process(job["id"])
 
-        # The bounded retry budget was spent on the stub, then the best
-        # (partial) attempt was kept and flagged — never silently completed.
-        assert engine.calls_for(1) == 3
+        # One re-mark was attempted. The third request was NOT made: both
+        # attempts returned an IDENTICAL stub, and a third identical request
+        # cannot change the answer (it only cost minutes on live runs). The
+        # best (partial) attempt is kept and flagged — never silently completed.
+        assert engine.calls_for(1) == 2
         batches = {b["batch_index"]: b for b in store.list_batches(job["id"])}
         validation = json.loads(batches[1]["validation_json"])
         assert validation["stub"] is True
@@ -263,13 +265,20 @@ class TestIncompleteBatchResponse:
         assert verification["paper_total_marks"] == PAPER_TOTAL
         assert verification["score_basis"] == "MARKED_ONLY"
 
-        # The score is over the 138 marks that WERE marked, not the 266.
+        # The marked work is 138 marks of the 266-mark paper. The score is NOT
+        # published as 138/138: a partial correction carries no grade, its
+        # stored ``percentage`` is the share of the WHOLE paper the marked work
+        # earned, and the marked-only share is reported separately.
         assert row["available"] == 138
         assert row["earned"] == 129 + 9
-        assert row["percentage"] == pytest.approx(row["earned"] / 138 * 100)
-        assert row["percentage"] > 89           # not the reported 46.6%
-        assert row["percentage"] != pytest.approx(row["earned"] / PAPER_TOTAL * 100)
+        assert verification["partial"] is True
+        assert verification["marked_percentage"] > 89      # of the marked work
+        assert row["percentage"] == pytest.approx(row["earned"] / PAPER_TOTAL * 100)
+        assert row["percentage"] < 89
+        assert row["provisional_grade"] is None
         assert stored["totals"]["paper_available"] == PAPER_TOTAL
+        assert stored["totals"]["partial"] is True
+        assert stored["totals"]["coverage"]["requires_review"] == 32
         assert "not a score out of 266" in " ".join(verification["anomalies"])
 
         # Every unresolved question is explicitly NEEDS_REVIEW, never a 0.
@@ -363,7 +372,14 @@ class TestWholeMarkScheme:
 
         schemes = {c["mark_scheme_pdf"] for c in engine.calls}
         assert len(schemes) == 1                       # never split per batch
-        assert schemes == {str(job["mark_scheme_path"])}
+        # The single scheme handed to every batch may be the SHARED optimized
+        # copy (§ compression runs before marking), but it must still be the
+        # complete document: same page count, not a per-batch excerpt.
+        import pymupdf
+        used = schemes.pop()
+        with pymupdf.open(used) as chosen, pymupdf.open(
+                job["mark_scheme_path"]) as original:
+            assert chosen.page_count == original.page_count == 8
 
     def test_batch_prompt_states_the_complete_scheme_and_page_range(self):
         _, user = large_prompt.prompts_for_batch(

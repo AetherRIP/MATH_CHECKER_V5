@@ -360,6 +360,17 @@ export interface ReviewItem {
   manual_override: number;
   created_at: number;
   assignment_title: string | null;
+  /** Present only when the correction is INCOMPLETE: questions have no mark.
+   *  Such a row must show its coverage, never `earned/available` as a score. */
+  partial?: {
+    marked_questions: number;
+    expected_questions: number;
+    unresolved_questions: number;
+    paper_marks: number | null;
+    unresolved_marks: number;
+    earned: number;
+    marked_available: number;
+  };
 }
 
 // ---- Classroom basics (courses / coursework / legacy submissions) ----
@@ -374,7 +385,10 @@ export interface Coursework {
 export interface Submission {
   id: string; user_id: string; student_name: string; state: string;
   job: { id: string; status: string } | null;
-  result: { id: string; earned: number; available: number; percentage: number } | null;
+  result: {
+    id: string; earned: number; available: number; percentage: number;
+    partial?: PartialCorrection | null;
+  } | null;
 }
 
 // ---- Classroom tracking (normalized view model) ----
@@ -413,7 +427,10 @@ export interface TrackingRow {
   first_seen_at: number | null;
   synthetic: boolean;
   job: { id: string; status: string; error: string | null } | null;
-  result: { id: string; earned: number; available: number; percentage: number } | null;
+  result: {
+    id: string; earned: number; available: number; percentage: number;
+    partial?: PartialCorrection | null;
+  } | null;
 }
 
 export interface TrackingOverview {
@@ -513,7 +530,10 @@ export interface StudentAssignment {
   stale: boolean;
   data_quality: string;
   last_synced_at: number | null;
-  result: { id: string; earned: number; available: number; percentage: number } | null;
+  result: {
+    id: string; earned: number; available: number; percentage: number;
+    partial?: PartialCorrection | null;
+  } | null;
   job: { id: string; status: string; error: string | null; error_code: string | null } | null;
 }
 
@@ -599,7 +619,20 @@ export interface StudentProfile {
   fetched_at: number;
 }
 
-/* ---------------------------------------------------------- reports ---- */
+/* ---------------------------------------------------------- reports ---- *//** Coverage of an INCOMPLETE correction: questions still unmarked.
+ *
+ * A partial result has marks but no publishable score — every surface shows
+ * this descriptor instead of a fraction, and excludes it from averages.
+ */
+export interface PartialCorrection {
+  marked_questions: number;
+  expected_questions: number;
+  unresolved_questions: number;
+  paper_marks: number | null;
+  unresolved_marks: number;
+  earned: number;
+  marked_available: number;
+}
 
 export interface ReportStats {
   total_students: number;
@@ -615,6 +648,8 @@ export interface ReportStats {
   };
   math_checker: {
     corrected: number; processing: number; failed: number; cancelled: number;
+    /** Corrections with unmarked questions: no score, excluded from averages. */
+    incomplete: number;
     invalid: number; not_processed: number;
     average: number | null; highest: number | null; lowest: number | null;
     total_earned: number; total_available: number;
@@ -643,10 +678,14 @@ export interface ReportRow {
   classroom_graded: boolean;
   classroom_percentage: number | null;
   draft_grade: number | null;
-  mc_status: "CORRECTED" | "PROCESSING" | "FAILED" | "CANCELLED" | "NOT_PROCESSED";
+  mc_status:
+    | "CORRECTED" | "INCOMPLETE" | "PROCESSING" | "FAILED" | "CANCELLED"
+    | "NOT_PROCESSED";
   mc_earned: number | null;
   mc_available: number | null;
   mc_percentage: number | null;
+  /** Present only when the correction is incomplete (unmarked questions). */
+  mc_partial?: PartialCorrection | null;
   job_status: string | null;
   job_error: string | null;
   data_quality: string;

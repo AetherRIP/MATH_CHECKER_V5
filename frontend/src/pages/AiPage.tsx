@@ -43,7 +43,7 @@ export default function AiPage({ onNavigate }: {
         { value: "network", label: "Network", icon: "wifi" },
       ]} />
 
-      {tab === "api" && <KeysPage />}
+      {tab === "api" && <KeysPage embedded />}
       {tab === "normal" && <NormalWorkerPanel onNavigate={onNavigate} />}
       {tab === "large" && (
         <LargeWorkerPanel onOpen={() => onNavigate("#/largepdf")} />

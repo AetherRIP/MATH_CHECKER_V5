@@ -1,0 +1,17 @@
+run 1/3: import 4.647 s, start 3.145 s
+run 2/3: import 1.054 s, start 1.933 s
+run 3/3: import 1.021 s, start 2.958 s
+{
+  "import_s": [
+    4.647,
+    1.054,
+    1.021
+  ],
+  "start_s": [
+    3.145,
+    1.933,
+    2.958
+  ],
+  "python": "3.14.7",
+  "platform": "win32"
+}

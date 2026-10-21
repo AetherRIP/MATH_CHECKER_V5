@@ -140,7 +140,7 @@ function CheckRow({ checked, onChange, label, hint, tone }: {
   hint?: string; tone?: "ok" | "warn" | "err";
 }) {
   return (
-    <label className={classNames("check-row", checked && "checked")}>
+    <label className={classNames("rp-check", checked && "checked")}>
       <input
         type="checkbox"
         checked={checked}
@@ -708,7 +708,7 @@ function ReportPaper({ model }: { model: ReportModel }) {
       </header>
 
       <div className="rp-title-block">
-        <span className="rp-eyebrow">Math Correct</span>
+        <span className="rp-eyebrow">Math Checker</span>
         <h2 className="rp-title">{model.title}</h2>
         <p className="rp-context">
           {model.class_names} · {model.summary.assignments} assignment(s)
@@ -1094,4 +1094,5 @@ function Table({ head, rows }: { head: React.ReactNode; rows: React.ReactNode[] 
     </div>
   );
 }
+
 

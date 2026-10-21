@@ -26,12 +26,13 @@ same per-document/page/dpi disk cache layout, the same ETag behaviour.
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
-from ..config import data_dir
+from ..config import data_dir, get_config
 from .. import db
 from ..errors import AppError
 
@@ -123,6 +124,93 @@ def locate_submission(result_row: dict) -> tuple[Path, str, str] | None:
     return _first_existing(rows, job_id=job_id)
 
 
+#: Job states that still have work to do; their files are not deleted yet.
+_ACTIVE_JOB_STATES = {
+    "QUEUED", "STARTING", "PREPARING", "DOWNLOADING", "UPLOADING", "MARKING",
+    "VERIFYING", "SAVING", "WAITING_FOR_API", "RETRYING", "PROCESSING",
+    "READY", "PLANNING",
+}
+
+
+def _retention_state() -> dict:
+    """The authoritative retention setting, safe to expose to the teacher."""
+    try:
+        cfg = get_config().retention
+        return {"keep_submissions": cfg.keep_submissions,
+                "keep_days": int(cfg.keep_days or 0),
+                "keeps": cfg.keep_submissions in ("days", "always")}
+    except Exception:  # noqa: BLE001 — a broken config must not break the viewer
+        return {"keep_submissions": "unknown", "keep_days": 0, "keeps": False}
+
+
+def _job_state(result_row: dict) -> str:
+    """The job's status, from whichever pipeline owns it."""
+    job_id = result_row.get("job_id") or ""
+    if not job_id:
+        return ""
+    row = db.query_one("SELECT status FROM correction_jobs WHERE id = ?",
+                       (job_id,))
+    if row and row["status"]:
+        return str(row["status"])
+    row = db.query_one("SELECT status FROM large_pdf_jobs WHERE id = ?",
+                       (job_id,))
+    return str(row["status"] or "") if row else ""
+
+
+def _missing_payload(result_id: str, result_row: dict) -> dict:
+    """Why the original is not here — the honest, specific reason.
+
+    The four cases must never be conflated (§ retention): retention switched
+    off, retention on but this result has no stored copy (legacy or lost),
+    the job is still running, and a result with no job link at all. Only the
+    first is "the setting deleted it".
+    """
+    retention = _retention_state()
+    state = _job_state(result_row)
+    if state in _ACTIVE_JOB_STATES:
+        reason = "processing"
+        message = ("This paper is still being processed. The original file is "
+                   "readable here once the correction finishes.")
+        retryable = True
+    elif not result_row.get("job_id"):
+        reason = "no_link"
+        message = ("This result is not linked to a stored correction job, so "
+                   "there is no file this device could have kept.")
+        retryable = False
+    elif retention["keeps"]:
+        reason = "file_missing"
+        message = ("Submission retention is ON ("
+                   + ("keep for %d days" % retention["keep_days"]
+                      if retention["keep_submissions"] == "days"
+                      else "always keep")
+                   + "), but no stored copy exists for this result. It was "
+                   "probably marked before retention was enabled, or the "
+                   "stored copy was removed outside the app.")
+        retryable = True
+    else:
+        reason = "retention_disabled"
+        message = ("Submission retention is OFF, so the original is deleted "
+                   "when a correction finishes. Set Settings → Privacy & Data "
+                   "to keep submissions if you want papers kept.")
+        retryable = False
+    return {
+        "result_id": result_id,
+        "available": False,
+        "reason": reason,
+        "message": message,
+        "retryable": retryable,
+        "job_status": state or None,
+        "retention": retention,
+        "checked_at": time.time(),
+        "page_count": 0,
+        "file_kind": None,
+        "file_name": None,
+        "source": None,
+        "dpi": _PAGE_DPI_DEFAULT,
+        "page_url_template": f"/api/results/{result_id}/pages/{{page}}.png",
+    }
+
+
 def _rendered_page_path(sha: str, page: int, dpi: int) -> Path:
     """Disk cache for rendered submission pages (same layout as scheme pages)."""
     folder = data_dir() / "tmp" / "result_pages" / sha[:16]
@@ -149,21 +237,7 @@ def result_pages(result_id: str):
 
     located = locate_submission(dict(row))
     if not located:
-        return {
-            "result_id": result_id,
-            "available": False,
-            "reason": "not_retained",
-            "message": (
-                "The original submission file is not stored on this device. "
-                "It is deleted when a job finishes unless Settings → "
-                "Privacy & Data is set to keep submissions."),
-            "page_count": 0,
-            "file_kind": None,
-            "file_name": None,
-            "source": None,
-            "dpi": _PAGE_DPI_DEFAULT,
-            "page_url_template": f"/api/results/{result_id}/pages/{{page}}.png",
-        }
+        return _missing_payload(result_id, dict(row))
 
     path, filename, source = located
     suffix = path.suffix.lower()
@@ -174,11 +248,27 @@ def result_pages(result_id: str):
         page_count = int(pdf_inspect.page_count(path) or 0)
         file_kind = "pdf"
 
+    if page_count <= 0:
+        # A path that exists but yields no readable page is NOT an available
+        # submission: say the stored copy is damaged instead of showing a
+        # broken viewer.
+        payload = _missing_payload(result_id, dict(row))
+        payload.update({"reason": "file_unreadable", "retryable": False,
+                        "message": ("The stored copy of this submission cannot "
+                                    "be read (no page could be opened). The "
+                                    "marks are unaffected; re-correcting the "
+                                    "paper is the only way to restore it.")})
+        return payload
+
     return {
         "result_id": result_id,
         "available": True,
         "reason": None,
         "message": None,
+        "retryable": False,
+        "job_status": _job_state(dict(row)) or None,
+        "retention": _retention_state(),
+        "checked_at": time.time(),
         "page_count": page_count,
         "file_kind": file_kind,
         "file_name": filename,

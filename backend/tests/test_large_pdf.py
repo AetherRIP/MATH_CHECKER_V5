@@ -558,6 +558,48 @@ class TestLargePdfRoutes:
         assert status in (states.COMPLETED, states.AWAITING_REVIEW), detail
         assert detail["summary"]["completed"] >= 1
 
+    def test_a_manual_upload_is_owned_by_retention(self, api_client):
+        """The upload must be kept when retention says keep — and viewable."""
+        from pathlib import Path as _Path
+        files = {
+            "submission": ("student.pdf", _pdf_bytes(52), "application/pdf"),
+            "mark_scheme": ("scheme.pdf", _pdf_bytes(8), "application/pdf"),
+        }
+        job = api_client.post(
+            "/api/large-pdf/jobs", files=files,
+            data={"student_name": "Retained Student"}).json()
+        rows = db.query(
+            "SELECT kind, path FROM pending_manual_files WHERE job_id = ?",
+            (job["id"],))
+        assert {r["kind"] for r in rows} == {"submission", "mark_scheme"}
+
+        cfg = config.get_config()
+        cfg.retention.keep_submissions = "always"
+        config.save_config(cfg)
+
+        deadline = time.time() + 30
+        result = None
+        while time.time() < deadline:
+            result = db.query_one(
+                "SELECT id FROM results WHERE job_id = ?", (job["id"],))
+            if result:
+                break
+            time.sleep(0.3)
+        assert result, "the scheduler never produced a result"
+
+        from app.engine.service import cleanup_job_files
+        cleanup_job_files(job["id"])      # what terminal cleanup runs
+
+        retained = db.query(
+            "SELECT path FROM retained_files WHERE job_id = ? AND "
+            "kind = 'submission'", (job["id"],))
+        assert len(retained) == 1
+        assert _Path(retained[0]["path"]).exists()
+        body = api_client.get(
+            f"/api/results/{result['id']}/pages").json()
+        assert body["available"] is True, body
+        assert body["page_count"] == 52
+
     def test_rejects_non_pdf_upload(self, api_client):
         files = {
             "submission": ("notes.txt", io.BytesIO(b"hello"), "text/plain"),

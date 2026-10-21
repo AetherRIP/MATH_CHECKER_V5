@@ -1,0 +1,6 @@
+78 passed in 14.58s
+run1 wall=16203 ms
+78 passed in 15.01s
+run2 wall=15797 ms
+78 passed in 11.32s
+run3 wall=12125 ms

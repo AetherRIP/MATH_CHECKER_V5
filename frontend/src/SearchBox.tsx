@@ -113,7 +113,7 @@ export default function SearchBox({ onNavigate }: { onNavigate: (hash: string) =
         className="input search-input"
         type="search"
         value={query}
-        placeholder="Search students, assignments, courses…"
+        placeholder="Search…"
         aria-label="Global search"
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => query.trim().length >= 2 && setOpen(true)}

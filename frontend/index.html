@@ -3,7 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Math Checker V5</title>
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fbf9f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#101317" media="(prefers-color-scheme: dark)" />
+    <meta name="description" content="Mark maths PDFs against a mark scheme, keep the evidence, and hand back feedback that reads like a teacher wrote it." />
+    <title>Math Checker</title>
+    <!-- Self-hosted (offline-first): one preloaded weight covers the first
+         screen; the rest arrive with the stylesheet. -->
+    <link rel="preload" href="/fonts/ibm-plex-sans-400.woff2" as="font" type="font/woff2" crossorigin />
     <script>
       // Apply the persisted theme BEFORE first paint (no flash of the wrong
       // theme). Mirrors theme.tsx: stored choice wins, "system" follows the OS.

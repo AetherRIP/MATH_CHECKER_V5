@@ -197,7 +197,9 @@ function LoginScreen({ onSignedIn }: { onSignedIn: (s: DistributedSession) => vo
   return (
     <div style={{ maxWidth: 460, margin: "8vh auto 0" }}>
       <div className="card" style={{ padding: 24 }}>
-        <h2 style={{ marginTop: 0 }}>Multi-School sign in</h2>
+        <h1 className="page-title" style={{ marginTop: 0, fontSize: "var(--fs-xl)" }}>
+          Multi-School sign in
+        </h1>
         <p className="small faint">
           Shared-backend account — Teacher, Co-Teacher, Assistant or Developer.
         </p>
@@ -499,8 +501,10 @@ export default function DistributedPage() {
     const { school_ids, class_ids } = session.scope;
     if (isOperator) return "global view";
     const parts: string[] = [];
-    if (school_ids.length) parts.push(`${school_ids.length} school(s)`);
-    if (class_ids.length) parts.push(`${class_ids.length} class(es)`);
+    if (school_ids.length)
+      parts.push(`${school_ids.length} ${school_ids.length === 1 ? "school" : "schools"}`);
+    if (class_ids.length)
+      parts.push(`${class_ids.length} ${class_ids.length === 1 ? "class" : "classes"}`);
     return parts.length ? parts.join(" · ") : "no assignment yet";
   }, [session, isOperator]);
 

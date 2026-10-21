@@ -64,6 +64,44 @@ def seed_classroom() -> None:
         "WHERE submission_id = 's1'")
 
 
+def add_partial_result(student_id: str, submission_id: str | None = None,
+                       *, earned: int = 7, available: int = 7,
+                       marked: int = 7, expected: int = 67,
+                       paper_marks: int = 255) -> None:
+    """A correction that stopped with most of the paper unmarked.
+
+    This is the recorded 22/22 shape: the stored fraction is a share of the
+    marked subset, and the paper is far from finished.
+    """
+    import json as _json
+    now = time.time()
+    verification = {
+        "status": "NEEDS_REVIEW", "partial": True,
+        "score_basis": "MARKED_ONLY", "earned": earned,
+        "available": available, "paper_total_marks": paper_marks,
+        "unresolved_marks": paper_marks - available,
+        "coverage": {"expected": expected, "marked": marked,
+                     "requires_review": expected - marked, "verified": False},
+    }
+    with db.transaction() as conn:
+        job_id = f"job-{student_id}-{now}"
+        conn.execute(
+            "INSERT INTO correction_jobs(id, submission_id, coursework_id, "
+            "course_id, student_id, student_name, status, created_at, "
+            "updated_at) VALUES(?,?,?,?,?,?, 'COMPLETED', ?, ?)",
+            (job_id, submission_id, "w1", "c1", student_id, "Student",
+             now, now))
+        conn.execute(
+            "INSERT INTO results(id, job_id, coursework_id, submission_id, "
+            "student_id, student_name, earned, available, percentage, "
+            "provisional_grade, result_json, verification_json, created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (f"res-{student_id}-{now}", job_id, "w1", submission_id,
+             student_id, "Student", earned, available,
+             earned / paper_marks * 100, None, '{"questions": []}',
+             _json.dumps(verification), now))
+
+
 def add_result(student_id: str, submission_id: str | None = None,
                earned: int = 16, available: int = 20) -> None:
     now = time.time()
@@ -215,6 +253,88 @@ def test_class_report_aggregates_by_student_id(client):
     assert by_id["u2"]["submitted"] == 0          # draft is not submitted
     assert by_id["u2"]["classroom_average"] is None  # not "0%"
     assert by_id["u3"]["not_submitted"] == 1
+
+
+def test_an_incomplete_correction_is_never_a_score_in_reports(client):
+    """A partial correction must not read as a mark nor move an average."""
+    seed_classroom()
+    add_result("u1", "s1")                      # complete: 16/20 = 80%
+    add_partial_result("u2", "s2", earned=7, available=7,
+                       marked=7, expected=67, paper_marks=255)
+
+    data = client.get("/api/reports/assignment/w1").json()
+    rows = {r["student_id"]: r for r in data["rows"]}
+    partial = rows["u2"]
+    assert partial["mc_status"] == "INCOMPLETE"
+    assert partial["mc_percentage"] is None      # no publishable score
+    assert partial["mc_available"] is None
+    assert partial["mc_partial"]["marked_questions"] == 7
+    assert partial["mc_partial"]["expected_questions"] == 67
+    # The raw verification blob is not pasted into the row.
+    assert "verification_json" not in partial
+
+    stats = data["stats"]["math_checker"]
+    assert stats["corrected"] == 1
+    assert stats["incomplete"] == 1
+    # The partial's marks are excluded: the average is still u1's 80%.
+    assert stats["average"] == 80.0
+    assert (stats["total_earned"], stats["total_available"]) == (16, 20)
+
+    cls = client.get("/api/reports/class/c1").json()
+    by_id = {s["student_id"]: s for s in cls["students"]}
+    assert by_id["u2"]["incomplete"] == 1
+    assert by_id["u2"]["corrected"] == 0
+    assert by_id["u2"]["mc_average"] is None
+    assert by_id["u2"]["mc_total_earned"] == 0
+    assert by_id["u1"]["mc_average"] == 80.0
+
+
+def test_the_class_report_pdf_prints_incomplete_not_a_percentage(client):
+    seed_classroom()
+    add_partial_result("u2", "s2", earned=7, available=7,
+                       marked=7, expected=67, paper_marks=255)
+    response = client.get("/api/reports/class/c1/export?format=pdf")
+    assert response.status_code == 200
+
+    from pypdf import PdfReader
+    import io as _io
+    reader = PdfReader(_io.BytesIO(response.content))
+    flat = " ".join(" ".join(
+        (page.extract_text() or "").split()) for page in reader.pages)
+    # Both the per-student Math Checker cells say the correction is unfinished
+    assert flat.count("Incomplete") >= 2
+    assert ("questions are still unmarked, so those marks are excluded"
+            in flat)
+    assert "MATH CORRECT AVERAGE -" in flat   # no average over a partial
+    assert "100%" not in flat          # the 7/7 subset is never a score
+
+
+def test_tracking_rows_flag_a_partial_and_do_not_leak_the_blob(client):
+    seed_classroom()
+    add_partial_result("u2", "s2", earned=7, available=7,
+                       marked=7, expected=67, paper_marks=255)
+    data = cs.tracking_rows(course_id="c1", coursework_id="w1")
+    row = next(r for r in data["rows"] if r["submission_id"] == "s2")
+    assert row["result"]["partial"]["marked_questions"] == 7
+    assert row["result"]["partial"]["expected_questions"] == 67
+    assert "verification_json" not in row["result"]
+    complete = next(r for r in data["rows"] if r["submission_id"] == "s1")
+    assert complete["result"] is None or complete["result"]["partial"] is None
+
+
+def test_class_report_cell_has_no_grade_for_a_partial_correction():
+    from app.reporting.class_report import build_cells, AssignmentCode
+    codes = [AssignmentCode(code="ALG-HW", coursework_id="w1",
+                            title="Algebra HW")]
+    cells = build_cells([{
+        "student_id": "u2", "coursework_id": "w1", "status": "SUBMITTED",
+        "mc_earned": 7, "mc_available": 7, "mc_percentage": 100.0,
+        "mc_partial": {"marked_questions": 7, "expected_questions": 67},
+    }], codes)
+    cell = cells["u2"]["w1"]
+    assert cell.grade == "Incomplete (7 of 67 questions marked)"
+    assert cell.pct is None and cell.grade_label == ""
+    assert cell.percentage is None
 
 
 def test_class_report_pdf_export(client):

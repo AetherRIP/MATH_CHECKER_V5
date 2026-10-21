@@ -32,6 +32,55 @@ SPLIT_QUESTION_REVIEW_REASON = (
     "this result.")
 
 
+def as_mark(value) -> int | None:
+    """A model-supplied mark as a whole number, or ``None`` if it is not one.
+
+    Providers occasionally return ``"7"``, ``7.0``, ``"n/a"``, ``null`` or a
+    nested object where a mark belongs. Validation must never raise on that:
+    an unreadable mark is a REPORTED problem, never a crash and never a guess.
+    A fractional value is not a whole mark either, so it reads as unreadable
+    rather than being silently truncated.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            return None
+        return int(value) if value.is_integer() else None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            try:
+                number = float(text)
+            except ValueError:
+                return None
+            if number != number or number in (float("inf"), float("-inf")):
+                return None
+            return int(number) if number.is_integer() else None
+    return None
+
+
+def _rows_of(result) -> list[dict]:
+    """The object rows of a model result. Anything else is not a question.
+
+    ``questions`` may be absent, a string, or a list containing scalars when a
+    provider truncates or wraps its JSON. Callers must see only real rows and
+    report the rest, so every reader of a model response goes through here.
+    """
+    if not isinstance(result, dict):
+        return []
+    questions = result.get("questions")
+    if not isinstance(questions, list):
+        return []
+    return [q for q in questions if isinstance(q, dict)]
+
+
 def scheme_total_marks(blueprint) -> int | None:
     """The official paper total from an extracted mark-scheme structure.
 
@@ -123,11 +172,10 @@ def batch_coverage(result: dict | None, batch: dict, *,
     if expected < min_expected_marks:
         return None
     returned = 0
-    for q in (result or {}).get("questions") or []:
-        try:
-            returned += max(0, int(q.get("max_marks") or 0))
-        except (TypeError, ValueError):
-            continue
+    for q in _rows_of(result):
+        mark = as_mark(q.get("max_marks"))
+        if mark is not None:
+            returned += max(0, mark)
     ratio = returned / expected if expected else None
     stub = ratio is not None and ratio < min_ratio
     return {
@@ -164,10 +212,14 @@ def validate_batch(result: dict | None, batch: dict, *,
     max_mismatch: list[str] = []
     blanks: list[str] = []
 
-    questions = (result or {}).get("questions") or []
+    if result is not None and not isinstance(result, dict):
+        problems.append("The model response was not a JSON object.")
+    questions = result.get("questions") if isinstance(result, dict) else None
+    if questions is not None and not isinstance(questions, list):
+        problems.append("The model response's 'questions' field was not a list.")
     seen: set[str] = set()
-    for q in questions:
-        number = str(q.get("question_number", "")).strip()
+    for q in _rows_of(result):
+        number = str(q.get("question_number") or "").strip()
         if not number:
             problems.append("A returned question had no question number.")
             continue
@@ -175,8 +227,12 @@ def validate_batch(result: dict | None, batch: dict, *,
             duplicates.append(number)
         seen.add(number)
         returned.append(number)
-        awarded = int(q.get("awarded_marks", 0) or 0)
-        max_marks = int(q.get("max_marks", 0) or 0)
+        awarded = as_mark(q.get("awarded_marks"))
+        max_marks = as_mark(q.get("max_marks"))
+        if awarded is None or max_marks is None:
+            # Never coerce an unreadable mark to 0: a teacher must decide.
+            invalid_marks.append(f"{number}:unreadable")
+            continue
         if awarded < 0 or (max_marks > 0 and awarded > max_marks):
             invalid_marks.append(f"{number}:{awarded}/{max_marks}")
         if blueprint_max and number in blueprint_max:
@@ -185,8 +241,8 @@ def validate_batch(result: dict | None, batch: dict, *,
                 max_mismatch.append(f"{number}:{max_marks}!={official}")
         # Confirmed blank: the marker saw the question, produced no evidence
         # and awarded nothing. This is a legitimate 0, NOT a missing result.
-        if (awarded == 0 and int(q.get("max_marks", 0) or 0) > 0
-                and not str(q.get("student_answer", "")).strip()
+        if (awarded == 0 and max_marks > 0
+                and not str(q.get("student_answer") or "").strip()
                 and not (q.get("mark_breakdown") or [])):
             blanks.append(number)
 
@@ -292,8 +348,8 @@ def merge_batches(plan, batches: list[dict], batch_results: dict[int, dict], *,
         result = batch_results.get(index)
         if result is None:
             continue
-        for q in result.get("questions") or []:
-            qid = str(q.get("question_number", "")).strip()
+        for q in _rows_of(result):
+            qid = str(q.get("question_number") or "").strip()
             if qid:
                 contributions.setdefault(qid, []).append((index, q))
 
@@ -308,8 +364,17 @@ def merge_batches(plan, batches: list[dict], batch_results: dict[int, dict], *,
     for qid, entries in contributions.items():
         owner = owners.get(qid)
         by_owner = [e for e in entries if e[0] == owner]
-        distinct_marks = {int(e[1].get("awarded_marks", 0) or 0)
-                          for e in entries}
+        # An unreadable award sorts below every real mark so two attempts can
+        # never look like the "same" mark, and the row is held for review.
+        distinct_marks = set()
+        unreadable = False
+        for entry in entries:
+            mark = as_mark(entry[1].get("awarded_marks"))
+            if mark is None:
+                unreadable = True
+                distinct_marks.add(-1)
+            else:
+                distinct_marks.add(mark)
         if len(entries) > 1:
             duplicates.append(qid)
 
@@ -346,11 +411,20 @@ def merge_batches(plan, batches: list[dict], batch_results: dict[int, dict], *,
             })
 
         question = dict(chosen)
+        awarded = as_mark(question.get("awarded_marks"))
+        official_max = as_mark(question.get("max_marks"))
+        if unreadable or awarded is None:
+            # A mark nobody can read is not a zero and not a mark: it is a
+            # question a teacher has to settle.
+            question["status"] = "NEEDS_REVIEW"
+            question.setdefault(
+                "review_reason",
+                "The marker returned an unreadable mark for this question; "
+                "it was not converted to 0 and needs review.")
         # A confirmed blank: the marker returned the question, found no work
         # and awarded nothing. Distinct from a MISSING result (not returned).
-        if (int(question.get("awarded_marks", 0) or 0) == 0
-                and int(question.get("max_marks", 0) or 0) > 0
-                and not str(question.get("student_answer", "")).strip()
+        if (awarded == 0 and official_max is not None and official_max > 0
+                and not str(question.get("student_answer") or "").strip()
                 and not (question.get("mark_breakdown") or [])):
             blanks.append(qid)
         if qid in {c["question"] for c in conflicts}:
@@ -528,11 +602,22 @@ def score_breakdown(result: dict) -> dict:
             unresolved.append(str(q.get("question_number")))
             continue
         available += max_marks
+        # A single number is the score basis, so every row is validated before
+        # it is summed: non-numeric, negative and above-maximum awards never
+        # reach the total (the per-batch validator reports them too).
         try:
-            earned += int(q.get("awarded_marks") or 0)
+            awarded = int(q.get("awarded_marks") or 0)
         except (TypeError, ValueError):
-            continue
+            awarded = 0
+        awarded = max(0, awarded)
+        if max_marks > 0:
+            awarded = min(awarded, max_marks)
+        earned += awarded
     percentage = (earned / available * 100.0) if available else 0.0
+    # A correction is PARTIAL whenever any expected mark has no outcome. It is
+    # never presented as a score out of the paper: a 22/22 share of the seven
+    # questions a failed run happened to mark reads to a teacher as full marks.
+    paper_percentage = (earned / paper_available * 100.0) if paper_available else 0.0
     return {
         "earned": earned,
         "available": available,
@@ -541,5 +626,76 @@ def score_breakdown(result: dict) -> dict:
         "unresolved_count": len(unresolved),
         "unresolved_marks": max(0, paper_available - available),
         "percentage": percentage,
+        "marked_percentage": percentage,
+        "paper_percentage": paper_percentage,
+        "partial": bool(unresolved) or paper_available > available,
         "score_basis": ("MARKED_ONLY" if unresolved else "COMPLETE"),
+    }
+
+
+#: Row states that mean a teacher (or a later run) still has to resolve it.
+_REVIEW_STATES = ("REVIEW", "NEEDS_REVIEW", "UNMARKED", "FAILED")
+
+
+def coverage_inventory(result: dict, blueprint_report: dict | None = None,
+                       *, expected_questions: list[str] | None = None) -> dict:
+    """One explicit state per expected question — the accountability record.
+
+    Every expected question is counted exactly once, so a run can never claim
+    coverage it does not have:
+
+    * ``marked``          — a returned mark that passed reconciliation;
+    * ``unanswered``      — the marker saw the answer and it is genuinely blank
+      (``CONFIRMED_ZERO``): a legitimate 0, not a gap;
+    * ``illegible``       — flagged as unreadable rather than scored;
+    * ``requires_review`` — returned but unresolved (ambiguous sub-parts,
+      conflicts, split questions) or never returned at all (``NEEDS_REVIEW``);
+    * ``unaccounted``     — expected by the mark scheme but absent from the
+      result entirely. Never silently dropped.
+
+    ``verified`` is true only when every expected question has a definitive
+    outcome (marked or a confirmed blank) and nothing is unaccounted for.
+    """
+    rows = [q for q in (result or {}).get("questions") or []
+            if isinstance(q, dict)]
+    report = blueprint_report or {}
+    expected = [str(q) for q in (expected_questions or [])]
+    numbers = [str(q.get("question_number")) for q in rows]
+    if not expected and report.get("applied"):
+        missing = {str(q) for q in (report.get("missing_questions") or [])}
+        expected = numbers + [m for m in missing if m not in set(numbers)]
+
+    seen: set[str] = set()
+    marked = unanswered = illegible = requires_review = 0
+    unmarked: list[str] = []
+    for q in rows:
+        number = str(q.get("question_number"))
+        seen.add(number)
+        state = str(q.get("status") or "").upper()
+        reason = str(q.get("review_reason") or "").lower()
+        if state == "CONFIRMED_ZERO":
+            unanswered += 1
+        elif state in _REVIEW_STATES:
+            requires_review += 1
+            unmarked.append(number)
+            if "illegible" in reason or "unreadable" in reason:
+                illegible += 1
+        else:
+            marked += 1
+
+    unaccounted = sorted({e for e in expected if e not in seen},
+                         key=_question_sort_key)
+    total_expected = len(expected) if expected else len(seen)
+    return {
+        "expected": total_expected,
+        "extracted": len(seen),
+        "marked": marked,
+        "unanswered": unanswered,
+        "illegible": illegible,
+        "requires_review": requires_review,
+        "unaccounted": unaccounted,
+        "unmarked": sorted(unmarked, key=_question_sort_key),
+        "verified": (total_expected > 0
+                     and not unaccounted
+                     and marked + unanswered == total_expected),
     }

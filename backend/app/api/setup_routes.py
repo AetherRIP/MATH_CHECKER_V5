@@ -20,6 +20,7 @@ from .. import db
 from ..config import data_dir, get_config, get_secrets, save_config
 from ..errors import AppError
 from ..logging_setup import log_event
+from ..text import count as _count
 from ..version import APP_NAME, APP_VERSION, SCHEMA_VERSION
 
 router = APIRouter(prefix="/api")
@@ -156,7 +157,7 @@ def selfcheck(test_ai: bool = False):
         add("AI keys", "fail", "No Gemini API keys are configured.",
             "Add at least one key on the API Keys page.")
     else:
-        add("AI keys", "pass", f"{key_count} key(s) configured.")
+        add("AI keys", "pass", f"{_count(key_count, 'key')} configured.")
 
     # Optional live AI probe (tiny, student-data-free)
     if test_ai and key_count:
@@ -372,7 +373,8 @@ def review_queue(limit: int = 100):
         SELECT r.id, r.student_name, r.student_id, r.coursework_id,
                r.submission_id, r.earned, r.available, r.percentage,
                r.confidence, r.confidence_reasons, r.review_required,
-               r.manual_override, r.created_at, w.title AS assignment_title,
+               r.manual_override, r.created_at, r.verification_json,
+               w.title AS assignment_title,
                EXISTS(SELECT 1 FROM automation_jobs a WHERE a.result_id = r.id
                       AND a.status = 'ATTENTION_REQUIRED'
                       AND a.error_code = 'review_mode_await_teacher') AS automation_hold
@@ -389,10 +391,15 @@ def review_queue(limit: int = 100):
         """,
         (max(1, min(500, limit)),),
     )
+    from ..engine.verify import partial_summary
     items = []
     for row in rows:
         item = dict(row)
         item["confidence_reasons"] = db.loads(row["confidence_reasons"], [])
+        verification = db.loads(item.pop("verification_json", None), {})
+        partial = partial_summary(verification)
+        if partial:
+            item["partial"] = partial
         items.append(item)
     return {"items": items, "total": len(items)}
 
@@ -417,6 +424,22 @@ def manual_override(result_id: str, payload: dict):
     # confidence flags that put the result in the queue, otherwise the review
     # queue and every confidence-based view keep showing it as unreviewed.
     approved_note = note or "Accepted by teacher"
+
+    # A partial correction has NO publishable score: its earned/available is
+    # only the marked subset, so "accept" would publish 22/22 for a paper whose
+    # other 45 questions were never marked. Approving one requires the teacher
+    # to state the mark for the whole paper.
+    verification = db.loads(row["verification_json"], {}) or {}
+    from ..engine.verify import partial_summary
+    partial = partial_summary(verification)
+    if partial and earned is None:
+        raise AppError(
+            f"This correction is incomplete ({partial['unresolved_questions']} "
+            f"of {partial['expected_questions']} questions have no mark). "
+            f"Enter the student's mark out of {partial['paper_marks']} to "
+            f"approve it.",
+            status=409, code="partial_correction")
+
     with db.transaction() as conn:
         if earned is not None:
             try:
@@ -424,18 +447,40 @@ def manual_override(result_id: str, payload: dict):
             except (TypeError, ValueError):
                 raise AppError("The override mark must be a whole number.",
                                status=400, code="bad_override")
-            if earned_int < 0 or earned_int > (row["available"] or 0):
+            ceiling = int((partial or {}).get("paper_marks")
+                          or row["available"] or 0)
+            if earned_int < 0 or earned_int > ceiling:
                 raise AppError(
-                    f"The override mark must be between 0 and {row['available']}.",
+                    f"The override mark must be between 0 and {ceiling}.",
                     status=400, code="bad_override")
-            pct = (earned_int / row["available"] * 100.0) if row["available"] else 0.0
-            conn.execute(
-                "UPDATE results SET earned = ?, percentage = ?, manual_override = 1, "
-                "review_required = 0, confidence = 'HIGH', confidence_reasons = ? "
-                "WHERE id = ?",
-                (earned_int, pct, json.dumps(
-                    [f"Manually overridden by the teacher. {note}".strip()]), result_id),
-            )
+            denominator = ceiling if partial else (row["available"] or 0)
+            pct = (earned_int / denominator * 100.0) if denominator else 0.0
+            if partial:
+                # The teacher's whole-paper mark settles the gap: the result is
+                # no longer partial, and its denominator is the paper's marks.
+                verification = dict(verification)
+                verification["partial"] = False
+                verification["resolved_by_teacher"] = True
+                verification["anomalies"] = list(
+                    verification.get("anomalies") or []) + [
+                    "The incomplete marking was settled by a teacher override "
+                    f"({earned_int} of {ceiling})."]
+                conn.execute(
+                    "UPDATE results SET earned = ?, available = ?, percentage = ?, "
+                    "manual_override = 1, review_required = 0, confidence = 'HIGH', "
+                    "confidence_reasons = ?, verification_json = ? WHERE id = ?",
+                    (earned_int, ceiling, pct, json.dumps(
+                        [f"Manually overridden by the teacher. {note}".strip()]),
+                     json.dumps(verification, ensure_ascii=False), result_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE results SET earned = ?, percentage = ?, manual_override = 1, "
+                    "review_required = 0, confidence = 'HIGH', confidence_reasons = ? "
+                    "WHERE id = ?",
+                    (earned_int, pct, json.dumps(
+                        [f"Manually overridden by the teacher. {note}".strip()]), result_id),
+                )
             action = "overridden"
             new_earned = earned_int
         else:

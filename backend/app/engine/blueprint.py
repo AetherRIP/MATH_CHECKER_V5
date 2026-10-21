@@ -924,6 +924,41 @@ def _declared_subquestion_for(label: str, target: str,
     return "", True
 
 
+def _award_of(value: Any) -> int:
+    """A returned row's award as a whole number (0 when unreadable).
+
+    The batch validator reports an unreadable mark as a problem before this
+    point, so reconciliation must not also raise on it: the question is held
+    for review by the validator's verdict, and no invented mark is credited
+    here.
+    """
+    if value is None or isinstance(value, bool):
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            number = float(str(value).strip())
+        except (TypeError, ValueError):
+            return 0
+        return int(number) if number.is_integer() else 0
+
+
+def _claims_whole_question(row: dict, max_marks: int) -> bool:
+    """Is this returned row a mark for the WHOLE question?
+
+    True only when the marker's own maximum equals the scheme's maximum for the
+    question (it read the same allocation) and the award is within range. A row
+    that claims a smaller maximum is a fragment and stays ambiguous.
+    """
+    try:
+        claimed_max = int(row.get("max_marks") or 0)
+        awarded = int(row.get("awarded_marks") or 0)
+    except (TypeError, ValueError):
+        return False
+    return claimed_max == int(max_marks) and 0 <= awarded <= claimed_max
+
+
 def _part_canonical(owner_number: str, part_number: Any) -> str:
     """The canonical id of a part, whether it is printed locally or in full."""
     from . import scheme_structure as st
@@ -1058,6 +1093,10 @@ def apply_blueprint(result: dict, blueprint: dict | None) -> tuple[dict, dict]:
         "unmatched_rows": [],
         #: Rows whose awarded marks had to be clamped to the question maximum.
         "award_clamped": [],
+        #: Questions marked as ONE row for the whole question while the scheme
+        #: declares sub-parts: the marks are complete, the per-sub-part
+        #: attribution is unavailable (reported, never guessed).
+        "question_level_marks": [],
         #: Returned rows that named no subquestion while the question declares
         #: some: which marking point they cover cannot be established.
         "unattributed_rows": [],
@@ -1207,7 +1246,7 @@ def apply_blueprint(result: dict, blueprint: dict | None) -> tuple[dict, dict]:
         for sub in declared_subs:
             rows_for_sub = per_sub.get(sub["id"], [])
             sub_max = int(sub.get("max_marks") or 0)
-            got = sum(int(r.get("awarded_marks", 0) or 0) for r in rows_for_sub)
+            got = sum(_award_of(r.get("awarded_marks")) for r in rows_for_sub)
             if rows_for_sub and sub_max:
                 got = max(0, min(got, sub_max))
             if len(rows_for_sub) > 1:
@@ -1230,25 +1269,46 @@ def apply_blueprint(result: dict, blueprint: dict | None) -> tuple[dict, dict]:
                 "answers": sub.get("answers") or [],
                 "mark_codes": (sub.get("marks") or {}).get("codes") or [],
             })
-        report["missing_subquestions"].extend(missing_subs)
 
-        raw_awarded = sum(int(p.get("awarded_marks", 0)) for p in parts)
+        # A question whose scheme declares sub-parts can still come back as ONE
+        # row for the whole question ("1", maximum 5, award 5). That is a
+        # complete question-level mark, not an ambiguous fragment: the row
+        # claims the scheme's own maximum, no sub-part row competes with it and
+        # nothing was claimed twice. Treating it as "unattributed" is what
+        # parked 60 of 67 questions in teacher review on a real 50-page paper
+        # and collapsed the reported denominator to the 22 marks of the seven
+        # rows that survived. The marks are kept whole and the attribution gap
+        # is REPORTED, never guessed.
+        question_level = (
+            bool(declared_subs) and unattributed == 1 and not per_sub
+            and not conflicted and len(parts) == 1
+            and _claims_whole_question(parts[0], max_marks)
+        )
+        if question_level:
+            report["question_level_marks"].append(
+                {"question": number, "max_marks": max_marks,
+                 "awarded": _award_of(parts[0].get("awarded_marks"))})
+        else:
+            report["missing_subquestions"].extend(missing_subs)
+
+        raw_awarded = sum(_award_of(p.get("awarded_marks")) for p in parts)
         awarded = max(0, min(raw_awarded, max_marks))
         if awarded != raw_awarded:
             report["award_clamped"].append(
                 {"question": number, "awarded": raw_awarded, "max": max_marks})
 
         old_max = parts[0].get("max_marks")
-        if len(parts) == 1 and int(old_max or max_marks) != max_marks:
+        claimed_max = _award_of(old_max) if old_max is not None else max_marks
+        if len(parts) == 1 and claimed_max != max_marks:
             report["max_marks_corrected"].append(
-                {"question": number, "model": int(old_max or 0),
+                {"question": number, "model": claimed_max,
                  "mark_scheme": max_marks})
 
         primary = parts[0]
         primary["question_number"] = number   # blueprint numbering is official
         primary["max_marks"] = max_marks
         primary["awarded_marks"] = awarded
-        if breakdown:
+        if breakdown and not question_level:
             # The per-subquestion result travels WITH the row, so a sub-part's
             # marks are never only an unwritten part of a summed total.
             primary["subquestions"] = breakdown
@@ -1257,8 +1317,12 @@ def apply_blueprint(result: dict, blueprint: dict | None) -> tuple[dict, dict]:
             if missing_subs:
                 primary["unmarked_subquestions"] = [
                     s["label"] for s in missing_subs]
-        if declared_subs and (missing_subs or unattributed or conflicted) and \
-                str(primary.get("status") or "").upper() not in UNRESOLVED_STATUSES:
+        if question_level:
+            primary["subquestion_attribution"] = "question_level"
+        if (declared_subs and (missing_subs or unattributed or conflicted)
+                and not question_level
+                and str(primary.get("status") or "").upper()
+                not in UNRESOLVED_STATUSES):
             # A question whose sub-parts were only PARTLY assessed — or whose
             # sub-part was claimed twice — must not read as complete: one
             # subquestion's marks cannot stand in for another marking point that

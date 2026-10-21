@@ -6,10 +6,11 @@ import {
   type ReportAttachmentState, type RetryAction,
 } from "../api";
 import {
-  Badge, Button, Dropdown, Empty, ErrorState, ExportMenu, Icon, Loading,
-  Modal, PageHeader, ProvenanceBadge, Segmented, Stat, WorkspacePanes,
+  Badge, Button, Dropdown, Empty, ErrorState, ExportMenu, FilterBar, Icon,
+  Loading, Modal, PageHeader, Progress, ProvenanceBadge, Segmented, Stat,
   useToast, type IconName, type Tone,
 } from "../components";
+import { friendlyError } from "../errors";
 import { prefersReducedMotion } from "../motion";
 import {
   MASTERY_LABEL, TRIAGE_LABEL, TRIAGE_RANK, buildTopicGroups, questionTriage,
@@ -191,6 +192,13 @@ interface ResultSummary {
   // High-score double-check (list payload + detail).
   double_check_triggered?: number;
   double_check_status?: string | null;
+  /** Present only for an INCOMPLETE correction: questions have no mark, so
+   *  the row must show coverage rather than `earned/available` as a score. */
+  partial?: {
+    marked_questions: number; expected_questions: number;
+    unresolved_questions: number; paper_marks: number | null;
+    unresolved_marks: number; earned: number; marked_available: number;
+  };
 }
 
 interface DoubleCheckDifference {
@@ -257,6 +265,13 @@ interface ResultDetail extends ResultSummary {
     status?: "VALID" | "REVIEW";
     anomalies: string[]; warnings: string[];
     review_questions?: string[];
+    /** A correction missing questions has no publishable score. */
+    partial?: boolean;
+    marked_percentage?: number;
+    paper_total_marks?: number;
+    unresolved_marks?: number;
+    coverage?: { expected: number; marked: number; requires_review: number;
+      unanswered: number; verified: boolean };
     blueprint?: { source?: string; missing_questions?: string[] } | null;
   } | null;
 }
@@ -953,10 +968,55 @@ function RetryActions({ result }: { result: ResultDetail }) {
 /* ============================================== marking workspace (§11) */
 
 interface ResultPages {
-  available: boolean; reason: string | null; message: string | null;
+  available: boolean;
+  /** Why the original is not here — the backend's authoritative answer. */
+  reason: string | null;
+  message: string | null;
+  retryable?: boolean;
+  job_status?: string | null;
+  retention?: {
+    keep_submissions: string; keep_days: number; keeps: boolean;
+  };
   page_count: number; file_kind: string | null; file_name: string | null;
   source: string | null; dpi: number; page_url_template: string;
 }
+
+/**
+ * Copy for each authoritative unavailability reason. The old single sentence
+ * blamed retention even when retention was ON (or when the request had simply
+ * failed), so the teacher was told to change a setting that was already right.
+ */
+const DOC_MISSING_COPY: Record<string, { title: string; body: string }> = {
+  retention_disabled: {
+    title: "The student's work is not stored here",
+    body: "Submission retention is switched off, so the original PDF is "
+      + "deleted when a correction finishes. The marks and feedback on the "
+      + "right were saved separately and are unaffected.",
+  },
+  file_missing: {
+    title: "This paper's original file is missing",
+    body: "Retention is ON, so this is not the setting deleting your paper: "
+      + "no stored copy exists for this particular result. It was probably "
+      + "marked before retention was enabled, or the stored copy was removed "
+      + "outside the app. The marks are unaffected.",
+  },
+  file_unreadable: {
+    title: "The stored copy cannot be read",
+    body: "A stored copy exists but no page could be opened from it, so it "
+      + "cannot be shown. The marks are unaffected; re-correct this paper to "
+      + "restore a readable copy.",
+  },
+  processing: {
+    title: "The paper is still being processed",
+    body: "The original will be readable here as soon as the correction "
+      + "finishes. You can keep the marks on the right open while you wait.",
+  },
+  no_link: {
+    title: "This result has no stored submission",
+    body: "The result is not linked to a correction job, so there is no file "
+      + "this device could have kept for it. The marks are unaffected.",
+  },
+};
 
 /**
  * The student's ACTUAL work (centre pane). The backend serves the stored
@@ -968,13 +1028,19 @@ function DocumentPane({ resultId }: { resultId: string }) {
   const [info, setInfo] = useState<ResultPages | null>(null);
   const [zoom, setZoom] = useState(100);
   const [failed, setFailed] = useState<Record<number, boolean>>({});
+  const [nonce, setNonce] = useState(0);
+  const [checkFailed, setCheckFailed] = useState(false);
   const pagesRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setInfo(null); setZoom(100); setFailed({});
+    setCheckFailed(false);
     api<ResultPages>(`/results/${resultId}/pages`)
-      .then(setInfo).catch(() => setInfo(null));
-  }, [resultId]);
+      .then(setInfo)
+      // A failed REQUEST is not proof of a deleted file: say the check failed
+      // and offer a retry instead of claiming the paper is missing.
+      .catch(() => { setInfo(null); setCheckFailed(true); });
+  }, [resultId, nonce]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -987,6 +1053,25 @@ function DocumentPane({ resultId }: { resultId: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  if (checkFailed) {
+    return (
+      <div className="doc-missing">
+        <div className="row" style={{ gap: 8 }}>
+          <Icon name="file" size={18} style={{ color: "var(--text-faint)" }} />
+          <span className="dm-title">Could not check whether the original is stored</span>
+        </div>
+        <p>
+          The request did not complete, so nothing is known about the original
+          file yet. This is NOT a confirmed deletion — the marks on the right
+          are unaffected.
+        </p>
+        <div className="row wrap" style={{ gap: 8 }}>
+          <Button size="sm" variant="secondary" icon="refresh"
+            onClick={() => setNonce((n) => n + 1)}>Try again</Button>
+        </div>
+      </div>
+    );
+  }
   if (!info) {
     return (
       <div className="skeleton-lines" aria-busy="true">
@@ -995,9 +1080,42 @@ function DocumentPane({ resultId }: { resultId: string }) {
     );
   }
   if (!info.available) {
+    // A first-class state, not an empty pane: say what is missing, that the
+    // marks are unaffected, and offer the only honest actions.
+    const copy = DOC_MISSING_COPY[info.reason ?? ""] ?? {
+      title: "The student's work is not stored here",
+      body: "The marks and feedback on the right were recorded when this paper "
+        + "was marked and are unaffected.",
+    };
     return (
-      <Empty icon="file" art="paper" title="The original work is not stored on this device"
-        hint={info.message ?? "It is deleted when a job finishes unless Settings → Privacy & Data is set to keep submissions."} />
+      <div className="doc-missing">
+        <div className="row" style={{ gap: 8 }}>
+          <Icon name="file" size={18} style={{ color: "var(--text-faint)" }} />
+          <span className="dm-title">{copy.title}</span>
+        </div>
+        <p>{copy.body}</p>
+        {info.message && (
+          <p className="small faint" style={{ margin: 0 }}>{info.message}</p>
+        )}
+        <div className="row wrap" style={{ gap: 8 }}>
+          <Button size="sm" variant="secondary" icon="refresh"
+            onClick={() => setNonce((n) => n + 1)}>
+            {info.reason === "processing" ? "Check again" : "Re-check storage"}
+          </Button>
+          {!info.retention?.keeps && (
+            <Button size="sm" variant="ghost" icon="gear"
+              onClick={() => { window.location.hash = "#/privacy"; }}>
+              Retention settings
+            </Button>
+          )}
+        </div>
+        {info.reason !== "processing" && (
+          <p className="faint small" style={{ margin: 0 }}>
+            Nothing here can be re-created from the stored result — reopening
+            the original PDF is the only way to see the handwriting again.
+          </p>
+        )}
+      </div>
     );
   }
 
@@ -1106,6 +1224,175 @@ function QuestionNavigator({ result, activeQ, onSelect }: {
   );
 }
 
+/**
+ * The mark panel: everything needed to decide ONE question, in one column.
+ *
+ * Order follows how a teacher actually decides: the mark, why it was awarded,
+ * what the scheme said, what the student wrote, and only then the control to
+ * change it. The recorded value is never overwritten in place — the AI mark and
+ * any teacher mark are both kept (the API preserves history).
+ */
+function QuestionMarkPanel({ q, resultId, onChanged }: {
+  q: Question; resultId: string; onChanged: () => void;
+}) {
+  const toast = useToast();
+  const [draft, setDraft] = useState(String(q.teacher_mark ?? q.awarded_marks));
+  const [busy, setBusy] = useState(false);
+  const triage = questionTriage(q);
+  const flag = q.scheme_check;
+
+  useEffect(() => { setDraft(String(q.teacher_mark ?? q.awarded_marks)); },
+    [q.question_number, q.awarded_marks, q.teacher_mark]);
+
+  async function save() {
+    const value = Number(draft);
+    if (!Number.isFinite(value) || value < 0 || value > q.max_marks) {
+      toast("err", `A mark for Q${q.question_number} must be between 0 and ${q.max_marks}.`);
+      return;
+    }
+    setBusy(true);
+    try {
+      await api(`/results/${resultId}/questions/${encodeURIComponent(q.question_number)}/mark`,
+        { method: "POST", body: JSON.stringify({ awarded: value, note: "Set in the marking workspace" }) });
+      toast("ok", `Q${q.question_number} set to ${value}/${q.max_marks}`);
+      onChanged();
+    } catch (e) {
+      toast("err", friendlyError(e).summary);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="stack" style={{ gap: "var(--s3)" }}>
+      <div>
+        <div className="row between">
+          <div className="row" style={{ gap: 8, alignItems: "baseline" }}>
+            <span className="mark-q">Q{q.question_number}</span>
+            <span className="muted small">
+              {q.max_marks} mark{q.max_marks === 1 ? "" : "s"}
+            </span>
+          </div>
+          <span className="mark-of">
+            <span className="markglyph">
+              <span className={`n ${q.awarded_marks === 0 ? "zero" : ""}`}>
+                {q.awarded_marks}
+              </span>
+              <span className="d">/{q.max_marks}</span>
+            </span>
+          </span>
+        </div>
+        <div className="row wrap" style={{ gap: 6, marginTop: 6 }}>
+          <span className="faint small">{q.topic}</span>
+          {q.status === "REVIEW" && <Badge tone="warn">not marked</Badge>}
+          {flag && <Badge tone="warn">scheme check</Badge>}
+          {triage !== "ok" && <Badge tone="info">{TRIAGE_LABEL[triage]}</Badge>}
+        </div>
+      </div>
+
+      {q.status === "REVIEW" && (
+        <div className="notice warn small">
+          <span>
+            {q.review_reason
+              || "This question could not be marked. Treat the 0 as unknown, not as a confirmed score."}
+          </span>
+        </div>
+      )}
+
+      {q.mark_breakdown.length > 0 && (
+        <div>
+          <div className="field"><span>How the mark was built</span></div>
+          <ul className="stack" style={{ listStyle: "none", padding: 0, margin: 0, gap: 5 }}>
+            {q.mark_breakdown.map((b, i) => (
+              <li key={i} className="row small" style={{ gap: 7, alignItems: "flex-start" }}>
+                <span style={{ color: b.awarded ? "var(--ok)" : "var(--mark)", fontWeight: 600, flexShrink: 0 }}>
+                  {b.awarded ? "✓" : "✗"}
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  <span className="mono faint">{b.code}</span> {b.reason}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {q.loss_reason && !/^none\.?$/i.test(q.loss_reason.trim()) && (
+        <div>
+          <div className="field"><span>Why marks were lost</span></div>
+          <p className="mark-scheme" style={{ margin: 0 }}>{q.loss_reason}</p>
+        </div>
+      )}
+
+      {(q.student_answer || q.working_summary) && (
+        <div>
+          <div className="field"><span>What the student wrote</span></div>
+          <p className="mark-scheme" style={{ margin: 0 }}>
+            {q.student_answer || q.working_summary}
+          </p>
+        </div>
+      )}
+
+      {flag && (
+        <div className="notice warn small stack" style={{ gap: 4 }}>
+          <strong>Two sources disagree on this answer</strong>
+          <span>
+            Mark scheme: <span className="mono">{flag.scheme_answer || "no reference answer"}</span>
+          </span>
+          <span>
+            Independent check: <span className="mono">{flag.independently_verified_answer || "—"}</span>
+          </span>
+          <span>
+            Difference: {flag.discrepancy_type.replace(/_/g, " ")}
+            {flag.confidence != null && ` · ${Math.round(flag.confidence * 100)}% confidence`}
+          </span>
+          {flag.justified_marks != null && flag.student_answer_valid && (
+            <span>
+              The maths supports <strong>{flag.justified_marks}/{q.max_marks}</strong>;
+              the recorded mark is {q.awarded_marks}/{q.max_marks}.
+            </span>
+          )}
+          {flag.evidence && <span className="faint">{flag.evidence}</span>}
+        </div>
+      )}
+
+      <div className="divider" style={{ margin: 0 }} />
+
+      <div>
+        <div className="field" style={{ marginBottom: 6 }}>
+          <span>
+            <label htmlFor={`mark-${resultId}-${q.question_number}`}>Your mark</label>
+            {q.teacher_mark != null && (
+              <span className="hint">AI awarded {q.awarded_marks}</span>
+            )}
+          </span>
+        </div>
+        <div className="mark-controls" role="group"
+          aria-label={`Marks awarded for question ${q.question_number}`}>
+          {q.max_marks <= 10
+            ? Array.from({ length: q.max_marks + 1 }, (_, n) => (
+              <button key={n} type="button" className="mark-btn"
+                aria-pressed={Number(draft) === n}
+                onClick={() => setDraft(String(n))}>{n}</button>
+            ))
+            : (
+              <input id={`mark-${resultId}-${q.question_number}`} className="input"
+                type="number" min={0} max={q.max_marks} value={draft}
+                style={{ width: 90 }} onChange={(e) => setDraft(e.target.value)} />
+            )}
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 8 }}>
+          <Button size="sm" variant="primary" icon="check" loading={busy}
+            onClick={save}>
+            {q.teacher_mark != null ? "Update final mark"
+              : Number(draft) === q.awarded_marks ? "Confirm this mark"
+                : "Set final mark"}
+          </Button>
+          <span className="faint small">The AI mark stays in the history.</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ResultView({ result, onReload, onPrev, onNext }: {
   result: ResultDetail; onReload: () => void;
   onPrev?: (() => void) | null; onNext?: (() => void) | null;
@@ -1116,7 +1403,11 @@ function ResultView({ result, onReload, onPrev, onNext }: {
   const zeroCount = qs.filter((q) => q.awarded_marks === 0).length;
   const partialCount = qs.length - fullCount - zeroCount;
   const marksLost = qs.reduce((sum, q) => sum + (q.max_marks - q.awarded_marks), 0);
-  const [activeQ, setActiveQ] = useState<string | null>(null);
+  // Open on the first question that carries a flag, so the marking panel is
+  // never an empty column: there is always something to decide.
+  const [activeQ, setActiveQ] = useState<string | null>(() => (
+    qs.find((q) => questionTriage(q) !== "ok") ?? qs[0]
+  )?.question_number ?? null);
 
   // Topic groups + confidence triage (§ question groups): pure math from
   // ../topicGroups, the exact arithmetic its Node tests cover.
@@ -1206,12 +1497,26 @@ function ResultView({ result, onReload, onPrev, onNext }: {
           </div>
           <div className="row wrap">
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: "var(--fs-2xl)", fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>
-                {result.earned}<span className="muted">/{result.available}</span>
-              </div>
-              <div className="muted small">
-                {result.percentage.toFixed(2)}% · provisional band {result.provisional_grade}
-              </div>
+              {verification?.partial ? (
+                <>
+                  <Badge tone="err">Incomplete correction</Badge>
+                  <div className="muted small">
+                    {verification.coverage?.marked ?? 0} of{" "}
+                    {verification.coverage?.expected ?? "?"} questions marked ·{" "}
+                    {verification.unresolved_marks ?? 0} of{" "}
+                    {verification.paper_total_marks ?? "?"} marks unmarked
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: "var(--fs-2xl)", fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>
+                    {result.earned}<span className="muted">/{result.available}</span>
+                  </div>
+                  <div className="muted small">
+                    {result.percentage.toFixed(2)}% · provisional band {result.provisional_grade}
+                  </div>
+                </>
+              )}
             </div>
             <div className="row" style={{ gap: 6 }}>
               <Button variant="ghost" size="sm" icon="arrow-left" disabled={!onPrev}
@@ -1254,7 +1559,10 @@ function ResultView({ result, onReload, onPrev, onNext }: {
         )}
         {verification && verification.warnings.length > 0 && (
           <details className="expander" style={{ marginTop: 10 }}>
-            <summary>{verification.warnings.length} warning(s) from verification</summary>
+            <summary>
+              {verification.warnings.length}{" "}
+              {verification.warnings.length === 1 ? "warning" : "warnings"} from verification
+            </summary>
             <div className="expander-body">
               <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
                 {verification.warnings.map((w, i) => <li key={i} className="muted">{w}</li>)}
@@ -1434,15 +1742,70 @@ function ResultView({ result, onReload, onPrev, onNext }: {
     </div>
   );
 
-  // Three panes (§11): the question tree, the student's ACTUAL work, and the
-  // marking result. Resizable; below 900px they become tabs.
+  const active = qs.find((q) => q.question_number === activeQ) ?? qs[0] ?? null;
+  const marked = qs.filter((q) => q.status !== "REVIEW").length;
+  const score = result.available > 0 ? result.earned / result.available : 0;
+
+  // The marking desk (§11): questions in the margin, the answer in the middle,
+  // the decision on the right, and the score always in view underneath. The
+  // full record is one disclosure away instead of six screens of scroll.
   return (
-    <WorkspacePanes storageKey="mc5.workspace.results" min={230} panes={[
-      { id: "nav", label: "Questions",
-        el: <QuestionNavigator result={result} activeQ={activeQ} onSelect={select} /> },
-      { id: "doc", label: "Student work", el: <DocumentPane resultId={result.id} /> },
-      { id: "mark", label: "Marking result", el: resultPane },
-    ]} />
+    <div className="stack" style={{ gap: "var(--s3)" }}>
+      <div className="workspace3">
+        <div className="ws-margin">
+          <QuestionNavigator result={result}
+            activeQ={active?.question_number ?? null} onSelect={select} />
+        </div>
+        <div className="ws-answer">
+          <DocumentPane resultId={result.id} />
+        </div>
+        <div className="ws-mark" aria-live="polite">
+          {active ? (
+            <QuestionMarkPanel key={active.question_number} q={active}
+              resultId={result.id} onChanged={onReload} />
+          ) : (
+            <Empty icon="review" title="No questions in this result"
+              hint="The marking record contains no question rows, so there is nothing to decide here." />
+          )}
+        </div>
+      </div>
+
+      <div className="ledger-strip">
+        <div>
+          <div className="ledger-score">
+            {result.earned}<span className="muted" style={{ fontSize: "var(--fs-md)" }}>/{result.available}</span>
+          </div>
+          <div className="ledger-meta">
+            {result.percentage.toFixed(1)}% · band {result.provisional_grade}
+          </div>
+        </div>
+        <div className="ledger-progress">
+          <Progress value={score} thin label="Marks awarded" />
+          <div className="ledger-meta">
+            {marked}/{qs.length} questions marked
+            {result.review_required ? " · needs your review" : ""}
+          </div>
+        </div>
+        <div className="row" style={{ gap: 4, marginLeft: "auto" }}>
+          <Button size="sm" variant="ghost" icon="arrow-left" disabled={!onPrev}
+            tooltip="Previous submission (k)" onClick={() => onPrev?.()}>Prev</Button>
+          <Button size="sm" variant="ghost" iconRight="arrow-right" disabled={!onNext}
+            tooltip="Next submission (j)" onClick={() => onNext?.()}>Next</Button>
+        </div>
+        <ExportMenu base={`/results/${result.id}/export`}
+          formats={["pdf", "md", "csv"]} params={{ detail: "detailed" }} />
+      </div>
+
+      <details className="expander">
+        <summary>
+          Full marking record
+          <span className="faint small" style={{ marginLeft: 8 }}>
+            verification, topic groups, question breakdown, history and recovery
+          </span>
+        </summary>
+        <div className="expander-body">{resultPane}</div>
+      </details>
+    </div>
   );
 }
 
@@ -1580,66 +1943,67 @@ export default function ResultsPage({ resultId, onNavigate }: {
   return (
     <>
       <PageHeader title="Results"
-        sub="Every completed correction, searchable and filterable." />
+        sub="Every completed correction, with the mark, the decision and what happened in Classroom."
+        meta={
+          <>
+            <span>{total} correction{total === 1 ? "" : "s"}</span>
+            {filtersActive && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{rows.length} shown after filters</span>
+              </>
+            )}
+          </>
+        }>
+        <Button variant="ghost" icon="refresh" onClick={load}>Refresh</Button>
+      </PageHeader>
 
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div className="row wrap" style={{ gap: 10, alignItems: "center" }}>
-          <label className="row" style={{ gap: 8, alignItems: "center", flex: "1 1 260px", minWidth: 220 }}>
-            <Icon name="search" size={16} style={{ color: "var(--text-faint)" }} />
-            <input className="input" type="search" value={q}
-              placeholder="Search corrections by student, assignment or ID…"
-              aria-label="Search corrections"
-              onChange={(e) => setQ(e.target.value)} style={{ flex: 1 }} />
-          </label>
-          <Segmented value={status} ariaLabel="Filter by status"
-            onChange={(v) => setStatus(v)}
-            options={[
-              { value: "all", label: "All" },
-              { value: "corrected", label: "Corrected" },
-              { value: "needs_review", label: "Needs review" },
-              { value: "overridden", label: "Overridden" },
-            ]} />
-          {classes.length > 0 && (
-            <Dropdown label={courseId ? (classes.find((c) => c.id === courseId)?.name ?? "Class") : "All classes"}
-              icon="class" align="right">
-              {(close) => (
-                <>
-                  <button role="menuitem" onClick={() => { setCourseId(""); setCourseworkId(""); close(); }}>All classes</button>
-                  {classes.map((c) => (
-                    <button key={c.id} role="menuitem"
-                      onClick={() => { setCourseId(c.id); setCourseworkId(""); close(); }}>{c.name}</button>
-                  ))}
-                </>
-              )}
-            </Dropdown>
-          )}
-          {assignmentsForCourse.length > 0 && (
-            <Dropdown
-              label={courseworkId ? (assignmentsForCourse.find((a) => a.id === courseworkId)?.title ?? "Assignment") : "All assignments"}
-              icon="assignments" align="right">
-              {(close) => (
-                <>
-                  <button role="menuitem" onClick={() => { setCourseworkId(""); close(); }}>All assignments</button>
-                  {assignmentsForCourse.map((a) => (
-                    <button key={a.id} role="menuitem"
-                      onClick={() => { setCourseworkId(a.id); close(); }}>{a.title}</button>
-                  ))}
-                </>
-              )}
-            </Dropdown>
-          )}
-          {filtersActive && (
-            <Button size="sm" variant="ghost" icon="x"
-              onClick={() => { setQ(""); setStatus("all"); setCourseId(""); setCourseworkId(""); }}>
-              Clear
-            </Button>
-          )}
-        </div>
-        <div className="faint small" style={{ marginTop: 8 }}>
-          Showing <strong>{rows.length}</strong> of <strong>{total}</strong> correction(s)
-          {filtersActive ? " (filtered)" : ""}
-        </div>
-      </div>
+      <FilterBar search={q} onSearch={setQ}
+        placeholder="Student, assignment or result ID" ariaLabel="Filter results">
+        <Segmented value={status} ariaLabel="Filter by status"
+          onChange={(v) => setStatus(v)}
+          options={[
+            { value: "all", label: "All" },
+            { value: "corrected", label: "Corrected" },
+            { value: "needs_review", label: "To review" },
+            { value: "overridden", label: "Overridden" },
+          ]} />
+        {classes.length > 0 && (
+          <Dropdown label={courseId ? (classes.find((c) => c.id === courseId)?.name ?? "Class") : "All classes"}
+            ariaLabel="Filter by class" align="right">
+            {(close) => (
+              <>
+                <button role="menuitem" onClick={() => { setCourseId(""); setCourseworkId(""); close(); }}>All classes</button>
+                {classes.map((c) => (
+                  <button key={c.id} role="menuitem"
+                    onClick={() => { setCourseId(c.id); setCourseworkId(""); close(); }}>{c.name}</button>
+                ))}
+              </>
+            )}
+          </Dropdown>
+        )}
+        {assignmentsForCourse.length > 0 && (
+          <Dropdown
+            label={courseworkId ? (assignmentsForCourse.find((a) => a.id === courseworkId)?.title ?? "Assignment") : "All assignments"}
+            ariaLabel="Filter by assignment" align="right">
+            {(close) => (
+              <>
+                <button role="menuitem" onClick={() => { setCourseworkId(""); close(); }}>All assignments</button>
+                {assignmentsForCourse.map((a) => (
+                  <button key={a.id} role="menuitem"
+                    onClick={() => { setCourseworkId(a.id); close(); }}>{a.title}</button>
+                ))}
+              </>
+            )}
+          </Dropdown>
+        )}
+        {filtersActive && (
+          <Button size="sm" variant="ghost" icon="x"
+            onClick={() => { setQ(""); setStatus("all"); setCourseId(""); setCourseworkId(""); }}>
+            Clear
+          </Button>
+        )}
+      </FilterBar>
 
       {error ? (
         <ErrorState title="Could not load corrections" detail={error} onRetry={load} />
@@ -1659,9 +2023,13 @@ export default function ResultsPage({ resultId, onNavigate }: {
             <table className="table table-stack">
               <thead>
                 <tr>
-                  <th>Student</th><th>Assignment</th><th>Class</th>
-                  <th className="num">Score</th><th className="num">%</th>
-                  <th>Status</th><th>Classroom</th><th>Updated</th><th />
+                  <th scope="col">Student</th>
+                  <th scope="col">Assignment</th>
+                  <th scope="col" className="num">Score</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Classroom</th>
+                  <th scope="col">Marked</th>
+                  <th scope="col"><span className="visually-hidden">Open</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -1669,42 +2037,58 @@ export default function ResultsPage({ resultId, onNavigate }: {
                   const meta = RESULT_STATUS[r.status ?? "corrected"];
                   const pub = r.publish_status ? PUBLISH_STATUS[r.publish_status] : null;
                   return (
-                    <tr key={r.id} onClick={() => choose(r.id)} style={{ cursor: "pointer" }}>
-                      <td data-label="Student"><strong>{displayName(r)}</strong></td>
-                      <td data-label="Assignment" className="muted small trunc-cell"
+                    <tr key={r.id} className="clickable" onClick={() => choose(r.id)}
+                      {...{
+                        tabIndex: 0,
+                        onKeyDown: (e: React.KeyboardEvent) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            choose(r.id);
+                          }
+                        },
+                      }}>
+                      <td data-label="Student" className="cell-strong">{displayName(r)}</td>
+                      <td data-label="Assignment" className="wrap-cell"
                         title={r.assignment_title ?? undefined}>
-                        {r.assignment_title ?? "—"}
+                        <span>{r.assignment_title ?? "—"}</span>
+                        <span className="cell-sub wrap-cell">{r.course_name ?? "No class"}</span>
                       </td>
-                      <td data-label="Class" className="muted small trunc-cell"
-                        title={r.course_name ?? undefined}>{r.course_name ?? "—"}</td>
-                      <td data-label="Score" className="num mono" style={{ fontWeight: 700 }}>
-                        {r.earned}/{r.available}
-                        {r.double_check_triggered ? (
-                          <span className="faint small" style={{ marginLeft: 6 }}
-                            title={`Independently double-checked (${r.double_check_status})`}>
-                            ✓ 2×
-                          </span>
-                        ) : null}
-                      </td>
-                      <td data-label="%" className="num">{r.percentage.toFixed(1)}%</td>
-                      <td data-label="Status">
-                        <Badge tone={meta.tone} icon={meta.icon}>{meta.label}</Badge>
-                        {(r.version_count ?? 0) > 1 && (
-                          <span className="faint small" style={{ marginLeft: 6 }}>
-                            {r.version_count} versions
-                          </span>
+                      <td data-label="Score" className="num">
+                        {r.partial ? (
+                          <>
+                            <Badge tone="err">Incomplete</Badge>
+                            <span className="cell-sub">
+                              {r.partial.marked_questions}/{r.partial.expected_questions} questions
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="markglyph">
+                              <span className="n">{r.earned}</span>
+                              <span className="d">/{r.available}</span>
+                            </span>
+                            <span className="cell-sub">
+                              {r.percentage.toFixed(1)}%
+                              {r.double_check_triggered ? " · checked twice" : ""}
+                            </span>
+                          </>
                         )}
+                      </td>
+                      <td data-label="Status">
+                        <div className="row wrap" style={{ gap: 6 }}>
+                          <Badge tone={meta.tone} icon={meta.icon}>{meta.label}</Badge>
+                          {(r.version_count ?? 0) > 1 && (
+                            <span className="faint small">{r.version_count} versions</span>
+                          )}
+                        </div>
                       </td>
                       <td data-label="Classroom">
                         {pub ? <Badge tone={pub.tone}>{pub.label}</Badge>
                           : <span className="faint small">—</span>}
                       </td>
-                      <td data-label="Updated" className="faint small">{timeAgo(r.created_at)}</td>
-                      <td className="num">
-                        <Button size="sm" variant="ghost" iconRight="chevron-right"
-                          onClick={(e) => { e.stopPropagation(); choose(r.id); }}>
-                          Open
-                        </Button>
+                      <td data-label="Marked" className="faint small nowrap">{timeAgo(r.created_at)}</td>
+                      <td style={{ width: 28 }}>
+                        <Icon name="chevron-right" size={15} />
                       </td>
                     </tr>
                   );

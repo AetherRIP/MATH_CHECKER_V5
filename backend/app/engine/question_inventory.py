@@ -312,9 +312,15 @@ def confirmed_zero_status(q: dict) -> str | None:
     # An unresolved row is never a confirmed zero, whatever its numbers say.
     if _looks_unresolved(q):
         return None
-    if int(q.get("awarded_marks", 0) or 0) != 0:
+    try:
+        awarded = int(q.get("awarded_marks") or 0)
+        maximum = int(q.get("max_marks") or 0)
+    except (TypeError, ValueError):
+        # An unreadable mark is never evidence of a genuine zero.
         return None
-    if int(q.get("max_marks", 0) or 0) <= 0:
+    if awarded != 0:
+        return None
+    if maximum <= 0:
         return None
     if str(q.get("student_answer", "")).strip():
         return None

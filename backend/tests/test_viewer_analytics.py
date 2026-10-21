@@ -93,15 +93,96 @@ def test_pages_reports_retained_original(tmp_path):
     assert body["file_name"] == "submission.pdf"
 
 
-def test_pages_reports_not_retained_without_failing():
+def _set_retention(mode: str, days: int = 30) -> None:
+    from app.config import get_config, save_config
+    cfg = get_config()
+    cfg.retention.keep_submissions = mode
+    cfg.retention.keep_days = days
+    save_config(cfg)
+
+
+def test_a_classroom_paper_stays_viewable_after_marking_when_retention_is_on(
+        tmp_path):
+    """Acceptance: retention ON -> the original survives job cleanup.
+
+    A Classroom job never registers a pending_manual_files row; its only local
+    copy is the staged PDF under data/tmp/job-<id>/.
+    """
+    _set_retention("days", 30)
+    data_dir = tmp_path / "data"
+    job_dir = data_dir / "tmp" / "job-keep"
+    job_dir.mkdir(parents=True)
+    (job_dir / "submission_0_0_ab12_normalized.pdf").write_bytes(_make_pdf(3))
+    _insert_result("r-keep", "keep", created_at=time.time())
+
+    from app.engine.service import cleanup_job_files
+    cleanup_job_files("keep")             # the real terminal cleanup
+
+    client = _client()
+    body = client.get("/api/results/r-keep/pages").json()
+    assert body["available"] is True, body
+    assert body["reason"] is None
+    assert body["source"] == "retained"
+    assert body["page_count"] == 3
+    assert body["retention"]["keeps"] is True
+    page = client.get("/api/results/r-keep/pages/1.png")
+    assert page.status_code == 200
+    assert page.content.startswith(b"\x89PNG")
+
+
+def test_pages_with_retention_off_says_so():
+    _set_retention("until_complete")
     _insert_result("r-2", "job-2", created_at=time.time())
     r = _client().get("/api/results/r-2/pages")
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["available"] is False
-    assert body["reason"] == "not_retained"
+    assert body["reason"] == "retention_disabled"
     assert body["page_count"] == 0
-    assert "not stored" in body["message"]
+    assert body["retention"]["keeps"] is False
+    assert "retention is off" in body["message"].lower()
+
+
+def test_pages_with_retention_on_never_claims_the_setting_deleted_it():
+    """Retention ON but no stored copy: a genuine storage gap, not "disabled"."""
+    _set_retention("days", 30)
+    _insert_result("r-2b", "job-2b", created_at=time.time())
+    body = _client().get("/api/results/r-2b/pages").json()
+    assert body["available"] is False
+    assert body["reason"] == "file_missing"
+    assert body["retention"]["keeps"] is True
+    assert "retention is on" in body["message"].lower()
+    assert "deleted when a correction finishes" not in body["message"]
+    # A legacy result (marked before retention existed) gets this explanation.
+    assert "before retention was enabled" in body["message"]
+    assert body["retryable"] is True
+
+
+def test_pages_while_the_job_is_still_running_is_a_processing_state():
+    _set_retention("always")
+    _insert_result("r-run", "job-run", created_at=time.time())
+    db.execute("UPDATE correction_jobs SET status = 'MARKING' WHERE id = 'job-run'")
+    body = _client().get("/api/results/r-run/pages").json()
+    assert body["available"] is False
+    assert body["reason"] == "processing"
+    assert body["job_status"] == "MARKING"
+    assert "still being processed" in body["message"]
+
+
+def test_a_retained_copy_that_cannot_be_read_is_not_reported_available(tmp_path):
+    data_dir = tmp_path / "data"
+    (data_dir / "retained" / "job-bad").mkdir(parents=True)
+    broken = data_dir / "retained" / "job-bad" / "broken.pdf"
+    broken.write_bytes(b"not a pdf at all")
+    with db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO retained_files(job_id, path, kind, filename, "
+            "retain_until, created_at) VALUES(?,?,?,?,?,?)",
+            ("job-bad", str(broken), "submission", "broken.pdf", 0.0, 1.0))
+    _insert_result("r-bad", "job-bad", created_at=time.time())
+    body = _client().get("/api/results/r-bad/pages").json()
+    assert body["available"] is False
+    assert body["reason"] == "file_unreadable"
 
 
 def test_pages_unknown_result_is_404():

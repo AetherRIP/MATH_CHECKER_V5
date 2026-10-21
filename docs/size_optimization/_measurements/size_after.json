@@ -1,0 +1,153 @@
+{
+  "root": "E:\\MATH_CHECKER_V5",
+  "total_bytes": 2484363446,
+  "total_files": 15833,
+  "categories": {
+    "user_data": {
+      "bytes": 859453825,
+      "files": 127
+    },
+    "git": {
+      "bytes": 659741880,
+      "files": 38
+    },
+    "release_build": {
+      "bytes": 380134539,
+      "files": 6677
+    },
+    "python_env": {
+      "bytes": 265274739,
+      "files": 5536
+    },
+    "release_artifacts": {
+      "bytes": 129780182,
+      "files": 5
+    },
+    "dev_scratch": {
+      "bytes": 101118631,
+      "files": 127
+    },
+    "node_deps": {
+      "bytes": 68737567,
+      "files": 2447
+    },
+    "source": {
+      "bytes": 10505025,
+      "files": 622
+    },
+    "caches": {
+      "bytes": 9617058,
+      "files": 254
+    }
+  },
+  "top_level": {
+    "data": 859453825,
+    ".git": 659741880,
+    "MathChecker_Distribution": 510767976,
+    ".venv": 265274739,
+    "dev_local": 96609392,
+    "frontend": 70848541,
+    "backend": 14183224,
+    "autostart": 4509202,
+    "docs": 2653109,
+    "scripts": 93452,
+    "__pycache__": 65551,
+    "main.py": 34080,
+    "agent": 33513,
+    "README.md": 28875,
+    "remote.py": 21903,
+    "DISTRIBUTED_DEPLOYMENT.md": 19491,
+    "start.bat": 9674,
+    "setup.bat": 4386,
+    "Stop.bat": 3524,
+    ".gitignore": 2409,
+    "start_public.bat": 2021,
+    "LICENSE": 1095,
+    "start.sh": 917,
+    ".githooks": 564,
+    ".gitattributes": 66,
+    ".freebuff": 37
+  },
+  "largest_files": [
+    {
+      "path": ".git/objects/pack/pack-3a4b00c53492d2e93ca7c86a60557bd2cb60ab12.pack",
+      "bytes": 656617514
+    },
+    {
+      "path": ".venv/Lib/site-packages/playwright/driver/node.exe",
+      "bytes": 93580104
+    },
+    {
+      "path": "MathChecker_Distribution/release/MathChecker_Portable.zip",
+      "bytes": 76365101
+    },
+    {
+      "path": "MathChecker_Distribution/previous_builds/20261016-193501/MathChecker_Portable.zip",
+      "bytes": 76361483
+    },
+    {
+      "path": "MathChecker_Distribution/build/cloudflared.exe",
+      "bytes": 55366080
+    },
+    {
+      "path": "MathChecker_Distribution/release/MathChecker_Setup.exe",
+      "bytes": 53404277
+    },
+    {
+      "path": "MathChecker_Distribution/previous_builds/20261016-193501/MathChecker_Setup.exe",
+      "bytes": 53396790
+    },
+    {
+      "path": "data/purge_backups/20261011_114610_000000000000/files/tmp/router_merged/00000000000000000000000000000000_student.pdf",
+      "bytes": 53255171
+    },
+    {
+      "path": "dev_local/release_audit_backup/app.db",
+      "bytes": 51339264
+    },
+    {
+      "path": "data/purge_backups/20261011_121813_course_000000000000/app.db",
+      "bytes": 51339264
+    },
+    {
+      "path": "data/purge_backups/20261011_114610_000000000000/app.db",
+      "bytes": 51339264
+    },
+    {
+      "path": "data/app.db.bak-updatescleanup-20261011-175919",
+      "bytes": 51339264
+    },
+    {
+      "path": "data/app.db.bak-updatescleanup-20261011-175818",
+      "bytes": 51339264
+    },
+    {
+      "path": "data/app.db.bak-synthcleanup-20261011-163841",
+      "bytes": 51339264
+    },
+    {
+      "path": "data/app.db.bak-synthcleanup-20261011-163702",
+      "bytes": 51339264
+    },
+    {
+      "path": "data/app.db",
+      "bytes": 51339264
+    },
+    {
+      "path": "data/tmp/job-f68c4d810e224cf9aeeff2737e6f10c0/submission_0_0_65fec130_normalized_3b925256.pdf",
+      "bytes": 45944505
+    },
+    {
+      "path": "data/audit_downloads/Eyad_p3_1ZUmBinAKp.pdf",
+      "bytes": 39783912
+    },
+    {
+      "path": "MathChecker_Distribution/build/runtime/Lib/site-packages/pymupdf/mupdfcpp64.dll",
+      "bytes": 26295808
+    },
+    {
+      "path": ".venv/Lib/site-packages/pymupdf/mupdfcpp64.dll",
+      "bytes": 26295808
+    }
+  ]
+}

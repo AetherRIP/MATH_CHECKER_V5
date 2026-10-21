@@ -29,6 +29,7 @@ from ..errors import AppError, brief_traceback
 from ..gemini.tester import KeyManagerHolder as KMHolder, test_key
 from ..jobs.manager import ACTIVE_STATUSES, JobManagerHolder
 from ..logging_setup import log_event
+from ..text import count as _count
 from ..version import APP_VERSION, SCHEMA_VERSION
 from ..version import build_info as _build
 from ..demo import is_demo as _is_demo
@@ -336,6 +337,7 @@ def list_results(
         "r.student_name, r.earned, r.available, r.percentage, r.provisional_grade, "
         "r.marking_model, r.created_at, r.confidence, r.review_required, "
         "r.manual_override, r.double_check_triggered, r.double_check_status, "
+        "r.verification_json, "
         "w.title AS assignment_title, "
         "w.course_id AS course_id, c.name AS course_name, "
         "(SELECT p.status FROM classroom_publish_ops p "
@@ -348,9 +350,15 @@ def list_results(
         "ORDER BY r.created_at DESC LIMIT ? OFFSET ?",
         tuple(params + [limit, offset]),
     )
+    from ..engine.verify import partial_summary
     results = []
     for row in rows:
         item = _identity.decorate(dict(row))
+        # A partial correction must never present its marked-subset fraction as
+        # a score: the list carries the coverage it is missing instead.
+        partial = partial_summary(db.loads(item.pop("verification_json", None), {}))
+        if partial:
+            item["partial"] = partial
         if review_expr and (item["review_required"]
                             or item["confidence"] in
                             ("LOW", "VALIDATION_FAILED", "LARGE_SCORE_CHANGE")):
@@ -1915,7 +1923,7 @@ def global_search(q: str = "", limit: int = 8):
              "subtitle": " · ".join([x for x in [
                  (r["name"] if r["nickname"] else None),
                  r["email"],
-                 f"{r['assignments']} assignment(s)"] if x]) or None,
+                 _count(r["assignments"], "assignment")] if x]) or None,
              "route": f"#/students/{r['student_id']}"}
             for r in rows]})
 

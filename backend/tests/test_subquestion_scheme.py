@@ -510,12 +510,32 @@ class TestAnswerAssociation:
         assert _q(reconciled, "4")["status"] == bp.STATUS_REVIEW
         assert "4" in report["still_unresolved"]
 
-    def test_a_row_naming_no_subquestion_is_flagged_as_unattributed(self):
+    def test_a_row_for_the_whole_question_is_accepted_at_question_level(self):
+        # A scheme that declares 4(a)/4(b)(i)/4(b)(ii) can still be marked as
+        # ONE row "4" out of the question's full 7 marks. That row covers the
+        # whole question, so it is a complete mark; only the per-sub-part
+        # attribution is unavailable, and that is reported rather than guessed.
+        # (Treating this as ambiguous is what parked 60 of 67 questions in
+        # review on a live 50-page paper.)
         blueprint = _sub_scheme()
         result = {"questions": [_row("4", 5, 7, answer="mixed work")]}
         reconciled, report = bp.apply_blueprint(result, blueprint)
         assert report["unattributed_rows"] == [{"question": "4", "rows": 1}]
+        row = _q(reconciled, "4")
+        assert row["status"] == bp.STATUS_VALID
+        assert row["awarded_marks"] == 5
+        assert row["subquestion_attribution"] == "question_level"
+        assert report["question_level_marks"] == [
+            {"question": "4", "max_marks": 7, "awarded": 5}]
+        assert "subquestions" not in row     # never invented per-part marks
+
+    def test_a_whole_question_row_claiming_the_wrong_maximum_is_ambiguous(self):
+        # It claims 5 for a 7-mark question: this is a fragment, not the whole.
+        blueprint = _sub_scheme()
+        result = {"questions": [_row("4", 3, 5, answer="mixed work")]}
+        reconciled, report = bp.apply_blueprint(result, blueprint)
         assert _q(reconciled, "4")["status"] == bp.STATUS_REVIEW
+        assert report["question_level_marks"] == []
 
     def test_a_subquestion_the_scheme_does_not_declare_is_reported(self):
         blueprint = _sub_scheme()

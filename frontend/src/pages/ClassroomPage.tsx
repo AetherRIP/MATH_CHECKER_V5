@@ -5,7 +5,7 @@ import {
   type StateEvent, type TrackingData, type TrackingRow, type TrackingStatus,
 } from "../api";
 import {
-  Badge, DataTable, Empty, ExportMenu, PageHeader, Progress,
+  Badge, Button, DataTable, Empty, ExportMenu, Icon, PageHeader, Progress,
   rowActivate, Segmented, useToast,
 } from "../components";
 
@@ -50,7 +50,7 @@ function StatusChip({ row }: { row: TrackingRow }) {
   return (
     <span className={`badge ${meta.tone}`} title={`Classroom state: ${row.raw_state ?? "—"}`}>
       <span className="dot" />
-      {meta.icon} {row.status_label}
+      {row.status_label}
       {row.stale && " · stale"}
     </span>
   );
@@ -126,9 +126,14 @@ function ExpandedDetail({ row, detail }: { row: TrackingRow; detail: SubmissionD
             <div className="small stack" style={{ gap: 2 }}>
               <div>Classroom: {sub.assigned_grade ?? "—"} / {sub.max_points ?? "?"}</div>
               {sub.draft_grade != null && <div className="faint">Draft grade: {sub.draft_grade}</div>}
-              {row.result && (
+              {row.result && (row.result.partial ? (
+                <div>
+                  V5: Incomplete — {row.result.partial.marked_questions} of{" "}
+                  {row.result.partial.expected_questions} questions marked
+                </div>
+              ) : (
                 <div>V5: {row.result.earned}/{row.result.available} ({row.result.percentage.toFixed(1)}%)</div>
-              )}
+              ))}
             </div>
           </div>
           <div>
@@ -241,7 +246,12 @@ export default function ClassroomPage({
   const loadCourses = useCallback((force = false) => {
     setError(null);
     api<{ courses: Course[] }>(`/classroom/courses${force ? "?force=true" : ""}`)
-      .then((r) => setCourses(r.courses))
+      .then((r) => {
+        setCourses(r.courses);
+        // Open on the first class instead of an empty page waiting for a
+        // choice: the pickers stay available for switching.
+        setCourseId((cur) => cur || r.courses[0]?.id || "");
+      })
       .catch((e) => setError(e.message));
   }, []);
 
@@ -254,7 +264,12 @@ export default function ClassroomPage({
     if (!courseId) return;
     setWork([]); setWorkId(""); setTracking(null);
     api<{ assignments: Coursework[] }>(`/classroom/courses/${courseId}/assignments`)
-      .then((r) => setWork(r.assignments))
+      .then((r) => {
+        setWork(r.assignments);
+        // Same rule as the class picker: land on real data. The deep-link
+        // effect below still overrides this when the URL names an assignment.
+        setWorkId((cur) => cur || r.assignments[0]?.id || "");
+      })
       .catch((e) => setError(e.message));
   }, [courseId]);
 
@@ -662,8 +677,9 @@ export default function ClassroomPage({
               {health?.connected ? "Connection healthy" : "Disconnected"}
             </Badge>
             {health?.email && (
-              <span className="small" title="Signed-in Google account (source: Google Classroom)">
-                📎 {health.email}
+              <span className="row small" style={{ gap: 5 }}
+                title="Signed-in Google account (source: Google Classroom)">
+                <Icon name="paperclip" size={13} /> {health.email}
               </span>
             )}
             <span className="faint small"
@@ -720,9 +736,9 @@ export default function ClassroomPage({
 
       {/* ---- pickers + assignment actions ---- */}
       <div className="card">
-        <div className="grid grid-2">
-          <label className="field">
-            <span>1 · Class</span>
+        <div className="picker-bar">
+          <label className="field" style={{ marginBottom: 0 }}>
+            <span>Class</span>
             <select className="input" value={courseId} onChange={(e) => setCourseId(e.target.value)}>
               <option value="">Choose a class…</option>
               {courses.map((c) => (
@@ -730,8 +746,8 @@ export default function ClassroomPage({
               ))}
             </select>
           </label>
-          <label className="field">
-            <span>2 · Assignment</span>
+          <label className="field" style={{ marginBottom: 0 }}>
+            <span>Assignment</span>
             <select className="input" value={workId} onChange={(e) => setWorkId(e.target.value)} disabled={!courseId}>
               <option value="">Choose an assignment…</option>
               {work.map((w) => (
@@ -812,6 +828,22 @@ export default function ClassroomPage({
         </div>
       )}
 
+      {!workId && (
+        <div className="card">
+          <Empty icon="assignments"
+            title={courses.length ? "Choose an assignment" : "No classes yet"}
+            hint={courses.length
+              ? "Pick a class and an assignment above to see every student's submission state."
+              : "Sync Google Classroom to pull your classes and their coursework onto this computer."}
+            action={courses.length ? undefined : (
+              <Button variant="primary" icon="sync" onClick={runFullSync}
+                disabled={!!fullSyncStage || !!syncStage}>
+                {fullSyncStage ? "Syncing…" : "Sync Google Classroom"}
+              </Button>
+            )} />
+        </div>
+      )}
+
       {/* ---- tracking table ---- */}
       {workId && (
         <div className="card">
@@ -883,7 +915,7 @@ export default function ClassroomPage({
             </div>
 
           {filtered.length === 0 ? (
-            <Empty icon="📭"
+            <Empty icon="inbox" art="inbox"
               title={rows.length === 0 ? "No tracking data yet" : "Nothing matches this filter"}
               hint={rows.length === 0
                 ? "Press “Sync Google Classroom” to pull every submission state from Google."
@@ -942,7 +974,9 @@ export default function ClassroomPage({
                     </td>
                     <td data-label="V5" className="num">
                       {r.result
-                        ? `${r.result.earned}/${r.result.available}`
+                        ? (r.result.partial
+                          ? <span className="small faint">incomplete</span>
+                          : `${r.result.earned}/${r.result.available}`)
                         : r.job
                           ? <span className="small faint">{r.job.status.toLowerCase()}</span>
                           : "—"}

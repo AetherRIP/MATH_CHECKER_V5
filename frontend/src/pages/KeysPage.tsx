@@ -32,7 +32,7 @@ function KeyStatusBadge({ status }: { status: KeyInfo["status"] }) {
   return <Badge tone={m.tone}>{m.icon} {status}</Badge>;
 }
 
-export default function KeysPage() {
+export default function KeysPage({ embedded = false }: { embedded?: boolean } = {}) {
   const toast = useToast();
   const [status, setStatus] = useState<ApiKeyStatus | null>(null);
   const [keysInput, setKeysInput] = useState("");
@@ -163,15 +163,33 @@ export default function KeysPage() {
 
   const hasKeys = status?.has_keys;
 
+  const actions = (
+    <>
+      <button className="btn sm" onClick={() => setShowAdd((v) => !v)}>{showAdd ? "Close" : "Add keys"}</button>
+      <button className="btn primary sm" onClick={testAll} disabled={testing || !hasKeys}>
+        {testing ? `Testing ${summary?.tested ?? 0}/${summary?.total ?? "…"}…` : "Test all keys"}
+      </button>
+    </>
+  );
+
   return (
     <>
-      <PageHeader title="API Keys"
-        sub="Gemini keys are stored only on this machine and are never displayed again after saving.">
-        <button className="btn sm" onClick={() => setShowAdd((v) => !v)}>{showAdd ? "Close" : "Add keys"}</button>
-        <button className="btn primary sm" onClick={testAll} disabled={testing || !hasKeys}>
-          {testing ? `Testing ${summary?.tested ?? 0}/${summary?.total ?? "…"}…` : "Test all keys"}
-        </button>
-      </PageHeader>
+      {/* Inside the AI page this is a section, not a second page: one <h1>
+          per screen, and the tab already names it. */}
+      {embedded ? (
+        <div className="row between wrap" style={{ marginBottom: "var(--s4)", gap: "var(--s3)" }}>
+          <p className="page-sub" style={{ margin: 0 }}>
+            Gemini keys are stored only on this machine and are never displayed
+            again after saving.
+          </p>
+          <div className="row wrap" style={{ gap: 6 }}>{actions}</div>
+        </div>
+      ) : (
+        <PageHeader title="API Keys"
+          sub="Gemini keys are stored only on this machine and are never displayed again after saving.">
+          {actions}
+        </PageHeader>
+      )}
 
       {error && <div className="notice err" style={{ marginBottom: 12 }}>{error}</div>}
       {saved && <div className="notice ok" style={{ marginBottom: 12 }}>{saved}</div>}
@@ -261,9 +279,9 @@ export default function KeysPage() {
               {status.keys.map((k) => (
                 <tr key={k.fingerprint}>
                   <td data-label="Key">
-                    <button className="nav-item" style={{ width: "auto", padding: 0 }}
-                      onClick={() => setDetail(k)} title="Show key details">
-                      <strong>{k.label ?? k.fingerprint}</strong>
+                    <button className="linklike" onClick={() => setDetail(k)}
+                      title="Show key details">
+                      {k.label ?? k.fingerprint}
                     </button>
                   </td>
                   <td data-label="Status"><KeyStatusBadge status={k.status} /></td>

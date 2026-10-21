@@ -6,7 +6,7 @@ import {
   type AttentionFeed, type AuthStatus, type Dashboard,
 } from "./api";
 import {
-  Badge, Drawer, Dropdown, IconButton, Icon, Loading,
+  Badge, Drawer, Dropdown, IconButton, Icon, Loading, PageHeader,
   ToastProvider, useToast, type IconName,
 } from "./components";
 import SignIn from "./SignIn";
@@ -17,7 +17,6 @@ import { TooltipLayer } from "./TooltipLayer";
 import { ServerLifecycleBanner } from "./lifecycle";
 import AiPage from "./pages/AiPage";
 import SetupWizard from "./pages/SetupWizard";
-import { storedSession } from "./distributed/api";
 
 /**
  * Route-level code splitting.
@@ -92,63 +91,74 @@ interface NavItem {
   developerOnly?: boolean;
 }
 
-interface NavGroup {
-  section: string;
-  items: NavItem[];
+interface Destination {
+  id: string;
+  icon: IconName;
+  label: string;
+  /** The page this destination opens on. */
+  home: Route;
+  pages: NavItem[];
 }
 
 /**
- * Main navigation (§6): every page has its own entry again.
+ * Six destinations (blueprint §3), reached from the rail; each one owns a
+ * short row of section tabs. This replaces the 24-item list that pushed its
+ * own sections below the fold at 900 px.
  *
- * One job per entry, and one page per job:
- *   * AI            — providers/keys, the Normal and Large PDF workers, network
- *   * Task Manager  — the real jobs: correction, batched, Classroom, sync
- *   * Correct a PDF — the unified correction entry point (routes to either worker)
- *   * Assignments   — assignments, their submissions and their Classroom actions
- *   * everything else keeps the page it always had (results, review, classes,
- *     students, reports, Classroom, automation, storage, usage, privacy,
- *     settings) instead of being embedded in the AI page.
+ *   Desk      the day: what is running, what needs me, start a correction
+ *   Correct   the correction pipeline: queue, tasks, batched, automation
+ *   Review    decide on marks: queue and mark-scheme discrepancies
+ *   Results   the outputs: results, reports, bandwidth
+ *   Classes   the roster and its Google Classroom surfaces
+ *   System    configuration, keys, data, and developer diagnostics
  *
- * Nothing was deleted to get here; the pages and their data are the same, they
- * are simply presented where they belong.
+ * Nothing was removed. Every page that existed is still reachable — it now
+ * sits one level down, as a tab inside the destination it belongs to.
  */
-const NAV_GROUPS: NavGroup[] = [
-  { section: "Main", items: [
-    { id: "dashboard", icon: "dashboard", label: "Dashboard" },
-    { id: "ai", icon: "ai", label: "AI" },
-    { id: "tasks", icon: "cpu", label: "Task Manager" },
-    { id: "correct", icon: "wand", label: "Correct a PDF" },
-    { id: "assignments", icon: "assignments", label: "Assignments" },
+const DESTINATIONS: Destination[] = [
+  { id: "desk", icon: "dashboard", label: "Desk", home: "dashboard", pages: [
+    { id: "dashboard", icon: "dashboard", label: "Today" },
   ] },
-  { section: "Corrections", items: [
+  { id: "correct", icon: "wand", label: "Correct", home: "correct", pages: [
+    { id: "correct", icon: "wand", label: "New correction" },
+    { id: "tasks", icon: "cpu", label: "Tasks" },
+    { id: "corrections", icon: "refresh", label: "Job log" },
+    { id: "largepdf", icon: "grid", label: "Batched jobs" },
+    { id: "automation", icon: "activity", label: "Automatic" },
+  ] },
+  { id: "review", icon: "review", label: "Review", home: "review", pages: [
+    { id: "review", icon: "review", label: "Queue" },
+    { id: "scheme-review", icon: "alert", label: "Scheme mismatches" },
+  ] },
+  { id: "results", icon: "chart", label: "Results", home: "results", pages: [
     { id: "results", icon: "chart", label: "Results" },
-    { id: "review", icon: "review", label: "Review Queue" },
-    { id: "scheme-review", icon: "alert", label: "Mark-Scheme Review" },
-    { id: "largepdf", icon: "grid", label: "Large AI Worker" },
-    { id: "automation", icon: "activity", label: "Automatic Correction" },
+    { id: "reports", icon: "reports", label: "Reports" },
+    { id: "usage", icon: "trending", label: "Bandwidth" },
   ] },
-  { section: "Google Classroom", items: [
-    { id: "classroom", icon: "classroom", label: "Google Classroom" },
+  { id: "classes", icon: "classroom", label: "Classes", home: "classroom", pages: [
+    { id: "classroom", icon: "classroom", label: "Classroom" },
     { id: "classes", icon: "class", label: "Classes" },
     { id: "students", icon: "students", label: "Students" },
-    { id: "reports", icon: "reports", label: "Reports" },
+    { id: "assignments", icon: "assignments", label: "Assignments" },
   ] },
-  { section: "Data & system", items: [
-    { id: "storage", icon: "database", label: "Storage" },
-    { id: "usage", icon: "trending", label: "Internet Usage" },
-    { id: "privacy", icon: "shield", label: "Privacy & Data" },
+  { id: "system", icon: "settings", label: "System", home: "settings", pages: [
     { id: "settings", icon: "settings", label: "Settings" },
-  ] },
-  { section: "Developer", items: [
+    { id: "ai", icon: "ai", label: "AI & keys" },
+    { id: "storage", icon: "database", label: "Storage" },
+    { id: "privacy", icon: "shield", label: "Privacy & data" },
     { id: "diagnostics", icon: "gear", label: "Diagnostics", developerOnly: true },
-    { id: "prompts", icon: "sparkles", label: "Gemini Prompts", developerOnly: true },
-    { id: "audit", icon: "check-circle", label: "Accuracy Audit", developerOnly: true },
-    { id: "distributed", icon: "cloud", label: "Multi-School · WIP" },
-    { id: "updates", icon: "download", label: "Application Updates", developerOnly: true },
+    { id: "prompts", icon: "sparkles", label: "Prompts", developerOnly: true },
+    { id: "audit", icon: "check-circle", label: "Accuracy audit", developerOnly: true },
+    { id: "distributed", icon: "cloud", label: "Multi-school" },
+    { id: "updates", icon: "download", label: "Updates", developerOnly: true },
   ] },
 ];
 
-const ALL_NAV = NAV_GROUPS.flatMap((g) => g.items);
+const ALL_NAV: NavItem[] = DESTINATIONS.flatMap((d) => d.pages);
+
+const DEST_FOR: Partial<Record<Route, Destination>> = Object.fromEntries(
+  DESTINATIONS.flatMap((d) => d.pages.map((p) => [p.id, d])),
+) as Partial<Record<Route, Destination>>;
 
 /**
  * Titles for routes that are reachable but hidden from the navigation.
@@ -208,10 +218,9 @@ interface ParsedHash { route: Route; params: string[] }
 function parseHash(): ParsedHash {
   const raw = window.location.hash.replace(/^#\/?/, "");
   const parts = raw.split("/").map(decodeURIComponent);
-  // AI is the landing page: with three active pages there is no separate
-  // dashboard to open, and an unknown hash must not silently land on a page
-  // the navigation no longer offers.
-  const routeRaw = parts[0] || "ai";
+  // The Desk is the landing page (blueprint §3): the day's work, not a
+  // configuration screen. An unknown hash still lands on a real page.
+  const routeRaw = parts[0] || "dashboard";
   if (!VALID_ROUTES.has(routeRaw as Route)) return { route: "ai", params: [] };
   const route = (ALIASES[routeRaw] ?? routeRaw) as Route;
   // Legacy 'report' deep links carried course/work ids → forward to Reports.
@@ -320,20 +329,22 @@ function Shell() {
     });
   }
 
-  // Release management is a DEVELOPER-only surface that talks to the
-  // Multi-School console, so its nav item is shown when EITHER the local app
-  // role is developer OR the signed-in distributed account is a Developer.
-  // (The page and the backend still re-check the role — this is only about
-  // not hiding a page from the person entitled to use it.)
-  const distIsDeveloper = storedSession()?.role === "DEVELOPER";
-  const showDeveloperItems = role === "developer" || distIsDeveloper;
-  const visibleGroups = useMemo(() => NAV_GROUPS.map((g) => ({
-    ...g,
-    items: g.items.filter((item) => !item.developerOnly || showDeveloperItems),
-  })).filter((g) => g.items.length > 0), [showDeveloperItems]);
+  // Developer surfaces are gated by the LOCAL role: the endpoints behind them
+  // check it, so advertising a tab to a teacher produced a page that could
+  // only answer 403. A distributed Developer still reaches Multi-School (its
+  // own page and token), but not the local diagnostics.
+  const showDeveloperItems = role === "developer";
+  const visibleDestinations = useMemo(() => DESTINATIONS.map((d) => ({
+    ...d,
+    pages: d.pages.filter((p) => !p.developerOnly || showDeveloperItems),
+  })).filter((d) => d.pages.length > 0), [showDeveloperItems]);
 
+  // Which destination owns the page in view? Unknown routes keep their own
+  // title but fall back to the Desk rail highlight rather than misleading it.
+  const dest = DEST_FOR[route];
+  const sectionPages = visibleDestinations.find((d) => d.id === dest?.id)?.pages ?? [];
   const current = ALL_NAV.find((n) => n.id === route)
-    ?? { id: route, label: ROUTE_TITLES[route] ?? "AI" } as NavItem;
+    ?? { id: route, label: ROUTE_TITLES[route] ?? "Page" } as NavItem;
   const attentionCount = attention?.items.length ?? 0;
   const ctx = useMemo(() => ({ feed: attention, reload: loadAttention }),
     [attention, loadAttention]);
@@ -420,26 +431,21 @@ function Shell() {
             </div>
           </div>
 
-          {visibleGroups.map((group) => (
-            <div key={group.section}>
-              <div className="nav-section">{group.section}</div>
-              {group.items.map((item) => (
-                <button
-                  key={item.id}
-                  className={`nav-item ${route === item.id ? "active" : ""}`}
-                  onClick={() => go(item.id)}
-                  aria-current={route === item.id ? "page" : undefined}
-                  data-tooltip={collapsed ? item.label : undefined}
-                  data-tooltip-side="right"
-                >
-                  <span className="icon"><Icon name={item.icon} size={18} /></span>
-                  <span className="label-text">{item.label}</span>
-                  {item.id === "review" && reviewCount > 0 && (
-                    <span className="nav-count label-text">{reviewCount}</span>
-                  )}
-                </button>
-              ))}
-            </div>
+          {visibleDestinations.map((d) => (
+            <button
+              key={d.id}
+              className={`nav-item ${dest?.id === d.id ? "active" : ""}`}
+              onClick={() => go(d.home)}
+              aria-current={dest?.id === d.id ? "page" : undefined}
+              data-tooltip={collapsed ? d.label : undefined}
+              data-tooltip-side="right"
+            >
+              <span className="icon"><Icon name={d.icon} size={18} /></span>
+              <span className="label-text">{d.label}</span>
+              {d.id === "review" && reviewCount > 0 && (
+                <span className="nav-count label-text">{reviewCount}</span>
+              )}
+            </button>
           ))}
 
           <div className="spacer" />
@@ -469,7 +475,11 @@ function Shell() {
             </button>
 
             <div className="topbar-title">
-              <span className="t">{current?.label ?? "Dashboard"}</span>
+              <span className="t">
+                {dest && sectionPages.length > 1 && dest.label !== current.label
+                  ? `${dest.label} · ${current.label}`
+                  : current.label}
+              </span>
               {crumbParent ? (
                 <span className="c chip-hide-sm">
                   <a className="crumb-link" href={crumbParent.hash}
@@ -527,7 +537,7 @@ function Shell() {
               />
 
               <Dropdown align="right" icon="user" label=""
-                >
+                ariaLabel="Account and settings" tooltip="Account">
                 {(close) => (
                   <>
                     <div className="menu-label">Account</div>
@@ -601,13 +611,32 @@ function Shell() {
           <div className="main-scroll" id="main-content" tabIndex={-1}>
             <div className="main-inner">
               {dash?.demo_mode && (
-                <div className="notice info" style={{ marginBottom: 14 }}>
+                <div className="banner info" role="status">
                   <Icon name="party" size={16} />
                   <span>
-                    <strong>Demo Mode</strong> — synthetic students and assignments only.
+                    <strong>Demo mode</strong> — synthetic students and assignments only.
                     Google Classroom is disabled in this session.
                   </span>
                 </div>
+              )}
+              {/* Second level: the destination's pages, as tabs. A destination
+                  with a single page (the Desk) shows no tab strip at all. */}
+              {sectionPages.length > 1 && (
+                <nav className="section-tabs" aria-label={`${dest?.label} pages`}>
+                  {sectionPages.map((p) => (
+                    <button
+                      key={p.id}
+                      className={`section-tab ${route === p.id ? "active" : ""}`}
+                      aria-current={route === p.id ? "page" : undefined}
+                      onClick={() => go(p.id)}
+                    >
+                      {p.label}
+                      {p.id === "review" && reviewCount > 0 && (
+                        <span className="count">{reviewCount}</span>
+                      )}
+                    </button>
+                  ))}
+                </nav>
               )}
               {/* Page code is fetched on first visit; the shell never blanks. */}
               <Suspense fallback={<Loading label="Loading page…" />}>
@@ -656,10 +685,19 @@ function Shell() {
               {route === "diagnostics" && <DiagnosticsPage />}
               {route === "prompts" && <PromptsPage />}
               {route === "distributed" && (showDeveloperItems ? <DistributedPage /> :
-                <div className="card"><h2>Multi-School — Work in Progress</h2>
-                  <p>The account, school, class and synchronization implementation is preserved.
-                    Cross-school use has not completed release verification. Unfinished controls
-                    are unavailable here; developers retain diagnostics access.</p></div>)}
+                <>
+                  <PageHeader title="Multi-school"
+                    sub="Accounts, schools, classes and cross-device sync for one installation." />
+                  <div className="card">
+                    <h3 style={{ marginTop: 0 }}>Work in progress</h3>
+                    <p className="page-sub" style={{ marginBottom: 0 }}>
+                      The account, school, class and synchronization work is
+                      preserved, but cross-school use has not completed release
+                      verification, so these controls are switched off here.
+                      Sign in with the Developer role to reach them.
+                    </p>
+                  </div>
+                </>)}
               {route === "updates" && <UpdatesPage />}
               {route === "audit" && <AuditPage />}
               </Suspense>

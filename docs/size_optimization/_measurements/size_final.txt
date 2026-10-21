@@ -1,0 +1,59 @@
+Math Checker - repository size audit
+======================================
+root:  E:\MATH_CHECKER_V5
+total: 2.3 GiB in 15,594 files
+
+By category
+--------------------------------------
+  user_data              819.6 MiB   34.7%  127 files
+  git                    629.2 MiB   26.7%  38 files
+  release_build          362.5 MiB   15.4%  6,677 files
+  python_env             253.0 MiB   10.7%  5,537 files
+  release_artifacts      123.8 MiB    5.2%  5 files
+  dev_scratch             96.4 MiB    4.1%  127 files
+  node_deps               65.6 MiB    2.8%  2,447 files
+  source                  10.0 MiB    0.4%  631 files
+  caches                 261.8 KiB    0.0%  5 files
+
+By top-level path
+--------------------------------------
+  data                                   819.6 MiB
+  .git                                   629.2 MiB
+  MathChecker_Distribution               487.1 MiB
+  .venv                                  253.0 MiB
+  dev_local                               92.1 MiB
+  frontend                                67.6 MiB
+  backend                                  4.7 MiB
+  autostart                                4.3 MiB
+  docs                                     2.6 MiB
+  scripts                                 91.3 KiB
+  main.py                                 33.3 KiB
+  README.md                               28.2 KiB
+  remote.py                               21.4 KiB
+  DISTRIBUTED_DEPLOYMENT.md               19.0 KiB
+  agent                                   13.8 KiB
+  start.bat                                9.4 KiB
+  setup.bat                                4.3 KiB
+  Stop.bat                                 3.4 KiB
+  .gitignore                               2.4 KiB
+  start_public.bat                         2.0 KiB
+  LICENSE                                  1.1 KiB
+  start.sh                                   917 B
+  .githooks                                  564 B
+  .gitattributes                              66 B
+  .freebuff                                   37 B
+
+Largest files (top 12)
+--------------------------------------
+       626.2 MiB  .git/objects/pack/pack-3a4b00c53492d2e93ca7c86a60557bd2cb60ab12.pack
+        89.2 MiB  .venv/Lib/site-packages/playwright/driver/node.exe
+        72.8 MiB  MathChecker_Distribution/release/MathChecker_Portable.zip
+        72.8 MiB  MathChecker_Distribution/previous_builds/20261016-193501/MathChecker_Portable.zip
+        52.8 MiB  MathChecker_Distribution/build/cloudflared.exe
+        50.9 MiB  MathChecker_Distribution/release/MathChecker_Setup.exe
+        50.9 MiB  MathChecker_Distribution/previous_builds/20261016-193501/MathChecker_Setup.exe
+        50.8 MiB  data/purge_backups/20261011_114610_000000000000/files/tmp/router_merged/00000000000000000000000000000000_student.pdf
+        49.0 MiB  dev_local/release_audit_backup/app.db
+        49.0 MiB  data/purge_backups/20261011_121813_course_000000000000/app.db
+        49.0 MiB  data/purge_backups/20261011_114610_000000000000/app.db
+        49.0 MiB  data/app.db.bak-updatescleanup-20261011-175919

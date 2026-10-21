@@ -951,8 +951,18 @@ export default function SettingsPage() {
 
       {error && <div className="notice err" style={{ marginBottom: 12 }}>{error}</div>}
 
+      <nav className="settings-jump" aria-label="Jump to a settings section">
+        {[
+          ["access", "Access & accounts"], ["classroom", "Google Classroom"],
+          ["correction", "Correction"], ["ai", "AI provider"],
+          ["data", "Storage & data"], ["reports", "Reports & identity"],
+        ].map(([id, label]) => (
+          <a key={id} className="chip" href={`#${id}`}>{label}</a>
+        ))}
+      </nav>
+
       {/* ------------------------------------------------ access & accounts */}
-      <div className="nav-section" style={{ marginTop: 0 }}>Access &amp; accounts</div>
+      <h2 className="nav-section" id="access" style={{ marginTop: 0 }}>Access &amp; accounts</h2>
 
       <PublicAddressCard state={access} onChange={setAccess}
         unavailable={accessUnavailable} />
@@ -966,7 +976,7 @@ export default function SettingsPage() {
       <RemoteAccessCard />
 
       {/* -------------------------------------------------- google classroom */}
-      <div className="nav-section">Google Classroom</div>
+      <h2 className="nav-section" id="classroom">Google Classroom</h2>
 
       <Section title="Connection" icon="classroom">
         <Row ok={Boolean(auth?.authenticated) || !auth?.required}
@@ -992,7 +1002,7 @@ export default function SettingsPage() {
       </Section>
 
       {/* ------------------------------------------------- correction engine */}
-      <div className="nav-section">Correction preferences</div>
+      <h2 className="nav-section" id="correction">Correction preferences</h2>
 
       <div className="grid grid-2" style={{ alignItems: "start" }}>
         <Section title="Background workers" icon="cpu">
@@ -1015,11 +1025,16 @@ export default function SettingsPage() {
                 keep_submissions: e.target.value as typeof settings.retention.keep_submissions,
               } })}>
               <option value="never">Never keep (delete after marking)</option>
-              <option value="until_complete">Until the correction finishes</option>
+              <option value="until_complete">Only while the correction runs (deleted when it finishes)</option>
               <option value="days">Keep for a number of days</option>
               <option value="always">Always keep</option>
             </select>
           </label>
+          <p className="faint small" style={{ marginBottom: 0 }}>
+            Applies to every paper this device marks — ones downloaded from
+            Classroom and ones you upload — for both correction engines. A
+            kept paper stays viewable from its result.
+          </p>
           {settings.retention.keep_submissions === "days" && (
             <label className="field">
               <span>Days to keep</span>
@@ -1029,7 +1044,8 @@ export default function SettingsPage() {
             </label>
           )}
           <p className="faint small" style={{ marginBottom: 0 }}>
-            Temporary processing files are always cleaned up automatically.
+            Temporary processing copies are always cleaned up automatically; a
+            kept paper is stored separately from them.
           </p>
         </Section>
 
@@ -1116,7 +1132,7 @@ export default function SettingsPage() {
         onUpdate={update} />
 
       {/* ------------------------------------------------------- ai provider */}
-      <div className="nav-section">AI provider</div>
+      <h2 className="nav-section" id="ai">AI provider</h2>
 
       <Section title="Gemini model chain" icon="ai"
         hint="preserved from the original engine">
@@ -1134,7 +1150,7 @@ export default function SettingsPage() {
       </Section>
 
       {/* ------------------------------------------------------- storage/data */}
-      <div className="nav-section">Storage &amp; data portability</div>
+      <h2 className="nav-section" id="data">Storage &amp; data portability</h2>
 
       <Section title="Data portability" icon="database"
         hint="move records between computers">
@@ -1182,7 +1198,7 @@ export default function SettingsPage() {
       </Section>
 
       {/* ------------------------------------------------ identity & reports */}
-      <div className="nav-section">Reports &amp; identity</div>
+      <h2 className="nav-section" id="reports">Reports &amp; identity</h2>
 
       <div className="grid grid-2" style={{ alignItems: "start" }}>
         <Section title="Teacher &amp; school" icon="user">

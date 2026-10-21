@@ -204,7 +204,32 @@ async def create_large_pdf_job(
     job = _runner().enqueue_manual(
         student_name=student_name, student_pdf_path=saved["submission"],
         mark_scheme_path=saved["mark_scheme"])
-    job = _runner().prepare(job["id"])
+    if job.get("student_pdf_path") == saved["submission"]:
+        # Register the uploads with the job so the SAME retention/cleanup path
+        # that owns every other submission owns these too: kept when retention
+        # says keep, deleted when it does not. Without this row the upload was
+        # invisible to retention and stayed on disk forever.
+        for kind in ("submission", "mark_scheme"):
+            db.execute(
+                "INSERT OR REPLACE INTO pending_manual_files"
+                "(job_id, kind, path, filename) VALUES(?,?,?,?)",
+                (job["id"], kind, saved[kind], Path(saved[kind]).name))
+    else:
+        # An identical completed job already owns these inputs; the fresh
+        # copies would otherwise be orphaned in the staging folder.
+        for path in saved.values():
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError:
+                pass
+    try:
+        job = _runner().prepare(job["id"])
+    except Exception:
+        # A rejected upload must not linger in the staging folder (nor leave a
+        # half-created job claiming files it cannot use).
+        from ..engine.service import cleanup_job_files
+        cleanup_job_files(job["id"])
+        raise
     return _job_public(job, detailed=True)
 
 

@@ -390,8 +390,17 @@ def build_cells(rows: Sequence[dict], codes: Sequence[AssignmentCode],
         # grade is used only when Math Correct has none.
         earned = _num(row.get("mc_earned"))
         available = _num(row.get("mc_available"))
+        partial = row.get("mc_partial") or None
         pct: float | None = None
-        if earned is not None:
+        if earned is not None and partial:
+            # An incomplete correction has marks but no publishable score: no
+            # percentage, no grade, and it stays out of every class average.
+            marked_n = int(partial.get("marked_questions") or 0)
+            expected_n = int(partial.get("expected_questions") or 0)
+            cell.grade = (f"Incomplete ({marked_n} of {expected_n} questions "
+                          "marked)")
+            cell.grade_source = "Math Correct (incomplete)"
+        elif earned is not None:
             cell.raw_earned = earned
             cell.grade = (f"{int(earned) if earned == int(earned) else earned}"
                           f"/{int(available) if available and available == int(available) else available}")

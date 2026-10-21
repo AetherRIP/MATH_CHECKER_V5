@@ -123,6 +123,15 @@ async def lifespan(app: FastAPI):
     if swept:
         log_event("app", "stale temp job dirs removed", removed=swept)
     sweep_expired_retained()
+    # Optimized PDF copies are a cache, not data: age/size bounded, and never
+    # the only copy of anything (the source document is always kept).
+    try:
+        from .engine.pdf_optimize import sweep_cache
+        cached = sweep_cache()
+        if cached:
+            log_event("app", "pdf cache swept", removed=cached)
+    except Exception:  # noqa: BLE001 — cache hygiene must never block startup
+        pass
 
     # CorrectionService keeps the enqueue/status/result API surface (jobs are
     # executed by the WorkerPool); it also still owns cleanup of manual-upload

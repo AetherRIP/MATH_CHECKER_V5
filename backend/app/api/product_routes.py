@@ -26,6 +26,7 @@ from ..classroom.auth import auth_state, account_email
 from ..errors import AppError
 from ..logging_setup import log_event
 from ..submission_status import sql_outstanding
+from ..text import count as _count, verb as _verb
 
 router = APIRouter(prefix="/api")
 
@@ -533,9 +534,15 @@ def attention():
     for r in review:
         reasons = db.loads(r["confidence_reasons"], []) or []
         detail = reasons[0] if reasons else f"Confidence {r['confidence'] or 'low'}"
+        # A large-PDF run can carry only a Classroom student id, and a 21-digit
+        # number is not something a teacher can act on. Say "a submission"
+        # instead, and keep the id out of the visible title.
+        who = student_identity.display_name(r["student_id"], r["student_name"])
+        if who.isdigit() or who == student_identity.FALLBACK_DISPLAY_NAME:
+            who = "A submission"
         items.append({
             "type": "needs_review", "tone": "warn", "icon": "review",
-            "title": f"{student_identity.display_name(r['student_id'], r['student_name'], fallback='A result')} needs review",
+            "title": f"{who} needs review",
             "detail": str(detail)[:160], "route": "#/review", "count": 1,
         })
 
@@ -569,7 +576,8 @@ def attention():
     for m in missing:
         items.append({
             "type": "missing_submissions", "tone": "info", "icon": "clock",
-            "title": f"{m['missing']} student(s) have not submitted — {m['title']}",
+            "title": (f"{_count(m['missing'], 'student')} "
+                      f"{_verb(m['missing'], 'has', 'have')} not submitted — {m['title']}"),
             "detail": f"Out of {m['total']} in the class.",
             "route": f"#/assignments/{m['coursework_id']}",
             "count": m["missing"],
@@ -586,7 +594,7 @@ def attention():
     if unchecked and unchecked["n"]:
         items.append({
             "type": "unchecked", "tone": "info", "icon": "wand",
-            "title": f"{unchecked['n']} submitted piece(s) not yet corrected",
+            "title": f"{_count(unchecked['n'], 'submitted piece')} not yet corrected",
             "detail": "Run correction to mark them.",
             "route": "#/assignments", "count": unchecked["n"],
         })
@@ -597,7 +605,7 @@ def attention():
     if sync_errors and sync_errors["n"]:
         items.append({
             "type": "sync_error", "tone": "warn", "icon": "sync",
-            "title": f"{sync_errors['n']} submission(s) had sync problems",
+            "title": f"{_count(sync_errors['n'], 'submission')} had sync problems",
             "detail": "Last sync could not verify these rows; stored data kept.",
             "route": "#/classroom", "count": sync_errors["n"],
         })
@@ -624,7 +632,7 @@ def attention():
         items.append({
             "type": "keys_down", "tone": "err", "icon": "key",
             "title": "All Gemini API keys are unavailable",
-            "detail": f"{cfg_keys['total']} key(s) cooling down or invalid.",
+            "detail": f"{_count(cfg_keys['total'], 'key')} cooling down or invalid.",
             "route": "#/ai", "count": cfg_keys["total"],
         })
 
@@ -1018,8 +1026,9 @@ def assignment_mark_scheme_page_image(coursework_id: str, page: int,
         raise AppError(f"The mark scheme file could not be read: {exc}",
                        status=500, code="mark_scheme_unreadable")
     if page < 1 or page > total:
-        raise AppError(f"This mark scheme has {total} page(s); page {page} does "
-                       "not exist.", status=404, code="page_out_of_range")
+        raise AppError(f"This mark scheme has {_count(total, 'page')}; "
+                       f"page {page} does not exist.",
+                       status=404, code="page_out_of_range")
 
     target = _rendered_page_path(sha, page, dpi)
     etag = f'"{sha[:16]}-p{page}-{dpi}"'

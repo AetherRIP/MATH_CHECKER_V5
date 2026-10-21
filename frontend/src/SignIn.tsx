@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import {
   api, authStatus, setCsrfToken, type AuthStatus,
 } from "./api";
-import { Button, Icon } from "./components";
+import { Button, Field, Icon } from "./components";
 
 /**
- * The MAIN sign-in page for Math Correct.
+ * The MAIN sign-in page for Math Checker.
  *
  * Rendered by the shell whenever the backend says a session is required —
  * public (tunnel) mode OR the local `login_required` setting. Credentials are
@@ -91,103 +91,128 @@ export default function SignIn({
     ? "Create the first account for this installation. You will sign in with it every time."
     : status?.public_mode
       ? "Public access is enabled, so this session requires an account."
-      : "Sign in with your Math Correct account to open the dashboard.";
+      : "Sign in with your Math Checker account to open the desk.";
 
   return (
-    <div className="signin-wrap">
-      <div className="card signin-card">
-        <div className="brand" style={{ justifyContent: "center", marginBottom: 8 }}>
+    <main className="signin-wrap">
+      <div className="signin-card">
+        <div className="brand">
           <div className="brand-badge" aria-hidden="true">
             <Icon name="sparkles" size={18} />
           </div>
           <div>
-            Math Correct
-            <small>Sign in to continue</small>
+            Math Checker
+            <small>Marking desk</small>
           </div>
         </div>
 
-        <p className="faint small" style={{ textAlign: "center", marginTop: 0 }}>
-          {intro}
-        </p>
+        <div>
+          <h1 className="page-title" style={{ fontSize: "var(--fs-xl)" }}>
+            {needsSetup ? "Create the first account" : "Sign in"}
+          </h1>
+          <p className="muted small" style={{ margin: "4px 0 0" }}>{intro}</p>
+        </div>
 
         {remoteNoSetup ? (
           <div className="notice warn">
             <Icon name="alert" size={16} />
             <span>
-              <strong>No sign-in account exists yet.</strong> Open Math Correct
+              <strong>No sign-in account exists yet.</strong> Open Math Checker
               on the laptop running it ({status?.local_url ?? "http://127.0.0.1:8642"})
               once and create the account there — account setup is deliberately
               blocked through the public address.
             </span>
           </div>
         ) : (
-          <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
-            <label className="field">
-              <span>Username</span>
-              <input className="input" value={username} autoComplete="username"
+          <form onSubmit={submit} className="stack" style={{ gap: 12 }}>
+            <Field label="Username" id="signin-username">
+              <input
+                id="signin-username"
+                className="input"
+                value={username}
+                autoComplete="username"
+                autoFocus
                 onChange={(e) => { setUsername(e.target.value); setError(null); }}
-                placeholder={needsSetup ? "teacher" : "your username"} required />
-            </label>
-            <label className="field">
-              <span>{needsSetup ? "Choose a password (10+ characters)" : "Password"}</span>
-              <div style={{ position: "relative" }}>
-                <input className="input" type={reveal ? "text" : "password"}
+                placeholder={needsSetup ? "teacher" : "your username"}
+                required
+              />
+            </Field>
+
+            <Field
+              label={needsSetup ? "Choose a password (10+ characters)" : "Password"}
+              id="signin-password"
+            >
+              <div className="row" style={{ gap: 6 }}>
+                <input
+                  id="signin-password"
+                  className="input"
+                  type={reveal ? "text" : "password"}
                   value={password}
                   autoComplete={needsSetup ? "new-password" : "current-password"}
                   onChange={(e) => { setPassword(e.target.value); setError(null); }}
-                  minLength={needsSetup ? 10 : undefined} required
-                  style={{ paddingRight: 74 }} />
-                <button type="button"
-                  className="btn ghost size-sm"
+                  minLength={needsSetup ? 10 : undefined}
+                  aria-describedby="signin-password-hint"
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-pressed={reveal}
                   onClick={() => setReveal((v) => !v)}
-                  aria-label={reveal ? "Hide password" : "Show password"}
-                  style={{
-                    position: "absolute", right: 2, top: "50%",
-                    transform: "translateY(-50%)", fontSize: 12, padding: "4px 8px",
-                  }}>
-                  <Icon name={reveal ? "shield" : "user"} size={14} />
+                >
+                  <Icon name={reveal ? "lock" : "eye"} size={14} />
                   {reveal ? "Hide" : "Show"}
-                </button>
+                </Button>
               </div>
-            </label>
+            </Field>
+
             {needsSetup && (
-              <label className="field">
-                <span>Confirm password</span>
-                <input className="input" type="password" value={current}
+              <Field label="Confirm password" id="signin-confirm">
+                <input
+                  id="signin-confirm"
+                  className="input"
+                  type="password"
+                  value={current}
                   autoComplete="new-password"
                   onChange={(e) => { setCurrent(e.target.value); setError(null); }}
-                  minLength={10} required
+                  minLength={10}
+                  required
                   pattern={password === current ? undefined : ".*"}
                   onInvalid={(e) => {
                     if (current !== password) {
                       (e.currentTarget as HTMLInputElement).setCustomValidity("Passwords do not match.");
                     }
                   }}
-                  onInput={(e) => (e.currentTarget as HTMLInputElement).setCustomValidity("")} />
-              </label>
+                  onInput={(e) => (e.currentTarget as HTMLInputElement).setCustomValidity("")}
+                />
+              </Field>
             )}
+
             {!needsSetup && (
-              <label className="row" style={{ gap: 8, alignItems: "center", cursor: "pointer" }}>
+              <label className="row small" style={{ gap: 8, cursor: "pointer" }}>
                 <input type="checkbox" checked={remember}
                   onChange={(e) => setRemember(e.target.checked)} />
-                <span className="small">Remember me on this device</span>
+                <span>Remember me on this device</span>
               </label>
             )}
+
             {error && (
-              <div className="notice err" role="alert"
-                onClick={() => setError(null)} style={{ cursor: "pointer" }}>
-                {error}
+              <div className="notice err" role="alert">
+                <Icon name="alert" size={15} />
+                <span>{error}</span>
               </div>
             )}
-            <Button type="submit" variant="primary" disabled={busy}
-              icon={busy ? "refresh" : "shield"}>
-              {busy ? "Please wait…" : needsSetup ? "Create account & sign in" : "Sign in"}
+
+            <Button type="submit" variant="primary" block loading={busy} icon="shield">
+              {needsSetup ? "Create account & sign in" : "Sign in"}
             </Button>
-            <p className="faint small" style={{ margin: 0, textAlign: "center" }}>
+
+            <p id="signin-password-hint" className="faint small" style={{ margin: 0, textAlign: "center" }}>
               {needsSetup
                 ? "Passwords are stored only as salted hashes on this machine."
-                : "Your session is remembered until you sign out" +
-                  (remember ? " — even after a restart." : " for this browser session only.")}
+                : "Your session is remembered until you sign out"
+                  + (remember ? " — even after a restart." : " for this browser session only.")}
             </p>
           </form>
         )}
@@ -195,8 +220,8 @@ export default function SignIn({
         {status?.public_url && (
           <div className="signin-address">
             <span className="faint small">Public address</span>
-            <div className="row" style={{ gap: 8, alignItems: "center" }}>
-              <code style={{ wordBreak: "break-all" }}>{status.public_url}</code>
+            <div className="row" style={{ gap: 8 }}>
+              <code style={{ wordBreak: "break-all", flex: 1 }}>{status.public_url}</code>
               <Button variant="ghost" size="sm" onClick={copyAddress}
                 icon={copied ? "check" : "copy"}>
                 {copied ? "Copied" : "Copy"}
@@ -205,6 +230,6 @@ export default function SignIn({
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }

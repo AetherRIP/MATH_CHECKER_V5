@@ -130,21 +130,63 @@ export function StatusCard({
   );
 }
 
+/**
+ * One number, its name and its scope. The single numeric component: the
+ * dashboard, results and class pages all speak this instead of inventing a
+ * new tile shape per page.
+ */
+export function Metric({ value, label, scope, tone }: {
+  value: ReactNode; label: ReactNode; scope?: ReactNode;
+  tone?: "ok" | "warn" | "mark";
+}) {
+  return (
+    <div className={`metric ${tone ? `tone-${tone}` : ""}`}>
+      <div className="metric-value">{value}</div>
+      <div className="metric-label">{label}</div>
+      {scope != null && <div className="metric-scope">{scope}</div>}
+    </div>
+  );
+}
+
+/** A bordered, letterspaced provenance stamp — where a number came from. */
+export function Stamp({ children, tone }: { children: ReactNode; tone?: "mark" }) {
+  return (
+    <span className="stamp" style={tone === "mark" ? { color: "var(--mark)", borderColor: "var(--mark)" } : undefined}>
+      {children}
+    </span>
+  );
+}
+
 /** A single "needs attention" row. */
 export function AttentionItem({
-  icon, tone = "info", title, detail, action, onAction,
+  icon, tone = "info", title, count, detail, detailTitle, action, onAction,
 }: {
   icon: IconName; tone?: "ok" | "err" | "warn" | "info";
   title: ReactNode; detail?: ReactNode; action?: ReactNode; onAction?: () => void;
+  /** How many things this row stands for; rendered as a stamp, not in the title. */
+  count?: number;
+  /** Raw diagnostic text, exposed on hover rather than shown. */
+  detailTitle?: string;
 }) {
+  const activate = (e: React.KeyboardEvent) => {
+    if (!onAction) return;
+    if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+    e.preventDefault();
+    onAction();
+  };
   return (
     <div className={`attention-item tone-${tone} ${onAction ? "clickable" : ""}`}
       onClick={onAction} role={onAction ? "button" : undefined} tabIndex={onAction ? 0 : undefined}
-      onKeyDown={onAction ? (e) => { if (e.key === "Enter") onAction(); } : undefined}>
-      <span className="ai-icon"><Icon name={icon} size={17} /></span>
+      onKeyDown={activate}>
+      <span className="ai-icon"><Icon name={icon} size={16} /></span>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div className="ai-title">{title}</div>
-        {detail != null && <div className="ai-detail">{detail}</div>}
+        <div className="row" style={{ gap: 6, alignItems: "baseline" }}>
+          <span className="ai-title">{title}</span>
+          {count != null && <span className="stamp">{count}</span>}
+        </div>
+        {detail != null && (
+          <div className="ai-detail" title={detailTitle}>{detail}</div>
+        )}
       </div>
       {action}
     </div>
@@ -243,31 +285,50 @@ export function ErrorState({ title, detail, onRetry }: {
 
 /* ============================================================ page frame */
 
-export function PageHeader({ title, sub, children, icon }: {
-  title: string; sub?: string; children?: ReactNode; icon?: IconName;
+/**
+ * The one page header. An <h1> on every page (the marking page used to have
+ * none at all), an optional plain-language subtitle, an optional meta line
+ * for scope ("78 students · synced 4 min ago") and the page's actions.
+ */
+export function PageHeader({ title, sub, meta, children }: {
+  title: string; sub?: string; meta?: ReactNode; children?: ReactNode;
+  /** Accepted for compatibility; page titles no longer carry icons. */
+  icon?: IconName;
 }) {
   return (
-    <div style={{ marginBottom: 20 }}>
-      <div className="row between wrap" style={{ gap: 12 }}>
-        <div style={{ minWidth: 0 }}>
-          <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {icon && <Icon name={icon} size={26} style={{ color: "var(--accent)" }} />}
-            {title}
-          </h1>
-          {sub && <p className="page-sub" style={{ marginBottom: 0 }}>{sub}</p>}
-        </div>
-        {children && <div className="row wrap">{children}</div>}
+    <div className="page-head">
+      <div className="ph-main">
+        <h1 className="page-title">{title}</h1>
+        {sub && <p className="page-sub">{sub}</p>}
+        {meta != null && <div className="ph-meta">{meta}</div>}
       </div>
+      {children && <div className="ph-actions">{children}</div>}
+    </div>
+  );
+}
+
+/** A labelled form control with an optional hint and error message. */
+export function Field({ label, hint, error, children, id }: {
+  label: ReactNode; hint?: ReactNode; error?: ReactNode;
+  children: ReactNode; id?: string;
+}) {
+  return (
+    <div className={`field ${error ? "invalid" : ""}`}>
+      <span>{id ? <label htmlFor={id}>{label}</label> : label}</span>
+      {children}
+      {error ? <div className="field-error">{error}</div>
+        : hint ? <div className="field-hint">{hint}</div> : null}
     </div>
   );
 }
 
 /** Section heading with optional right-aligned actions. */
-export function Section({ title, hint, actions, children, icon }: {
-  title: ReactNode; hint?: ReactNode; actions?: ReactNode; children: ReactNode; icon?: IconName;
+export function Section({ title, hint, actions, children, icon, id }: {
+  title: ReactNode; hint?: ReactNode; actions?: ReactNode; children: ReactNode;
+  icon?: IconName; id?: string;
 }) {
   return (
-    <div className="card">
+    <section className="card" id={id}>
       <div className="row between wrap" style={{ marginBottom: 12, gap: 8 }}>
         <h3 style={{ margin: 0 }}>
           {icon && <Icon name={icon} size={16} style={{ color: "var(--accent)" }} />}
@@ -277,7 +338,7 @@ export function Section({ title, hint, actions, children, icon }: {
         {actions && <div className="row wrap">{actions}</div>}
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 
@@ -354,9 +415,11 @@ export function Tabs<T extends string>({ value, options, onChange, ariaLabel }: 
 
 /* ============================================================ dropdown */
 
-export function Dropdown({ label, children, align, icon }: {
+export function Dropdown({ label, children, align, icon, ariaLabel, tooltip }: {
   label: ReactNode; children: (close: () => void) => ReactNode;
   align?: "left" | "right"; icon?: IconName;
+  /** Accessible name; required when `label` is empty (icon-only trigger). */
+  ariaLabel?: string; tooltip?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -377,11 +440,14 @@ export function Dropdown({ label, children, align, icon }: {
 
   return (
     <div className="dropdown" ref={ref}>
-      <button type="button" className="btn secondary sm" aria-haspopup="menu" aria-expanded={open}
+      <button type="button" className={`btn secondary ${label ? "sm" : "icon-only"}`}
+        aria-haspopup="menu" aria-expanded={open}
+        aria-label={label ? undefined : (ariaLabel ?? tooltip ?? "Menu")}
+        data-tooltip={tooltip}
         onClick={() => setOpen((v) => !v)}>
         {icon && <Icon name={icon} size={14} />}
         {label}
-        <Icon name="chevron-down" size={13} />
+        {label ? <Icon name="chevron-down" size={13} /> : null}
       </button>
       {open && (
         <div className="dropdown-menu" role="menu"

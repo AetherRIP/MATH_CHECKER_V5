@@ -1,0 +1,154 @@
+{
+  "root": "E:\\MATH_CHECKER_V5",
+  "total_bytes": 3780889620,
+  "total_files": 31377,
+  "categories": {
+    "release_build": {
+      "bytes": 1240680466,
+      "files": 18196
+    },
+    "git": {
+      "bytes": 1015205455,
+      "files": 356
+    },
+    "user_data": {
+      "bytes": 859453825,
+      "files": 127
+    },
+    "python_env": {
+      "bytes": 342379317,
+      "files": 9063
+    },
+    "release_artifacts": {
+      "bytes": 129780182,
+      "files": 5
+    },
+    "dev_scratch": {
+      "bytes": 101118631,
+      "files": 127
+    },
+    "node_deps": {
+      "bytes": 68737567,
+      "files": 2447
+    },
+    "caches": {
+      "bytes": 13074364,
+      "files": 443
+    },
+    "source": {
+      "bytes": 10459813,
+      "files": 613
+    }
+  },
+  "top_level": {
+    "MathChecker_Distribution": 1371313903,
+    ".git": 1015205455,
+    "data": 859453825,
+    ".venv": 265274739,
+    "dev_local": 96609392,
+    ".venv.foreign": 77104578,
+    "frontend": 70848541,
+    "backend": 17291905,
+    "autostart": 4509202,
+    "docs": 2615204,
+    ".pytest_cache": 231250,
+    "scripts": 204744,
+    "__pycache__": 65532,
+    "main.py": 34080,
+    "agent": 33526,
+    "README.md": 28875,
+    "remote.py": 21903,
+    "DISTRIBUTED_DEPLOYMENT.md": 19491,
+    "start.bat": 9674,
+    "setup.bat": 4386,
+    "Stop.bat": 3524,
+    "start_public.bat": 2021,
+    ".gitignore": 1755,
+    "LICENSE": 1095,
+    "start.sh": 917,
+    ".gitattributes": 66,
+    ".freebuff": 37
+  },
+  "largest_files": [
+    {
+      "path": ".git/objects/pack/pack-2caceac58e5b95cbf956411dbcb780aba3280546.pack",
+      "bytes": 496555539
+    },
+    {
+      "path": ".git/objects/pack/pack-a33d7d2e27242f3d7c59461ae85166c7fa2e4497.pack",
+      "bytes": 128748484
+    },
+    {
+      "path": ".venv/Lib/site-packages/playwright/driver/node.exe",
+      "bytes": 93580104
+    },
+    {
+      "path": "MathChecker_Distribution/release/MathChecker_Portable.zip",
+      "bytes": 76365101
+    },
+    {
+      "path": "MathChecker_Distribution/previous_builds/20261016-193501/MathChecker_Portable.zip",
+      "bytes": 76361483
+    },
+    {
+      "path": "MathChecker_Distribution/previous_builds/20261016-120509/MathChecker_Portable.zip",
+      "bytes": 76328811
+    },
+    {
+      "path": "MathChecker_Distribution/previous_builds/original_20261012/release/MathChecker_Portable.zip",
+      "bytes": 76244957
+    },
+    {
+      "path": ".git/objects/ff/2e5330e4595f3c44a84d7961c9c51455f86e20",
+      "bytes": 75457326
+    },
+    {
+      "path": ".git/objects/04/1c20757acc3bdbb456534362d0f361276e5f33",
+      "bytes": 75453817
+    },
+    {
+      "path": ".git/objects/40/798efc442ca9fbe9b1c619b8a4a4b177e84b8b",
+      "bytes": 75421346
+    },
+    {
+      "path": "MathChecker_Distribution/release_staging/tools/cloudflared.exe",
+      "bytes": 55366080
+    },
+    {
+      "path": "MathChecker_Distribution/previous_builds/original_20261012/portable/MathChecker_Portable/tools/cloudflared.exe",
+      "bytes": 55366080
+    },
+    {
+      "path": "MathChecker_Distribution/portable/MathChecker_Portable/tools/cloudflared.exe",
+      "bytes": 55366080
+    },
+    {
+      "path": "MathChecker_Distribution/build/cloudflared.exe",
+      "bytes": 55366080
+    },
+    {
+      "path": "MathChecker_Distribution/release/MathChecker_Setup.exe",
+      "bytes": 53404277
+    },
+    {
+      "path": "MathChecker_Distribution/previous_builds/20261016-193501/MathChecker_Setup.exe",
+      "bytes": 53396790
+    },
+    {
+      "path": "MathChecker_Distribution/previous_builds/20261016-120509/MathChecker_Setup.exe",
+      "bytes": 53381749
+    },
+    {
+      "path": "MathChecker_Distribution/previous_builds/original_20261012/release/MathChecker_Setup.exe",
+      "bytes": 53314265
+    },
+    {
+      "path": "data/purge_backups/20261011_114610_000000000000/files/tmp/router_merged/00000000000000000000000000000000_student.pdf",
+      "bytes": 53255171
+    },
+    {
+      "path": ".git/objects/20/7207e3d9ce502b98d511b3cc465110e7189132",
+      "bytes": 52928592
+    }
+  ]
+}

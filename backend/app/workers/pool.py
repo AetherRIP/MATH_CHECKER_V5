@@ -624,6 +624,27 @@ class WorkerPool:
                     "No mark scheme has been uploaded for this assignment yet. "
                     "Upload it on the Classroom page before starting corrections.")
 
+        # ---- ONE optimization step for BOTH documents (§ compression) ----
+        # The staged files stay untouched (retention owns them); the model is
+        # given a verified, smaller copy. A cached artifact is reused on every
+        # retry and for every student sharing the same mark scheme.
+        try:
+            from ..engine.pdf_optimize import optimize_pdf
+            submission_paths = [
+                optimize_pdf(p, role="submission", job_id=job.get("id")).path
+                if Path(p).suffix.lower() == ".pdf" else p
+                for p in submission_paths]
+            if mark_scheme_path and Path(mark_scheme_path).suffix.lower() == ".pdf":
+                mark_scheme_path = optimize_pdf(
+                    mark_scheme_path, role="mark_scheme",
+                    job_id=job.get("id")).path
+            if question_path and Path(question_path).suffix.lower() == ".pdf":
+                question_path = optimize_pdf(question_path, role="mark_scheme",
+                                             job_id=job.get("id")).path
+        except Exception:  # noqa: BLE001 — optimization must never block a job
+            log_event("workers", "pdf optimization skipped",
+                      level=logging.WARNING, job_id=job.get("id"))
+
         prepared = {"submission": submission_paths,
                     "mark_scheme": mark_scheme_path,
                     "question": question_path,
