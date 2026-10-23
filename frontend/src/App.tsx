@@ -15,6 +15,10 @@ import { ThemeProvider, useTheme } from "./theme";
 import SearchBox from "./SearchBox";
 import { TooltipLayer } from "./TooltipLayer";
 import { ServerLifecycleBanner } from "./lifecycle";
+import {
+  backendOriginLabel, environmentDetail, environmentKind, environmentLabel,
+  offlineMessage,
+} from "./environment";
 import AiPage from "./pages/AiPage";
 import SetupWizard from "./pages/SetupWizard";
 
@@ -61,7 +65,6 @@ const StudentsPage = lazyRoute(() => import("./pages/StudentsPage"));
 const AuditPage = lazyRoute(() => import("./pages/AuditPage"));
 const CorrectionsPage = lazyRoute(() => import("./pages/CorrectionsPage"));
 const AutomationPage = lazyRoute(() => import("./pages/AutomationPage"));
-const LargePdfWorkerPage = lazyRoute(() => import("./pages/LargePdfWorkerPage"));
 const TaskManagerPage = lazyRoute(() => import("./pages/TaskManagerPage"));
 const PdfCorrectionPage = lazyRoute(() => import("./pages/PdfCorrectionPage"));
 const UsagePage = lazyRoute(() => import("./pages/UsagePage"));
@@ -78,7 +81,7 @@ const UpdatesPage = lazyRoute(() => import("./distributed/UpdatesPage"));
 const SchemeReviewPage = lazyRoute(() => import("./pages/SchemeReviewPage"));
 
 export type Route =
-  | "dashboard" | "classes" | "assignments" | "students" | "reports" | "results" | "corrections" | "review" | "automation" | "largepdf" | "classroom" | "ai" | "settings" | "storage"
+  | "dashboard" | "classes" | "assignments" | "students" | "reports" | "results" | "corrections" | "review" | "automation" | "classroom" | "ai" | "settings" | "storage"
   | "privacy" | "diagnostics" | "prompts" | "distributed" | "audit" | "updates"
   | "tasks" | "correct" | "usage" | "scheme-review"
   // legacy aliases kept so old deep links (search, bookmarks) still resolve
@@ -106,7 +109,7 @@ interface Destination {
  * own sections below the fold at 900 px.
  *
  *   Desk      the day: what is running, what needs me, start a correction
- *   Correct   the correction pipeline: queue, tasks, batched, automation
+ *   Correct   the correction pipeline: queue, tasks, automation
  *   Review    decide on marks: queue and mark-scheme discrepancies
  *   Results   the outputs: results, reports, bandwidth
  *   Classes   the roster and its Google Classroom surfaces
@@ -123,7 +126,6 @@ const DESTINATIONS: Destination[] = [
     { id: "correct", icon: "wand", label: "New correction" },
     { id: "tasks", icon: "cpu", label: "Tasks" },
     { id: "corrections", icon: "refresh", label: "Job log" },
-    { id: "largepdf", icon: "grid", label: "Batched jobs" },
     { id: "automation", icon: "activity", label: "Automatic" },
   ] },
   { id: "review", icon: "review", label: "Review", home: "review", pages: [
@@ -180,7 +182,6 @@ const ROUTE_TITLES: Partial<Record<Route, string>> = {
   review: "Review Queue",
   "scheme-review": "Mark-Scheme Review",
   automation: "Automation",
-  largepdf: "Large PDF Worker",
   classroom: "Google Classroom",
   ai: "AI",
   settings: "Settings",
@@ -208,7 +209,7 @@ const ALIASES: Record<string, Route> = {
 
 const VALID_ROUTES = new Set<Route>([
   "dashboard", "classes", "assignments", "students", "reports",
-  "results", "corrections", "review", "scheme-review", "automation", "largepdf", "classroom", "ai", "settings", "storage",
+  "results", "corrections", "review", "scheme-review", "automation", "classroom", "ai", "settings", "storage",
   "privacy", "diagnostics", "prompts", "distributed", "audit", "updates", "tasks", "correct", "usage",
   "report", "keys", "workers", "resultsPage",
 ]);
@@ -242,6 +243,10 @@ function Shell() {
   const [attention, setAttention] = useState<AttentionFeed | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
   const [dash, setDash] = useState<Dashboard | null>(null);
+  // True only after a dashboard request actually failed: the shell then says
+  // "no backend" instead of showing a page of em-dashes that reads like real,
+  // empty data.
+  const [dashUnreachable, setDashUnreachable] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [setupChecked, setSetupChecked] = useState(false);
   // Public-mode session: null = still checking, never a silent allow.
@@ -288,8 +293,9 @@ function Shell() {
       .then((d) => {
         setRole(d.role); setMockMode(d.mock_mode); setDash(d);
         setNeedsSetup(Boolean(d.first_run));
+        setDashUnreachable(false);
       })
-      .catch(() => {})
+      .catch(() => setDashUnreachable(true))
       .finally(() => setSetupChecked(true));
     load();
     // One shared dashboard loader for the shell AND the Dashboard page (§17):
@@ -355,6 +361,11 @@ function Shell() {
 
   const connectionTone = dash?.classroom.connected ? "ok"
     : dash && !dash.classroom.configured ? "err" : "warn";
+
+  // Environment identity: the backend that answers is the only authority on
+  // whether it is a demo. Shown as a chip and announced, so no screenshot of
+  // this window can imply synthetic data is a real class.
+  const envKind = environmentKind(dash, dashUnreachable && setupChecked);
 
   if (auth === null) {
     // Still establishing whether a session is required (public mode).
@@ -423,6 +434,7 @@ function Shell() {
               <Icon name="sparkles" size={18} />
             </div>
             <div>
+              <span className="brand-kicker">Maths · Assessment</span>
               Math Checker
               <small>
                 {dash?.version ? `v${dash.version}` : "V5"}
@@ -496,6 +508,14 @@ function Shell() {
             <SearchBox onNavigate={navigate} />
 
             <div className="topbar-actions">
+              {/* Which backend this window is connected to. Never conditional: an
+                  unlabelled window is exactly how demo data gets mistaken for a
+                  real class (docs/development-environments.md). */}
+              <span className={`env-chip ${envKind}`} role="status"
+                title={environmentDetail(envKind)} aria-label={`Environment: ${environmentDetail(envKind)}`}>
+                <span className="led-dot" aria-hidden="true" />
+                {environmentLabel(envKind)}
+              </span>
               {/* Live background-work indicator: the same data the jobs page
                   shows, always visible so work is never hidden behind
                   navigation. Opens the attention drawer. */}
@@ -610,12 +630,19 @@ function Shell() {
 
           <div className="main-scroll" id="main-content" tabIndex={-1}>
             <div className="main-inner">
+              {dashUnreachable && !dash && (
+                <div className="banner err" role="alert">
+                  <Icon name="alert" size={16} />
+                  <span>{offlineMessage()}</span>
+                </div>
+              )}
               {dash?.demo_mode && (
-                <div className="banner info" role="status">
+                <div className="banner warn" role="status">
                   <Icon name="party" size={16} />
                   <span>
-                    <strong>Demo mode</strong> — synthetic students and assignments only.
-                    Google Classroom is disabled in this session.
+                    <strong>DEMO</strong> — this window is connected to a demo backend at{" "}
+                    {backendOriginLabel()}. Synthetic students and assignments only;
+                    Google Classroom is disabled and nothing here is your real class.
                   </span>
                 </div>
               )}
@@ -667,7 +694,6 @@ function Shell() {
               )}
               {route === "usage" && <UsagePage />}
               {route === "automation" && <AutomationPage />}
-              {route === "largepdf" && <LargePdfWorkerPage onNavigate={navigate} />}
               {route === "review" && <ReviewPage onNavigate={navigate} />}
               {route === "scheme-review" && (
                 <SchemeReviewPage

@@ -49,10 +49,6 @@ def assignment_inventory(coursework_id: str) -> dict:
         (coursework_id,))]
     results = [db.row_to_dict(r) for r in db.query(
         "SELECT * FROM results WHERE coursework_id = ?", (coursework_id,))]
-    jobs = [db.row_to_dict(r) for r in db.query(
-        "SELECT id, student_name, student_id, status, error, result_id, "
-        "created_at FROM large_pdf_jobs WHERE coursework_id = ?",
-        (coursework_id,))]
     by_student_result = {str(r["student_id"]): r for r in results}
 
     rows = []
@@ -126,7 +122,6 @@ def assignment_inventory(coursework_id: str) -> dict:
             "inaccessible": sum(1 for r in rows
                                 if r["submitted"] and not r["accessible"]),
         },
-        "jobs": jobs,
     }
 
 

@@ -9,7 +9,7 @@ parser.add_argument('--url', default='http://127.0.0.1:18742')
 parser.add_argument('--output', default='docs/results/final_ui_checks.json')
 args = parser.parse_args()
 routes = ['dashboard','ai','tasks','correct','assignments','results','review','scheme-review',
-          'largepdf','automation','classroom','classes','students','reports','storage','usage',
+          'automation','classroom','classes','students','reports','storage','usage',
           'privacy','settings','distributed']
 sizes = [(800,600),(1024,768),(1280,720),(1366,768),(1600,900),(1920,1080)]
 records, errors = [], []

@@ -381,40 +381,6 @@ class RetentionConfig:
 
 
 @dataclass
-class LargePdfConfig:
-    """Large PDF Worker routing + batching (§long-document batching).
-
-    The student answer PDF's page count decides the route: at or below
-    ``threshold_pages`` the existing single-pass correction workflow is used
-    unchanged; above it the document is inspected, split into balanced
-    question-aware batches and corrected batch-by-batch by the SAME engine.
-    The target batch window is centralised here (24-28 by default).
-
-    ``threshold_pages`` is the SINGLE central routing threshold the whole app
-    consults (``app.engine.router``); it is NOT the mark scheme's page count.
-    """
-    enabled: bool = True
-    threshold_pages: int = 30      # > threshold -> Large AI Corrector; <= -> single pass
-    target_min: int = 24
-    target_max: int = 28
-    concurrency: int = 2           # bounded parallel batches
-    max_retries: int = 2           # per-batch retry budget
-    context_overlap: int = 0       # context pages (never scored) per side
-    # The DEDICATED long-document prompt (see ``app/large_pdf/prompt.py``).
-    # Empty means the built-in large-PDF prompt is used; a value here replaces
-    # it WITHOUT touching the normal correction prompt.
-    system_prompt_override: str = ""
-    user_prompt_override: str = ""
-    # TARGETED RECOVERY of questions the marker never returned. The gap is
-    # re-marked in bounded chunks (never a full re-mark): at most
-    # ``recovery_chunk_questions`` questions per request, and at most
-    # ``recovery_max_chunks`` requests per job. 6 x 8 covers a 48-question gap,
-    # more than the largest genuine marker omission seen in production.
-    recovery_chunk_questions: int = 6
-    recovery_max_chunks: int = 8
-
-
-@dataclass
 class NetworkConfig:
     """Access mode (§26). Local-only is the safe default.
 
@@ -603,7 +569,6 @@ class AppConfig:
     assignment_naming: AssignmentNamingConfig = field(
         default_factory=AssignmentNamingConfig)
     retention: RetentionConfig = field(default_factory=RetentionConfig)
-    large_pdf: LargePdfConfig = field(default_factory=LargePdfConfig)
     testing: TestingConfig = field(default_factory=TestingConfig)
     lifecycle: LifecycleConfig = field(default_factory=LifecycleConfig)
     network: NetworkConfig = field(default_factory=NetworkConfig)
@@ -956,32 +921,6 @@ def get_config(reload: bool = False) -> AppConfig:
                     pass
                 cfg.retention.cleanup_temp_on_start = bool(
                     retention.get("cleanup_temp_on_start", cfg.retention.cleanup_temp_on_start))
-            large_pdf = data.get("large_pdf", {})
-            if isinstance(large_pdf, dict):
-                cfg.large_pdf.enabled = bool(large_pdf.get(
-                    "enabled", cfg.large_pdf.enabled))
-                for key in ("system_prompt_override", "user_prompt_override"):
-                    if isinstance(large_pdf.get(key), str):
-                        setattr(cfg.large_pdf, key, large_pdf[key])
-                for key, floor in (("recovery_chunk_questions", 1),
-                                   ("recovery_max_chunks", 1)):
-                    if key in large_pdf:
-                        try:
-                            setattr(cfg.large_pdf, key,
-                                    max(floor, int(large_pdf[key])))
-                        except (TypeError, ValueError):
-                            pass
-                for key, floor in (("threshold_pages", 1), ("target_min", 1),
-                                   ("target_max", 1), ("concurrency", 1),
-                                   ("max_retries", 0), ("context_overlap", 0)):
-                    if key in large_pdf:
-                        try:
-                            setattr(cfg.large_pdf, key,
-                                    max(floor, int(large_pdf[key])))
-                        except (TypeError, ValueError):
-                            pass
-                if cfg.large_pdf.target_max < cfg.large_pdf.target_min:
-                    cfg.large_pdf.target_max = cfg.large_pdf.target_min
             testing = data.get("testing", {})
             if isinstance(testing, dict):
                 cfg.testing.only = bool(testing.get("only", False))
@@ -1136,23 +1075,6 @@ def save_config(cfg: AppConfig) -> None:
             "keep_submissions": cfg.retention.keep_submissions,
             "keep_days": cfg.retention.keep_days,
             "cleanup_temp_on_start": cfg.retention.cleanup_temp_on_start,
-        },
-        "large_pdf": {
-            "enabled": cfg.large_pdf.enabled,
-            "threshold_pages": cfg.large_pdf.threshold_pages,
-            "target_min": cfg.large_pdf.target_min,
-            "target_max": cfg.large_pdf.target_max,
-            "concurrency": cfg.large_pdf.concurrency,
-            "max_retries": cfg.large_pdf.max_retries,
-            "context_overlap": cfg.large_pdf.context_overlap,
-            # The dedicated long-document prompt override, omitted entirely
-            # while unset so the built-in large-PDF prompt is used.
-            **({"system_prompt_override": cfg.large_pdf.system_prompt_override}
-               if cfg.large_pdf.system_prompt_override else {}),
-            **({"user_prompt_override": cfg.large_pdf.user_prompt_override}
-               if cfg.large_pdf.user_prompt_override else {}),
-            "recovery_chunk_questions": cfg.large_pdf.recovery_chunk_questions,
-            "recovery_max_chunks": cfg.large_pdf.recovery_max_chunks,
         },
         "network": {
             "access_mode": cfg.network.access_mode,

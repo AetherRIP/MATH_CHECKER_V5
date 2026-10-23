@@ -3,9 +3,9 @@
 #   powershell -ExecutionPolicy Bypass -File desktop\build_release.ps1
 #
 # Output (desktop\artifacts):
-#   MathChecker_Desktop_Portable.zip   client + backend + Python runtime, no install
-#   MathCheckerDesktop\                the same layout, unzipped (used by the installer)
-#   MathChecker_Desktop_Setup.exe      only when Inno Setup 6 (ISCC.exe) is installed
+#   MATH_CHECKER_V5_Portable.zip   client + backend + Python runtime, no install
+#   MATH_CHECKER_V5\                the same layout, unzipped (used by the installer)
+#   MATH_CHECKER_V5_Setup.exe      only when Inno Setup 6 (ISCC.exe) is installed
 #
 # The bundle is arranged so the client finds the existing backend without any
 # developer environment:
@@ -38,7 +38,7 @@ if ([string]::IsNullOrWhiteSpace($BackendRuntime)) {
 function Step([string]$text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 
 Step 'Publishing the WPF client (self-contained, no .NET install needed)'
-$stage = Join-Path $Output 'MathCheckerDesktop'
+$stage = Join-Path $Output 'MATH_CHECKER_V5'
 $clientDir = Join-Path $stage 'desktop'
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $clientDir -Force | Out-Null
@@ -70,7 +70,7 @@ $required = @(
     'main.py',
     'backend\app\main.py',
     'runtime\python.exe',
-    'desktop\MathChecker.Desktop.exe'
+    'desktop\MATH_CHECKER_V5.exe'
 )
 foreach ($relative in $required) {
     $path = Join-Path $stage $relative
@@ -79,7 +79,7 @@ foreach ($relative in $required) {
 }
 
 Step 'Writing the portable ZIP'
-$zip = Join-Path $Output 'MathChecker_Desktop_Portable.zip'
+$zip = Join-Path $Output 'MATH_CHECKER_V5_Portable.zip'
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
 Write-Host ("  {0:N1} MB  {1}" -f ((Get-Item $zip).Length / 1MB), $zip)
@@ -87,7 +87,8 @@ Write-Host ("  {0:N1} MB  {1}" -f ((Get-Item $zip).Length / 1MB), $zip)
 $iscc = $null
 foreach ($candidate in @(
         'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
-        'C:\Program Files\Inno Setup 6\ISCC.exe')) {
+        'C:\Program Files\Inno Setup 6\ISCC.exe',
+        (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'))) {
     if (Test-Path $candidate) { $iscc = $candidate; break }
 }
 if (-not $iscc) { $found = Get-Command iscc -ErrorAction SilentlyContinue; if ($found) { $iscc = $found.Source } }
@@ -99,7 +100,7 @@ if ($SkipInstaller) {
     $iss = Join-Path $desktopDir 'installer\MathCheckerDesktop.iss'
     & $iscc "/DSourceDir=$stage" "/DOutputDir=$Output" $iss
     if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
-    Write-Host ("  {0}" -f (Join-Path $Output 'MathChecker_Desktop_Setup.exe'))
+    Write-Host ("  {0}" -f (Join-Path $Output 'MATH_CHECKER_V5_Setup.exe'))
 } else {
     Step 'Inno Setup 6 was not found: the installer was not built'
     Write-Host '  Install Inno Setup 6 (https://jrsoftware.org/isdl.php), then run:'
@@ -109,8 +110,10 @@ if ($SkipInstaller) {
 
 Step 'Done'
 $manifest = [ordered]@{
-    product = 'Math Checker Desktop'
+    product = 'MATH_CHECKER_V5'
     version = '1.0.0'
+    executable = 'desktop\MATH_CHECKER_V5.exe'
+    portableFolder = 'MATH_CHECKER_V5'
     runtime = $Runtime
     selfContained = $true
     builtAt = (Get-Date).ToUniversalTime().ToString('o')

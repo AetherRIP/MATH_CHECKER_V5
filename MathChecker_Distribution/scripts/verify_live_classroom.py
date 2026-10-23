@@ -658,7 +658,7 @@ def mark_once(app: LiveApp, session, student: Path, scheme: Path, label: str,
                      f"HTTP {status}: {raw[:200]!r}")
         return None
     job = json.loads(raw)
-    job_id = job.get("job_id") or job.get("large_pdf_job_id")
+    job_id = job.get("job_id")
 
     detail: dict = {}
     state = ""

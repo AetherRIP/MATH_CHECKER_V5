@@ -575,6 +575,7 @@ public sealed class PaperPaneViewModel : ObservableObject
         switch (Reason)
         {
             case "retention_disabled":
+            case "retention_expired":
                 _session.GoTo("privacy");
                 return;
             case "file_unreadable":
@@ -803,6 +804,7 @@ public sealed class PaperPaneViewModel : ObservableObject
     private static string? TitleFor(string? reason) => reason switch
     {
         "retention_disabled" => "The student's work is not stored here",
+        "retention_expired" => "The stored copy has expired",
         "file_missing" => "This paper's original file is missing",
         "file_unreadable" => "The stored copy cannot be read",
         "processing" => "The paper is still being processed",
@@ -814,6 +816,7 @@ public sealed class PaperPaneViewModel : ObservableObject
     private static string? ActionFor(string? reason) => reason switch
     {
         "retention_disabled" => "Retention settings",
+        "retention_expired" => "Retention settings",
         "file_missing" => "Re-check storage",
         "file_unreadable" => "Re-correct paper",
         "processing" => "Check again",

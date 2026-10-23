@@ -80,7 +80,7 @@ export default function UsagePage() {
   if (!state) {
     return (
       <>
-        <PageHeader title="Internet Usage" sub="Everything the app sends and receives." />
+        <PageHeader kicker="Results · Bandwidth" title="Internet Usage" sub="Everything the app sends and receives." />
         <div className="skeleton" style={{ height: 220 }} />
       </>
     );

@@ -179,7 +179,7 @@ Two levels: per question, and per paper. Both are derived only from recorded fie
 
 | # | Condition | State | Label | Glyph | Tone |
 |---|---|---|---|---|---|
-| 1 | `teacher_mark` is not null | `Yours` | Your mark | filled check | lime |
+| 1 | `teacher_mark` is not null | `Yours` | Your mark | filled check | clay |
 | 2 | `status == "REVIEW"` | `Unmarked` | Not marked | dashed circle | amber |
 | 3 | `scheme_check` is not null | `SchemeCheck` | Scheme check | warning triangle | amber |
 | 4 | `unmarked_subquestions` non-empty, or any `subquestions[].status != "MARKED"` | `Partial` | Part unmarked | half circle | amber |
@@ -201,8 +201,8 @@ Notes:
 
 | Condition | Label | Tone |
 |---|---|---|
-| latest `result_reviews.action == "approved"` | Approved by you | lime outline |
-| latest `result_reviews.action == "overridden"` or `manual_override == 1` with a whole-paper mark | Overridden | lime filled |
+| latest `result_reviews.action == "approved"` | Approved by you | clay outline |
+| latest `result_reviews.action == "overridden"` or `manual_override == 1` with a whole-paper mark | Overridden | clay filled |
 | `verification.partial` or `coverage.requires_review > 0` | Incomplete · 38/60 marked | amber |
 | `review_required == 1` or `confidence in LOW/VALIDATION_FAILED/LARGE_SCORE_CHANGE` | Needs review | amber |
 | `verification.verified` | Verified | mint |
@@ -216,8 +216,8 @@ is stored as `manual_override = 1`.
 ### 4.3 Visual language
 
 - Chips are `icon + word + tone`; colour is never the only signal.
-- Unchanged AI marks use a neutral outline chip, **not** a success colour. Lime is
-  reserved for "you did this".
+- Unchanged AI marks use a neutral outline chip, **not** a success colour. Clay
+  (the `AccentBrush` token) is reserved for "you did this".
 - The mark glyph: numerator 44px semibold, denominator 20px muted. A 4px provenance dot
   sits under the numerator.
 - A question the engine distrusted gets a 3px amber left edge in the rail, not a
@@ -713,7 +713,7 @@ deleted your paper" unless `reason == retention_disabled`.
 
 ### 9.4 Page controls
 
-- Chips `1..n` under the paper; active chip lime outline; `PgUp`/`PgDn`; `Ctrl`+wheel
+- Chips `1..n` under the paper; active chip clay outline; `PgUp`/`PgDn`; `Ctrl`+wheel
   zoom; zoom label 50–300%.
 - Fit-width is the default and the reset state (`Ctrl+0`).
 - No thumbnail rail (decode cost, no workflow benefit at this size).
@@ -779,9 +779,9 @@ Reduced motion:
   exposed via `AutomationProperties.ItemStatus` ("staged").
 - Paper image: "Page 2 of 7 of the student's work".
 - Zoom buttons: "Zoom in", "Zoom out", "Fit width".
-- Focus visuals: 2px lime ring, 2px offset, visible on dark and on paper.
+- Focus visuals: 2px clay ring, 2px offset, visible on dark and on paper.
 - Focus order follows the visual order; `F6` cycles panes.
-- Contrast: body text ≥ 4.5:1 on `#15170F`; amber text uses the lighter tint
+- Contrast: body text ≥ 4.5:1 on `#120C09`; amber text uses the lighter tint
   (`#FFB27A`) for small type.
 - Status never colour-only; every chip has a glyph and a word.
 - Keyboard-only path for: open paper, navigate questions, accept, change, approve,

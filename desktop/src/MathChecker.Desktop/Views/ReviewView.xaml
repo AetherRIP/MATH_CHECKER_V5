@@ -1,43 +1,131 @@
 <UserControl x:Class="MathChecker.Desktop.Views.ReviewView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <DockPanel Grid.Row="0">
-            <StackPanel DockPanel.Dock="Left">
-                <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" />
-                <TextBlock Text="{Binding Summary}" Style="{StaticResource Muted}" />
-            </StackPanel>
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top"
-                        HorizontalAlignment="Right">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
+    <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}"
+                  Description="{Binding Summary}"
+                  StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
+                  BodyPadding="0,18,0,0">
+        <ui:PageFrame.Actions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
-                <Button Content="Accept result" Command="{Binding AcceptCommand}" />
-                <Button Content="Override mark…" Command="{Binding OverrideCommand}" />
-                <Button Content="Open in Results" Command="{Binding OpenResultCommand}" />
-                <Button Content="Reports" Command="{Binding OpenReportsCommand}" />
+                <Button Content="Accept result" Style="{StaticResource PrimaryButton}"
+                        Command="{Binding AcceptCommand}" IsEnabled="{Binding HasSelection}" />
+                <Button Content="Override mark…" Command="{Binding OverrideCommand}"
+                        IsEnabled="{Binding HasSelection}" />
+                <Button Content="Open in Results" Command="{Binding OpenResultCommand}" Margin="0" />
             </StackPanel>
-        </DockPanel>
+        </ui:PageFrame.Actions>
 
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}"
-                  Margin="0,10,0,0">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Student" Binding="{Binding StudentName}" Width="180" />
-                <DataGridTextColumn Header="Assignment" Binding="{Binding AssignmentTitle}" Width="*" />
-                <DataGridTextColumn Header="Score" Binding="{Binding ScoreText}" Width="100" />
-                <DataGridTextColumn Header="Confidence" Binding="{Binding Confidence}" Width="140" />
-                <DataGridTextColumn Header="Reasons" Binding="{Binding ReasonsText}" Width="240" />
-                <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="140" />
-            </DataGrid.Columns>
-        </DataGrid>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="1*" MinWidth="240" />
+            </Grid.ColumnDefinitions>
 
-        <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,10,0,0">
-            <TextBlock Style="{StaticResource Muted}"
-                       Text="Accepting records a teacher decision that later automated runs cannot replace. Overriding stores the mark you enter, through the same backend endpoint the browser UI uses." />
-        </Border>
-    </Grid>
+            <Border Grid.Column="0" Style="{StaticResource TableCard}">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
+                        <DockPanel>
+                            <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Padding="9,2"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Items.Count, StringFormat={}{0} waiting}"
+                                           FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                            </Border>
+                            <TextBlock Text="Teacher decisions" Style="{StaticResource RowTitle}"
+                                       VerticalAlignment="Center" />
+                        </DockPanel>
+                    </Border>
+
+                    <Grid>
+                        <DataGrid Style="{StaticResource DataTable}" ui:TableLayout.FillColumn="1" ItemsSource="{Binding Items}"
+                                  SelectedItem="{Binding Selected}" AutomationProperties.Name="Review queue">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Student" Binding="{Binding StudentName}" Width="120" />
+                                <DataGridTextColumn Header="Assignment" Binding="{Binding AssignmentTitle}"
+                                                    Width="*" MinWidth="118" />
+                                <DataGridTextColumn Header="Score" Binding="{Binding ScoreText}" Width="78" />
+                                <DataGridTextColumn Header="Confidence" Binding="{Binding Confidence}" Width="100"
+                                                    ui:TableLayout.Priority="2" />
+                                <DataGridTextColumn Header="Reasons" Binding="{Binding ReasonsText}" Width="180"
+                                                    ui:TableLayout.Priority="3" />
+                                <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="110"
+                                                    ui:TableLayout.Priority="1" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <Border Style="{StaticResource EmptyState}" MaxWidth="380"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="Nothing is waiting" Style="{StaticResource EmptyTitle}" />
+                                <TextBlock Text="Every result has a decision. New corrections appear here when the engine asks for a teacher."
+                                           Style="{StaticResource EmptyText}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </DockPanel>
+            </Border>
+
+            <!-- Detail: only meaningful once a row is chosen. -->
+            <Border Grid.Column="2" Style="{StaticResource Card}" Margin="0"
+                    Visibility="{Binding Selected, Converter={StaticResource NullToVisibility}}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="SELECTED RESULT" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="{Binding Selected.StudentName}" Style="{StaticResource CardTitle}"
+                                   FontSize="20" Margin="0,8,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Selected.AssignmentTitle}"
+                                   Style="{StaticResource CardSubtitle}" Margin="0,3,0,0" />
+
+                        <TextBlock Text="{Binding Selected.ScoreText}" Style="{StaticResource DisplayFigure}"
+                                   FontSize="34" Margin="0,16,0,0" />
+
+                        <Border Height="1" Background="{StaticResource HairlineBrush}" Margin="0,14,0,12" />
+
+                        <DockPanel Margin="0,0,0,7">
+                            <TextBlock Text="Confidence" Style="{StaticResource CardSubtitle}" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding Selected.Confidence}"
+                                       FontSize="11.5" HorizontalAlignment="Right" />
+                        </DockPanel>
+                        <DockPanel Margin="0,0,0,7">
+                            <TextBlock Text="Created" Style="{StaticResource CardSubtitle}" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding Selected.CreatedText}"
+                                       FontSize="11.5" HorizontalAlignment="Right" />
+                        </DockPanel>
+                        <DockPanel Margin="0,0,0,7">
+                            <TextBlock Text="Review required" Style="{StaticResource CardSubtitle}" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding Selected.ReviewRequired}"
+                                       FontSize="11.5" HorizontalAlignment="Right" />
+                        </DockPanel>
+
+                        <TextBlock Text="WHY THE ENGINE ASKED" Style="{StaticResource SectionLabel}"
+                                   Margin="0,14,0,6" />
+                        <TextBlock Text="{Binding Selected.ReasonsText}" FontSize="12"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+
+                        <TextBlock Text="Accepting records a teacher decision that later automated runs cannot replace. Overriding stores the mark you enter."
+                                   Style="{StaticResource CardSubtitle}" Margin="0,16,0,0" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <Button Content="Accept" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding AcceptCommand}" Height="32" Padding="14,5" />
+                            <Button Content="Override…" Command="{Binding OverrideCommand}"
+                                    Height="32" Padding="12,5" Margin="0" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource EmptyState}" VerticalAlignment="Top"
+                    Visibility="{Binding HasSelection, Converter={StaticResource InverseBoolToVis}}">
+                <StackPanel>
+                    <TextBlock Text="Pick a result" Style="{StaticResource EmptyTitle}" />
+                    <TextBlock Text="Select a row to see its score, confidence and the engine's reasons before deciding."
+                               Style="{StaticResource EmptyText}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ui:PageFrame>
 </UserControl>

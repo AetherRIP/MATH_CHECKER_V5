@@ -77,7 +77,7 @@ export default function UpdatesPage() {
   if (!session) {
     return (
       <div>
-        <PageHeader title="Application Updates" icon="download"
+        <PageHeader kicker="System · Updates" title="Application Updates" icon="download"
           sub="Distribute releases to installed copies of the application." />
         <Section title="Sign in required" icon="shield">
           <p style={{ marginTop: 0 }}>
@@ -95,7 +95,7 @@ export default function UpdatesPage() {
   if (!isDeveloper(session)) {
     return (
       <div>
-        <PageHeader title="Application Updates" icon="download"
+        <PageHeader kicker="System · Updates" title="Application Updates" icon="download"
           sub="Distribute releases to installed copies of the application." />
         <Section title="Developer access required" icon="shield">
           <p style={{ marginTop: 0 }}>
@@ -169,7 +169,7 @@ function UpdatesConsole() {
 
   return (
     <div>
-      <PageHeader title="Application Updates" icon="download"
+      <PageHeader kicker="System · Updates" title="Application Updates" icon="download"
         sub="Publish signed releases, watch distribution, and withdraw a bad build — without sending installers by hand."
         children={<Button size="sm" variant="ghost" icon="refresh"
           onClick={load}>Refresh</Button>} />

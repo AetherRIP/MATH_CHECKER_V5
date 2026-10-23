@@ -137,7 +137,7 @@ delete the whole tree; inspect individual contents first. See
 
 ```
 dev_local/reports/        PDF/PNG renders from backend/scripts/preview_*.py
-dev_local/runs/           scratch data dirs of e2e harnesses (largepdf_e2e)
+dev_local/runs/           scratch data dirs of local e2e harnesses
 dev_local/archive/        superseded dev data (probe dumps, throwaway test DBs)
 ```
 

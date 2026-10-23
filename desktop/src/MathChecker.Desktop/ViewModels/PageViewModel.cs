@@ -39,6 +39,9 @@ public abstract class PageViewModel : ObservableObject
     /// <summary>Navigation group shown in the sidebar (Desk, Correct, …).</summary>
     public string Group { get; set; } = "Desk";
 
+    /// <summary>Space label printed above the page title.</summary>
+    public string Eyebrow => Group.ToUpperInvariant();
+
     public AsyncCommand RefreshCommand { get; }
 
     public bool IsBusy

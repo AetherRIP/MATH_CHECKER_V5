@@ -16,9 +16,9 @@ Rules (all deterministic, never alter an existing mark):
 * A row promoted back by a recovery rerun NEVER overwrites an existing valid
   row, and the recovered set still gets the full verification re-run.
 
-Recovery is generic: both the normal (worker pool / CorrectionService) and
-the Large PDF Runner pipelines drive the same ``run_recovery_round`` through
-the same ``legacy_marking.grade_with_model`` engine.
+Recovery is generic: every production path (the worker pool /
+CorrectionService) drives the same ``run_recovery_round`` through the same
+``legacy_marking.grade_with_model`` engine.
 """
 
 from __future__ import annotations

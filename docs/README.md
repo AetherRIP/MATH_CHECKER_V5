@@ -2,6 +2,8 @@
 
 Start with [ARCHITECTURE.md](ARCHITECTURE.md) for the current component map,
 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for the repository inventory,
+[development-environments.md](development-environments.md) for which backend the
+desktop, the browser dev server and a test snapshot use,
 [MARK_SCHEME_SUBQUESTIONS.md](MARK_SCHEME_SUBQUESTIONS.md) for how mark-scheme
 subquestions are detected and mapped, and [SERVER_LIFECYCLE.md](SERVER_LIFECYCLE.md)
 for startup/supervision details.

@@ -1,16 +1,13 @@
-"""Centralised batch planning for long student answer PDFs.
+"""Deterministic page-range planning helpers.
 
-The correction engine (``legacy_marking.grade_with_model``) is a single-shot
-marker: it receives one or more student files plus the mark scheme and returns
-question-level results. Feeding it a 52-page answer PDF works until the request
-becomes too large / too slow / too lossy to be reliable. This module solves
-that *purely* — it turns a page count (and optional question/page evidence)
-into a fixed, complete plan of page ranges for the Large PDF Worker.
+This module turns a page count (and optional question/page evidence) into a
+fixed, complete plan of page ranges, and provides the canonical question-id
+sort key used by the question inventory and PDF inspection helpers.
 
-Design rules (mirrors the task acceptance criteria):
+Design rules:
 
 * Target **24-28 pages** per batch. Anything at or below ``target_max`` stays a
-  SINGLE batch, so the existing single-pass workflow is preserved unchanged.
+  SINGLE batch.
 * Pages are distributed **as evenly as practical** — batches differ by at most
   one page. No "28 + 28 + 1" tail is ever produced.
 * Every page has **exactly one primary owner**. Context overlap (if configured)

@@ -59,16 +59,6 @@ def _automation_jobs() -> str | None:
     return f"{count} Classroom automation job(s) being processed"
 
 
-def _large_pdf() -> str | None:
-    """Long documents still being inspected, marked or merged."""
-    from ..large_pdf import store as large_pdf_store
-
-    jobs = large_pdf_store.in_flight_jobs()
-    if not jobs:
-        return None
-    return f"{len(jobs)} large PDF job(s) still running"
-
-
 def _critical_operations() -> str | None:
     """Database write transactions and file operations happening right now."""
     labels = activity.busy()
@@ -129,7 +119,6 @@ HOLD_SOURCES: tuple[tuple[str, Source], ...] = (
 SOURCES: tuple[tuple[str, Source], ...] = (
     ("correction_jobs", _correction_jobs),
     ("automation_jobs", _automation_jobs),
-    ("large_pdf", _large_pdf),
     ("critical_operations", _critical_operations),
 )
 

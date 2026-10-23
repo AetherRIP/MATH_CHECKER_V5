@@ -108,7 +108,8 @@ export default function ReviewPage({ onNavigate }: { onNavigate: (r: string) => 
   return (
     <>
       <PageHeader
-        title="Review queue"
+        kicker="Review · Queue"
+        title="Results waiting on you"
         sub="Results the engine would not sign off on its own. Accept the evidence, or set the mark yourself — nothing reaches Google Classroom until you decide."
         meta={
           items === null ? <span>Loading…</span> : (
@@ -269,7 +270,7 @@ export default function ReviewPage({ onNavigate }: { onNavigate: (r: string) => 
                               // "Accept" would publish the marked-subset
                               // fraction as the score. A partial correction can
                               // only be settled with a real whole-paper mark.
-                              <Button size="sm" variant="success" icon="check"
+                              <Button size="sm" variant="primary" icon="check"
                                 loading={busy === r.id} onClick={() => accept(r)}>
                                 Accept
                               </Button>

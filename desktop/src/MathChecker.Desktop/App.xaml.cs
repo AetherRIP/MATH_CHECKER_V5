@@ -18,6 +18,23 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // A double-click while the app is open must not start a second client
+        // (and a second backend): raise the existing window and leave.
+        if (!AppInstance.TryAcquire())
+        {
+            Shutdown();
+            return;
+        }
+
+        // Machines without a usable GPU (some VMs and remote sessions) can show
+        // an unpainted window under hardware acceleration. This is an opt-in
+        // fallback for those machines, not the default.
+        if (Environment.GetEnvironmentVariable("MC5_SOFTWARE_RENDER") == "1")
+        {
+            System.Windows.Media.RenderOptions.ProcessRenderMode =
+                System.Windows.Interop.RenderMode.SoftwareOnly;
+        }
+
         var settings = DesktopSettings.Load();
         _log = new FileLog();
         _log.Info($"desktop starting (base: {AppContext.BaseDirectory})");
@@ -59,6 +76,7 @@ public partial class App : Application
         }
 
         _api?.Dispose();
+        AppInstance.Release();
         _log?.Info("desktop exited");
         base.OnExit(e);
     }

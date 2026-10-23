@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "ui-style-kit-css": "^2.6.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

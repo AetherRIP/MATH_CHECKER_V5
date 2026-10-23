@@ -638,10 +638,10 @@ def check_correction(report: Report, instance: Instance, data_dir: Path,
         return 0, None
     job = json.loads(raw)
     report.check("unified correction accepts an upload", True,
-                 f"pipeline={job.get('applied_pipeline')} pages={job.get('page_count')} "
+                 f"pages={job.get('page_count')} "
                  f"({job.get('reason', '')[:60]})")
 
-    job_id = job.get("job_id") or job.get("large_pdf_job_id")
+    job_id = job.get("job_id")
     deadline = time.time() + 180
     detail: dict = {}
     while time.time() < deadline:

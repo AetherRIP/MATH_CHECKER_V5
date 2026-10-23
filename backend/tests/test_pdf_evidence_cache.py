@@ -1,11 +1,10 @@
-"""One read per PDF: mark-scheme evidence reuse and planner file handling.
+"""One read per PDF: mark-scheme evidence reuse.
 
-The planner used to open the mark scheme twice (page count, then full text
-analysis) and the student PDF twice (page count, then per-page question
-evidence) for every long-document job. Both are read-only deterministic
-operations, so the fix is to derive everything from ONE read and to reuse the
-derived mark-scheme evidence for the SAME file (keyed by path/size/mtime, so a
-replaced scheme is always re-read).
+The inspection helpers used to open the mark scheme twice (page count, then
+full text analysis). Both are read-only deterministic operations, so the fix
+is to derive everything from ONE read and to reuse the derived evidence for
+the SAME file (keyed by path/size/mtime, so a replaced scheme is always
+re-read).
 
 These tests pin that behaviour, including explicit invalidation. They use
 synthetic PDFs only.
@@ -21,7 +20,6 @@ from reportlab.pdfgen import canvas
 
 from app.engine import pdf_inspect
 from app.engine import mark_scheme as mark_scheme_mod
-from app.large_pdf import planner
 
 
 def _make_pdf(path, pages: int, *, prefix: str = "1.") -> str:
@@ -102,32 +100,3 @@ def test_unreadable_scheme_is_not_cached(tmp_path, monkeypatch):
     # A transient read failure must not stick to the path.
     assert len(calls) == 2
     assert pdf_inspect._SCHEME_CACHE == {}
-
-
-def test_planner_opens_each_pdf_once(tmp_path, monkeypatch):
-    student = _make_pdf(tmp_path / "student.pdf", 40, prefix="1.")
-    scheme = _make_pdf(tmp_path / "scheme.pdf", 3)
-
-    analyses = []
-    inspections = []
-    real_analyse = mark_scheme_mod.analyse_document
-    real_inspect = pdf_inspect.inspect_student_pdf
-
-    def counting_analyse(path):
-        analyses.append(path)
-        return real_analyse(path)
-
-    def counting_inspect(path, expected=None):
-        inspections.append(path)
-        return real_inspect(path, expected)
-
-    monkeypatch.setattr(mark_scheme_mod, "analyse_document", counting_analyse)
-    monkeypatch.setattr(pdf_inspect, "inspect_student_pdf", counting_inspect)
-
-    prepared = planner.prepare(student, scheme)
-
-    assert prepared.blocked is False
-    assert prepared.page_count == 40
-    assert prepared.batch_count >= 2
-    assert len(analyses) == 1
-    assert len(inspections) == 1

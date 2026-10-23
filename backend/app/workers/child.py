@@ -200,8 +200,8 @@ def _run(job: dict) -> dict:
 
         # ---- explicit per-question states ----------------------------------
         # Missing mark-scheme questions become NEEDS_REVIEW (not a silent 0)
-        # and evidence-backed zeros are labelled CONFIRMED_ZERO. Mirrors the
-        # Large PDF Runner; the pool may then recover the gap narrowly.
+        # and evidence-backed zeros are labelled CONFIRMED_ZERO. The pool may
+        # then recover the gap narrowly.
         from app.engine.question_inventory import (
             confirmed_zero_status, mark_missing_results,
         )

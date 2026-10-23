@@ -33,7 +33,7 @@ If you are unsure which mode you are in, open **Automatic Correction** and read 
 1. Start Math Checker (the teacher's desktop/Start-menu shortcut, or `MathChecker.bat` in a portable copy).
 2. Wait for the browser to open the app. If it does not, open the address printed in the console window yourself.
 3. Look at the top-right of the app. The badge tells you the state of the AI provider: it reads **Not configured** when no usable key is available, and **Offline** when the app is in mock/offline mode.
-4. Open **Task Manager** and check the four summary tiles: **Correction workers (cap N)**, **Queue**, **Batched docs in flight**, **Tiny Agent**. A queue that stays above zero with no worker running means the workers are stopped — tell the teacher rather than retrying blindly.
+4. Open **Task Manager** and check the four summary tiles: **Correction workers (cap N)**, **Queue**, **Waiting for API**, **Tiny Agent**. A queue that stays above zero with no worker running means the workers are stopped — tell the teacher rather than retrying blindly.
 
 ### 1.2 Check the AI provider is available
 
@@ -140,9 +140,9 @@ A job reaches **Complete** only when each step has been performed *and verified*
 
 ### 3.4 Monitoring in the Task Manager
 
-1. Open **Task Manager**. The tiles show **0 active**, the worker cap, the queue, batched documents in flight and the agent state.
-2. The list holds every record: corrections, large PDFs, Classroom workflows and syncs. Filter by **type** and by **state**.
-3. Each row shows the kind (**Correction**, **Large PDF**, **Classroom**, **Sync**), the student, the status, the attempt (e.g. **1/3**) and the elapsed time.
+1. Open **Task Manager**. The tiles show **0 active**, the worker cap, the queue and the agent state.
+2. The list holds every record: corrections, Classroom workflows and syncs. Filter by **type** and by **state**.
+3. Each row shows the kind (**Correction**, **Classroom**, **Sync**), the student, the status, the attempt (e.g. **1/3**) and the elapsed time.
 4. Row actions you may see: **Open result**, **Retry**, **Cancel**, **Approve grade**, **Retry report upload**, **Retry from …**.
 5. The possible statuses are **Running**, **Queued**, **Needs you**, **Completed**, **Failed**, **Cancelled**.
 
@@ -150,7 +150,7 @@ A job reaches **Complete** only when each step has been performed *and verified*
 
 ### 3.5 Long answer booklets
 
-Very long documents are handled by **Large AI Worker**, which inspects the booklet, splits it into batches and merges the results. Its statuses include `PLANNING`, `INSPECTING`, `VALIDATING`, `PROCESSING`, `MERGING`, **Awaiting review** and `COMPLETED`. Its rows also support **Retry** and **Cancel**, and show **Batches**.
+Every submission, including a long booklet, uses the same correction pipeline and appears in the same **Task Manager** list. Long documents take longer, so the job stays **Running** for more of the time; its progress and stage are shown on the row. Use **Retry** or **Cancel** exactly as for any other correction.
 
 ---
 
@@ -352,6 +352,6 @@ These change the installation itself rather than one correction:
 
 Every page name, button label, status word and setting in this guide was taken from the running application (version 5.2.1, build 20261012-2) and from the application's own code.
 
-Verified by looking at the running app: the **Assignments** table and its statuses, the assignment detail (including the External Classroom publishing restriction and the Classroom total points warning), **Results** and its filters and columns, the **Review Queue**, **Task Manager** rows and actions, the **Automatic Correction** header, pipeline stages and review-mode wording, the **Correct a PDF** queue controls, **Storage** status, **Large AI Worker** labels, the **Google Classroom** page states, and the sign-in/settings surfaces.
+Verified by looking at the running app: the **Assignments** table and its statuses, the assignment detail (including the External Classroom publishing restriction and the Classroom total points warning), **Results** and its filters and columns, the **Review Queue**, **Task Manager** rows and actions, the **Automatic Correction** header, pipeline stages and review-mode wording, the **Correct a PDF** queue controls, **Storage** status, the **Google Classroom** page states, and the sign-in/settings surfaces.
 
 Not verified here, because this environment has no authorised Google Classroom account: a real grade write-back and report attachment seen inside Google Classroom, and the exact appearance of a live automatic run. The labels and states for those steps were read from the application itself, and the Classroom-side verification steps above are written as checks you must perform — treat them as instructions, not as something already proven.

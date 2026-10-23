@@ -46,7 +46,7 @@ for _stream in (sys.stdout, sys.stderr):
 REPO = Path(__file__).resolve().parents[2]
 
 ROUTES = ["dashboard", "ai", "tasks", "correct", "assignments", "results",
-          "review", "scheme-review", "largepdf", "automation", "classroom",
+          "review", "scheme-review", "automation", "classroom",
           "classes", "students", "reports", "storage", "usage", "privacy",
           "settings", "distributed"]
 VIEWPORTS = [(800, 600), (1366, 768), (1920, 1080)]

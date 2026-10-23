@@ -118,8 +118,8 @@ def main() -> int:
     for r in rows:
         try:
             job = db.query_one(
-                "SELECT status, page_count, batch_count, step_detail, error_code, error "
-                "FROM large_pdf_jobs WHERE submission_id = ?", (r["submission_id"],))
+                "SELECT status, progress, stage_detail, error_code, error "
+                "FROM correction_jobs WHERE submission_id = ?", (r["submission_id"],))
         except Exception:
             job = None
         try:

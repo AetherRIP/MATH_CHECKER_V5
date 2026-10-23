@@ -1,52 +1,55 @@
 # Migration status and verification record
 
-Date: 2026-10-21. Everything below was executed on this Windows machine unless it
-is explicitly marked unverified.
+Date: 2026-10-21 (desktop shell), packaging re-verified 2026-10-22. Everything
+below was executed on this Windows machine unless it is explicitly marked
+unverified.
 
 ## 1. What exists now
 
 A native WPF client (`desktop\`, .NET 10, `net10.0-windows`) that owns the shell
 (navigation, backend supervision, settings, logging, dialogs) and reaches every
 V5 feature through the existing FastAPI backend. The correction engine, marking
-rules, prompts, database, Classroom integration and reporting code were **not**
-modified: `git status` reports only the new `desktop\` and
-`docs\desktop-migration\` trees.
+rules, prompts, database schema, Classroom integration and reporting code are
+unchanged. The only backend edits for the desktop profile are additive: three
+resolved submission flags per assignment row, a full `corrections.history` list
+beside the existing 10-item `recent`, and question breakdowns in the demo seed.
 
 | Area | Implementation |
 |---|---|
 | Shell | `MainWindow` + `MainViewModel`: 26 navigation entries, backend banner, restart, log/data-folder shortcuts, status bar |
-| Pages | 19 page views behind 26 navigation entries (Dashboard, Search, New correction, Tasks, Job log, Batched jobs, Automatic, Queue, Scheme mismatches, Results, Reports, Bandwidth, Classroom, Classes, Students, Assignments, Settings, AI & keys, Storage, Privacy & data, Diagnostics, Prompts, Accuracy audit, Multi-school, Remote access, Updates) + 3 dialog windows |
+| Pages | 20 page views behind 26 navigation entries (Dashboard, Search, New correction, Tasks, Job log, Batched jobs, Automatic, Queue, Scheme mismatches, Results, Reports, Bandwidth, Classroom, Classes, Students + Student profile, Assignments, Settings, AI & keys, Storage, Privacy & data, Diagnostics, Prompts, Accuracy audit, Multi-school, Remote access, Updates) + 3 dialog windows |
 | Backend lifecycle | locate → attach or start → wait for `/api/health` → monitor → stop only what it started |
 | HTTP | one typed client: uploads (multipart), SSE with polling fallback, downloads with the backend's filename, CSRF header, typed `ApiException` |
 | Config | `%APPDATA%\MathCheckerDesktop\settings.json` (paths/port/window state; no secrets) |
 | Logging | rolling redacted log under `%LOCALAPPDATA%\MathCheckerDesktop\logs` |
-| Packaging | `build_release.ps1` → self-contained bundle + portable ZIP + manifest; Inno Setup script |
+| Packaging | `build_release.ps1` → `MATH_CHECKER_V5\` (client + backend + Python runtime), portable ZIP, per-user Inno Setup installer, manifest |
 
 ## 2. Verification evidence
 
 | Check | Command / artefact | Result |
 |---|---|---|
 | Client builds | `dotnet build desktop\src\MathChecker.Desktop` | 0 warnings, 0 errors |
-| Client unit/integration tests | `dotnet test desktop\tests\MathChecker.Desktop.Tests` | **115 passed, 0 failed** |
+| Client unit/integration tests | `dotnet test desktop\MathChecker.Desktop.slnx` | **137 passed, 0 failed** |
 | End-to-end against the real backend | `dotnet run --project desktop\tools\MathChecker.Desktop.E2E` | **20 checks passed, 0 failed** |
 | UI walkthrough (real window, UI Automation) | `evidence\ui-walkthrough.txt` | window opens, 26 navigation items, every page loads its own view, search returns 12 real matches, close exits the process |
 | Window operations | `evidence\window-operations.txt` | resize to 1600×900 exactly, clamp at the 900×600 DIP minimum, maximize, minimize, restore, close |
 | Backend still starts/stops through the client | E2E log + desktop log | started, `/api/health` ok, stopped, port free |
 | Shutdown leaves nothing behind | UI probe + process list | client exits, backend tree stopped, no orphan `python.exe` |
-| Packaged build runs without a dev environment | staged `artifacts\MathCheckerDesktop\desktop\MathChecker.Desktop.exe` with `backendDirectory` cleared | auto-discovered the bundled `main.py`, used `runtime\python.exe`, health 200, UI rendered |
+| Packaged build runs without a dev environment | `desktop\test_release.ps1` on a copy of `artifacts\MATH_CHECKER_V5` in `%TEMP%` | **19/19 checks**: window, bundled `runtime\python.exe`, health/dashboard, real correction + PDF export, single instance, clean shutdown, no orphan process or port |
 | Backend regression suite | `.venv\Scripts\python.exe -m pytest backend\tests -q` | see §2.1 |
 
 ### 2.1 Backend suite
 
 ```
 .venv\Scripts\python.exe -m pytest backend\tests -q
-2188 passed, 1 skipped, 2 warnings in 583.26s (0:09:43)
+2190 passed, 1 skipped, 2 warnings in 586.00s (0:09:46)
 ```
 
-No backend file was changed for this migration, so this is the unmodified V5
-suite passing on the unmodified engine and API. An earlier run of the same
-command was interrupted by a 9-minute tool timeout at ~92 % with no failures;
-the numbers above come from the completed run.
+The suite passed on the additive profile fields and demo fixture described in
+§1. The full run above completed against the current backend; targeted
+`test_student_profiles.py` was also rerun after the final change (**13 passed**).
+An earlier run of the same command was interrupted by a 9-minute tool timeout
+at ~92 % with no failures; the numbers above come from the completed run.
 
 ### 2.2 What the E2E run proves
 
@@ -95,6 +98,76 @@ isolated data folder, after seeding one reviewable four-question correction
 Screenshots: `dev_local\d2\desk_approval_sheet.png` and
 `dev_local\d2\desk_decisions.png`.
 
+### 2.5 Phase D3 — the visual system
+
+The desktop client now takes its colour from the same UI kit the browser UI uses.
+`ui-style-kit-css` is a CSS package, so it is integrated at the layer it documents:
+its published custom properties.
+
+| Piece | File | What it does |
+|---|---|---|
+| Token sync | `desktop/tools/sync-ui-kit-tokens.mjs` | reads `frontend/node_modules/ui-style-kit-css/dist/visual/paper-editorial.css`, extracts the `usk-*-rgb` roles for the `walnut-clay` theme in dark mode and writes WPF `Color`/`Brush` resources. Re-run it after a kit upgrade. |
+| Generated tokens | `desktop/src/MathChecker.Desktop/Themes/KitTokens.xaml` | 19 roles (`bg`, `surface`, `text`, `border`, `primary`, `success`, `warning`, `danger`, `focus`, …). Generated — never edited by hand. |
+| Semantic layer | `desktop/src/MathChecker.Desktop/Themes/Tokens.xaml` | merges the generated file and points the application's named brushes at those colours; only shades the kit does not name (hovers, hairlines, ink) are literal. |
+| Density layer | `desktop/src/MathChecker.Desktop/Themes/Controls.xaml` | 4 px print-square corners, 30 px controls, 34 px table rows, flat nav rows with a clay rule on the active item, underline space tabs, and a dark menu-bar menu. |
+| Shell | `desktop/src/MathChecker.Desktop/MainWindow.xaml` | 30 px menu strip (File / View / Backend, palette field, backend state), 220 px rail, 34 px page-header strip, 24 px status bar. |
+| Dashboard | `desktop/src/MathChecker.Desktop/Views/DashboardView.xaml` | the old 196 px hero card is replaced by a four-tile metric strip; the table and attention list follow below. |
+
+Verified on 2026-10-22 in Demo Mode against the running backend, with window
+sizes set through the client's own settings file (this machine runs at 125 %):
+
+| Check | Command / artefact | Result |
+|---|---|---|
+| Build | `dotnet build desktop/MathChecker.Desktop.slnx` | 0 warnings, 0 errors |
+| Client tests | `dotnet test desktop/MathChecker.Desktop.slnx` | **137 passed, 0 failed** |
+| Tokens regenerate from the kit | `node desktop/tools/sync-ui-kit-tokens.mjs` | 19 roles written, palette resolves at runtime |
+| Dashboard at 1440×875 px | `dev_local/theme/final_1440.png` | four-tile strip, table with student/status/stage/created, attention list, no empty-state over real rows |
+| Dashboard at 1280×800 px | `dev_local/theme/final_1280.png` | timestamp column drops at the 480 DIP breakpoint, no clipped text |
+| Dashboard at 1125×750 px (900 DIP minimum) | `dev_local/theme/final_1125.png` | stage text ellipsises instead of cutting a word |
+| Compact rail | `dev_local/theme/final_rail.png` | 68 px icon rail, backend chip moves into the menu strip |
+| Command palette | `dev_local/theme/final_palette.png` | opens from the field or `Ctrl+K`, filters to `Students` for `stud`, toggles closed |
+| File menu | `dev_local/theme/final_menu.png` | dark popup with data folder / log / settings / exit |
+
+Screenshots are captured with `dev_local/sized_shot.ps1` (sizes the window through
+the settings file, then captures it) and `dev_local/page_shot.ps1` (navigates by UI
+Automation, then captures); both are DPI-aware so the image matches the window
+in physical pixels.
+
+### 2.6 Student profile
+
+The backend profile endpoint already existed and was truthful, but the desktop
+used it as a raw JSON payload in a `TextBox` under the roster; editing was two
+sequential text prompts and there was no assignment table, correction detail or
+progress view. The profile is now a first-class view inside the Students page.
+
+Verified on 2026-10-22 in Demo Mode against the real backend, on a fresh
+data folder (`dev_local\spdata_edit`):
+
+| Check | Evidence | Result |
+|---|---|---|
+| Profile contract | `pytest backend/tests/test_student_profiles.py` | **13 passed**: verified submission states, never inferred from local results, resolved per-row flags, full history |
+| Client profile tests | `dotnet test desktop/MathChecker.Desktop.slnx` | **137 passed**: backend figures and nulls, filters, two-student isolation, save path, topic/trend maths, empty breakdown, 404, history/trend cap |
+| Open from the roster | `dev_local/profile_edit_probe.ps1` | selecting Student B replaces the roster with the profile; **Back to students** restores it |
+| Student overview | `dev_local/theme/sp_b_overview.png` | 3 assignments, 2/3 submitted, 1 outstanding, 18/20 + 11/15 = 29/35 (82.9%), Math Checker average 81.7%; each figure names its source |
+| Assignment history | `dev_local/theme/sp_b_assignments.png` | 3 real rows with update/due dates, submission, late, Classroom grade, Math Checker marks and correction state; status filter and sortable headers |
+| Correction detail | `dev_local/theme/sp_b_corrections.png` | 2 stored corrections; Q1 7/8 (“mark lost in the final step”), Q2 6/6, Q3 5/6 — the same values as the stored result |
+| Progress | `dev_local/theme/sp_b_progress.png` | score trend from stored percentages and topic bars aggregated from stored question marks (5 topics, question counts) |
+| Edit details | same probe | nickname `Bee`, class `10B`; backend re-read reports `nickname='Bee' class='10B' display='Bee'` |
+| Empty student | `dev_local/theme/sp_student_d_overview.png`, `..._corrections.png` | 1 assignment, 0 submitted, “Not graded”, “No corrections yet”, honest question empty state — no synthetic scores |
+| Resize | `ViewSmokeTests` (900×600) + probe at 1280×820 | every tab lays out with no binding errors; DataGrid columns share width via `TableLayout` |
+
+The backend's `history` field is additive; `recent` is unchanged for the web UI
+and report builder. The desktop preloads question detail for the 10 newest
+corrections, loads an older selected correction on demand, and caps the trend at
+12 bars so a long history stays readable.
+
+The feature was also exercised against the real connected Classroom account and
+a read-only snapshot of the live database. That pass, its safety controls and
+the three UI defects it found (Outstanding label ambiguity, clipped correction
+score, and the Results page's false selected-correction empty state) are
+documented in
+[`docs/reports/live-classroom-readonly-audit-2026-10-22.md`](../reports/live-classroom-readonly-audit-2026-10-22.md).
+
 ## 3. Defects found during verification and fixed
 
 | Defect | Cause | Fix | Regression evidence |
@@ -118,7 +191,7 @@ reintroduce the layout abort.
 | Live Gemini corrections (non-demo marking) | no Gemini API key configured | corrections run in Demo Mode mock marking; the app and dashboard label that state honestly |
 | Sign-in in public mode | needs a public-mode backend instance and an account | local mode needs no sign-in; the sign-in window is implemented and only appears when the backend requires it |
 | Automated Classroom worker / bulk upload / grade boundaries | needs a connected Classroom | page wired to the real endpoints, honest empty/blocked states |
-| Installer install/uninstall | Inno Setup 6 is not installed here | installer script + exact build command documented (`03-build-and-release.md` §5); only the staged bundle was verified |
+| Installer install/uninstall | verified 2026-10-22 with Inno Setup 6.7.3 | **11/11 checks**: silent per-user install, installed launcher opens the window, backend answers, dashboard served, clean exit, uninstall removes the program folder |
 | Remote access toggle | would expose this machine through the tunnel; not appropriate to enable here | page reads `/remote/status`, `/access/state`, `/access/public-address`; both buttons call the real endpoint and were not exercised |
 
 ## 5. Known limitations
@@ -127,6 +200,16 @@ reintroduce the layout abort.
   real document was pushed through it in this pass.
 * Reports are built from live endpoints, but only the E2E PDF/CSV exports were
   inspected; the report builder form was not exercised end-to-end.
+* The profile's **Updated** column is Classroom's assignment/submission
+  `update_time`. The tracking tables store no submission timestamp, so the UI
+  does not invent a “submitted at” column.
+* Avatars are initials only; the student schema has no profile image.
+* Topic figures aggregate the question breakdowns of the 10 newest corrections
+  (one bounded batch, loaded once). Older history is listed and can be opened,
+  but it is not folded into the topic chart.
+* Student profile editing uses the same local single-teacher access model as the
+  rest of the desktop app; there is no per-role permission editor. The backend
+  validates lengths and only updates students it already knows.
 * Automation worker was toggled only in its off state (nothing to process without
   Classroom).
 * No code signing; SmartScreen warns on unsigned builds.
@@ -137,14 +220,17 @@ reintroduce the layout abort.
 
 ```
 desktop\MathChecker.Desktop.slnx
-desktop\src\MathChecker.Desktop\          21 view-model files, 19 page views + 3 windows, API client,
+desktop\src\MathChecker.Desktop\          22 view-model files, 20 page views + 3 windows, API client,
                                           backend host/locator, settings, logging, converters
-desktop\tests\MathChecker.Desktop.Tests\  39 tests (API contracts, backend host, locator,
-                                          settings, SSE/upload, students page)
+desktop\tests\MathChecker.Desktop.Tests\  137 tests (API contracts, backend host, locator,
+                                          settings, SSE/upload, students page, student
+                                          profile, view rendering)
 desktop\tools\MathChecker.Desktop.E2E\    end-to-end runner against the real backend
 desktop\installer\app.ico                 neutral placeholder icon
-desktop\installer\MathCheckerDesktop.iss  Inno Setup 6 installer definition
-desktop\build_release.ps1                 staged bundle + portable ZIP + manifest
+desktop\installer\MathCheckerDesktop.iss  per-user Inno Setup 6 installer definition
+desktop\build_release.ps1                 staged bundle + portable ZIP + installer + manifest
+desktop\test_release.ps1                  runs the staged release like a user (window, backend, correction, shutdown)
+desktop\src\MathChecker.Desktop\Core\AppInstance.cs  single-instance guard for the launcher
 docs\desktop-migration\01-audit-and-architecture.md
 docs\desktop-migration\02-feature-inventory.md
 docs\desktop-migration\03-build-and-release.md
@@ -168,7 +254,7 @@ Views ready to receive the design (each has a view model with loading, error,
 empty and busy state):
 
 * `DashboardView`, `SearchView`, `CorrectionView`, `JobsView` (Tasks + Job log),
-  `LargePdfView`, `AutomationView`, `ReviewView`, `SchemeReviewView`;
+  `AutomationView`, `ReviewView`, `SchemeReviewView`;
 * `ResultsView`, `ReportsView`, `UsageView`;
 * `ClassroomView`, `ClassesView`, `StudentsView`, `AssignmentsView`;
 * `SettingsView`, `AiKeysView`, `PromptsView`, `JsonPageView` (Storage, Privacy,

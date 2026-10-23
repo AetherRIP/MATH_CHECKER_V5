@@ -361,15 +361,13 @@ public sealed partial class MathCheckerApiClient : IDisposable
 
     // -------------------------------------------------------------- correction
 
-    public Task<JsonElement> CorrectionPipelinesAsync(CancellationToken cancellationToken = default) =>
-        GetJsonAsync("corrections/pipelines", cancellationToken);
 
     /// <summary>
     /// POST /corrections/unified — the real routing decision is made by the
     /// backend from the student PDF's page count.
     /// </summary>
     public async Task<JsonElement> SubmitUnifiedCorrectionAsync(
-        string submissionPath, string markSchemePath, string studentName, string pipeline,
+        string submissionPath, string markSchemePath, string studentName,
         IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var files = new List<(string, string)>
@@ -380,7 +378,6 @@ public sealed partial class MathCheckerApiClient : IDisposable
         var fields = new Dictionary<string, string>
         {
             ["student_name"] = studentName,
-            ["pipeline"] = pipeline,
         };
 
         var streams = new List<IDisposable>();
@@ -606,15 +603,21 @@ public sealed partial class MathCheckerApiClient : IDisposable
     public Task<StudentListDto> StudentsAsync(CancellationToken cancellationToken = default) =>
         GetAsync<StudentListDto>("students", cancellationToken);
 
-    public Task<JsonElement> StudentAsync(string studentId, CancellationToken cancellationToken = default) =>
-        GetJsonAsync($"students/{Uri.EscapeDataString(studentId)}", cancellationToken);
+    /// <summary>The full, typed profile: identity, Classroom submissions,
+    /// marks and correction history. Throws <see cref="ApiException"/> with the
+    /// backend's message for an unknown student.</summary>
+    public Task<StudentProfileDto> StudentAsync(string studentId, CancellationToken cancellationToken = default) =>
+        GetAsync<StudentProfileDto>($"students/{Uri.EscapeDataString(studentId)}", cancellationToken);
 
-    public Task<JsonElement> StudentClassesAsync(CancellationToken cancellationToken = default) =>
-        GetJsonAsync("students/classes", cancellationToken);
+    public Task<StudentClassesDto> StudentClassesAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<StudentClassesDto>("students/classes", cancellationToken);
 
-    public Task<JsonElement> SaveStudentDetailsAsync(string studentId, string? nickname, string? className,
-        CancellationToken cancellationToken = default) =>
-        SendJsonRawAsync(HttpMethod.Put, $"students/{Uri.EscapeDataString(studentId)}/details",
+    /// <summary>Saves the teacher's local nickname/class metadata. The
+    /// response is the refreshed profile, so callers do not need a second GET.</summary>
+    public Task<StudentProfileDto> SaveStudentDetailsAsync(string studentId, string? nickname,
+        string? className, CancellationToken cancellationToken = default) =>
+        SendJsonAsync<StudentProfileDto>(HttpMethod.Put,
+            $"students/{Uri.EscapeDataString(studentId)}/details",
             new { nickname, class_name = className }, cancellationToken);
 
     public Task<DownloadFile> StudentReportAsync(string studentId, CancellationToken cancellationToken = default) =>
@@ -752,62 +755,6 @@ public sealed partial class MathCheckerApiClient : IDisposable
 
     // ------------------------------------------------------------ large PDF
 
-    public Task<LargePdfJobsDto> LargePdfJobsAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<LargePdfJobsDto>("large-pdf/jobs", cancellationToken);
-
-    public Task<LargePdfJobDetailDto> LargePdfJobAsync(string jobId, CancellationToken cancellationToken = default) =>
-        GetAsync<LargePdfJobDetailDto>($"large-pdf/jobs/{Uri.EscapeDataString(jobId)}", cancellationToken);
-
-    public Task<JsonElement> LargePdfConfigAsync(CancellationToken cancellationToken = default) =>
-        GetJsonAsync("large-pdf/config", cancellationToken);
-
-    public async Task<JsonElement> CreateLargePdfJobAsync(string submissionPath, string markSchemePath,
-        string studentName, IProgress<double>? progress, CancellationToken cancellationToken)
-    {
-        var streams = new List<IDisposable>();
-        try
-        {
-            using var content = Multipart.Build(
-                new List<(string, string)> { ("submission", submissionPath), ("mark_scheme", markSchemePath) },
-                new Dictionary<string, string> { ["student_name"] = studentName }, progress, streams.Add);
-            using var request = Request(HttpMethod.Post, "large-pdf/jobs");
-            request.Content = content;
-            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken).ConfigureAwait(false);
-            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw ToException(response.StatusCode, body, "large-pdf/jobs");
-            }
-
-            using var document = JsonDocument.Parse(body);
-            return document.RootElement.Clone();
-        }
-        finally
-        {
-            foreach (var stream in streams)
-            {
-                stream.Dispose();
-            }
-        }
-    }
-
-    public Task<JsonElement> ProcessLargePdfJobAsync(string jobId, CancellationToken cancellationToken = default) =>
-        SendJsonRawAsync(HttpMethod.Post, $"large-pdf/jobs/{Uri.EscapeDataString(jobId)}/process", new { },
-            cancellationToken);
-
-    public Task<JsonElement> RetryLargePdfBatchAsync(string jobId, int batchIndex,
-        CancellationToken cancellationToken = default) =>
-        SendJsonRawAsync(HttpMethod.Post,
-            $"large-pdf/jobs/{Uri.EscapeDataString(jobId)}/batches/{batchIndex}/retry", new { }, cancellationToken);
-
-    public Task<JsonElement> RetryLargePdfJobAsync(string jobId, CancellationToken cancellationToken = default) =>
-        SendJsonRawAsync(HttpMethod.Post, $"large-pdf/jobs/{Uri.EscapeDataString(jobId)}/retry", new { },
-            cancellationToken);
-
-    public Task<JsonElement> CancelLargePdfJobAsync(string jobId, CancellationToken cancellationToken = default) =>
-        SendJsonRawAsync(HttpMethod.Post, $"large-pdf/jobs/{Uri.EscapeDataString(jobId)}/cancel", new { },
-            cancellationToken);
 
     // ------------------------------------------------------------- automation
 

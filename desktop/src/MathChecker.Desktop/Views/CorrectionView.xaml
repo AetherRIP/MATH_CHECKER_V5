@@ -1,91 +1,90 @@
 <UserControl x:Class="MathChecker.Desktop.Views.CorrectionView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel>
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Left">
-                    <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" />
-                    <TextBlock Text="Uploads go to the existing correction engine through /api/corrections/unified."
-                               Style="{StaticResource Muted}" />
-                </StackPanel>
-                <Button DockPanel.Dock="Right" Content="Open job log" Command="{Binding OpenJobsCommand}"
-                        HorizontalAlignment="Right" VerticalAlignment="Top" />
-            </DockPanel>
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
+    <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}"
+                  Description="Uploads go to the standard correction engine through /api/corrections/unified."
+                  StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
+                  BodyPadding="0,18,0,0">
+        <ui:PageFrame.Actions>
+            <Button Content="Open job log" Command="{Binding OpenJobsCommand}" VerticalAlignment="Top" />
+        </ui:PageFrame.Actions>
 
-            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
-                <StackPanel>
-                    <TextBlock Text="Routing" Style="{StaticResource SectionTitle}" Margin="0,0,0,2" />
-                    <TextBlock Text="{Binding RulesText}" Style="{StaticResource Muted}" />
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <TextBlock Text="Method" Style="{StaticResource FieldLabel}" />
-                        <ComboBox Width="300" ItemsSource="{Binding Pipelines}"
-                                  SelectedItem="{Binding SelectedPipeline}">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Label}" TextWrapping="NoWrap" />
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-                        <TextBlock Text="{Binding SelectedPipeline.Detail}" Style="{StaticResource Muted}"
-                                   VerticalAlignment="Center" MaxWidth="420" />
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+            <StackPanel>
+                <Border Style="{StaticResource Card}" AllowDrop="True" Drop="OnDrop" DragOver="OnDragOver">
+                    <StackPanel>
+                        <TextBlock Text="1 · FILES" Style="{StaticResource SectionLabel}" />
+                        <Border Background="{StaticResource SunkenBrush}"
+                                BorderBrush="{StaticResource HairlineStrongBrush}" BorderThickness="1"
+                                CornerRadius="14" Padding="18,16" Margin="0,10,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Drag a PDF or image here"
+                                           FontFamily="{StaticResource DisplayFont}" FontSize="16"
+                                           FontWeight="Medium" TextWrapping="NoWrap" />
+                                <TextBlock Text="PDF, PNG, JPG or WEBP up to 200 MB. Or choose the files below."
+                                           Style="{StaticResource CardSubtitle}" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock DockPanel.Dock="Left" Text="Student work" Width="110"
+                                       Style="{StaticResource FieldLabel}" />
+                            <Button DockPanel.Dock="Right" Content="Choose…" Height="34" Padding="12,5"
+                                    Command="{Binding PickSubmissionCommand}" Margin="8,0,0,0" />
+                            <TextBox Text="{Binding SubmissionLabel, Mode=OneWay}" IsReadOnly="True"
+                                     Margin="0" />
+                        </DockPanel>
+
+                        <DockPanel Margin="0,0,0,10">
+                            <TextBlock DockPanel.Dock="Left" Text="Mark scheme" Width="110"
+                                       Style="{StaticResource FieldLabel}" />
+                            <Button DockPanel.Dock="Right" Content="Choose…" Height="34" Padding="12,5"
+                                    Command="{Binding PickMarkSchemeCommand}" Margin="8,0,0,0" />
+                            <TextBox Text="{Binding MarkSchemeLabel, Mode=OneWay}" IsReadOnly="True"
+                                     Margin="0" />
+                        </DockPanel>
+
+                        <WrapPanel>
+                            <TextBlock Text="Student name" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="220" Text="{Binding StudentName, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Content="Clear" Command="{Binding ClearCommand}" Height="38" />
+                            <Button Content="Start correction" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding SubmitCommand}" Margin="0" />
+                        </WrapPanel>
                     </StackPanel>
-                </StackPanel>
-            </Border>
+                </Border>
 
-            <Border Style="{StaticResource Card}" AllowDrop="True" Drop="OnDrop" DragOver="OnDragOver">
-                <StackPanel>
-                    <TextBlock Text="Files" Style="{StaticResource SectionTitle}" Margin="0,0,0,2" />
-                    <TextBlock Text="Drag a PDF or image onto this panel, or use the buttons. Accepted: PDF, PNG, JPG, WEBP up to 200 MB."
-                               Style="{StaticResource Muted}" Margin="0,0,0,8" />
-
-                    <DockPanel Margin="0,0,0,6">
-                        <TextBlock DockPanel.Dock="Left" Text="Student work" Width="110"
-                                   Style="{StaticResource FieldLabel}" />
-                        <Button DockPanel.Dock="Right" Content="Choose…" Command="{Binding PickSubmissionCommand}" />
-                        <TextBox Text="{Binding SubmissionLabel, Mode=OneWay}" IsReadOnly="True" />
-                    </DockPanel>
-
-                    <DockPanel Margin="0,0,0,6">
-                        <TextBlock DockPanel.Dock="Left" Text="Mark scheme" Width="110"
-                                   Style="{StaticResource FieldLabel}" />
-                        <Button DockPanel.Dock="Right" Content="Choose…" Command="{Binding PickMarkSchemeCommand}" />
-                        <TextBox Text="{Binding MarkSchemeLabel, Mode=OneWay}" IsReadOnly="True" />
-                    </DockPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                        <TextBlock Text="Student name" Style="{StaticResource FieldLabel}" />
-                        <TextBox Width="220" Text="{Binding StudentName, UpdateSourceTrigger=PropertyChanged}" />
-                        <Button Content="Clear" Command="{Binding ClearCommand}" />
-                        <Button Content="Start correction" Style="{StaticResource PrimaryButton}"
-                                Command="{Binding SubmitCommand}" />
+                <Border Style="{StaticResource Card}"
+                        Visibility="{Binding ProgressText, Converter={StaticResource NullToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="2 · PROGRESS" Style="{StaticResource SectionLabel}" />
+                        <ProgressBar Height="10" Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}"
+                                     Margin="0,10,0,0" />
+                        <TextBlock Text="{Binding ProgressText}" FontSize="12" Margin="0,8,0,0" />
+                        <TextBox Style="{StaticResource JsonBox}" Text="{Binding Outcome, Mode=OneWay}" Height="110"
+                                 Margin="0,8,0,0" />
                     </StackPanel>
-                </StackPanel>
-            </Border>
+                </Border>
 
-            <Border Style="{StaticResource Card}"
-                    Visibility="{Binding ProgressText, Converter={StaticResource NullToVisibility}}">
-                <StackPanel>
-                    <ProgressBar Height="14" Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}" />
-                    <TextBlock Text="{Binding ProgressText}" Margin="0,4,0,0" />
-                    <TextBox Style="{StaticResource JsonBox}" Text="{Binding Outcome, Mode=OneWay}" Height="110"
-                             Margin="0,8,0,0" />
-                </StackPanel>
-            </Border>
-
-            <Border Style="{StaticResource Card}">
-                <StackPanel>
-                    <TextBlock Text="Most recent jobs" Style="{StaticResource SectionTitle}" Margin="0,0,0,2" />
-                    <DataGrid ItemsSource="{Binding RecentJobs}" Height="180">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Student" Binding="{Binding StudentName}" Width="160" />
-                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="120" />
-                            <DataGridTextColumn Header="Stage" Binding="{Binding StageText}" Width="*" />
-                            <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="140" />
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </StackPanel>
-            </Border>
-        </StackPanel>
-    </ScrollViewer>
+                <Border Style="{StaticResource TableCard}">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
+                            <TextBlock Text="Most recent jobs" Style="{StaticResource RowTitle}" />
+                        </Border>
+                        <DataGrid Style="{StaticResource DataTable}" ui:TableLayout.FillColumn="2" ItemsSource="{Binding RecentJobs}"
+                                  Height="180" AutomationProperties.Name="Recent jobs">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Student" Binding="{Binding StudentName}" Width="160" />
+                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="120" />
+                                <DataGridTextColumn Header="Stage" Binding="{Binding StageText}" Width="*" />
+                                <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="140"
+                                                    ui:TableLayout.Priority="1" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </ui:PageFrame>
 </UserControl>

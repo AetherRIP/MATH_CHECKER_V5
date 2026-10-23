@@ -1599,15 +1599,6 @@ export interface AutomationJob {
   status: string;
   status_label: string;
   stage_index: number;
-  /**
-   * Which REAL correction pipeline handled this submission (§8).
-   *
-   * Derived from the large-PDF jobs table, so it states a fact: a submission
-   * the router sent to the batched worker has a row there. ``null`` means the
-   * job has not reached correction yet and no pipeline is claimed.
-   */
-  pipeline?: "standard" | "batched" | null;
-  pipeline_label?: string | null;
   step_detail: string | null;
   marks_obtained: number | null;
   maximum_marks: number | null;
@@ -1951,155 +1942,18 @@ export function saveDevPrompts(payload: {
   });
 }
 
-/* ------------------------------------------ Large PDF Worker */
-
-export interface LargePdfBatch {
-  batch_index: number;
-  batch_number: number;
-  page_start: number;
-  page_end: number;
-  pages: number;
-  status: string;
-  status_label: string;
-  question_ids: string[];
-  validated_questions: number | null;
-  missing_questions: string[];
-  ambiguous: boolean;
-  attempts: number;
-  error: string | null;
-  error_code: string | null;
-  finished_at: number | null;
-}
-
-export interface LargePdfSummary {
-  total: number; pending: number; processing: number;
-  completed: number; failed: number; review: number;
-}
-
-export interface LargePdfJob {
-  id: string;
-  student_name: string | null;
-  student_id?: string | null;
-  submission_id: string | null;
-  coursework_id: string | null;
-  status: string;
-  status_label: string;
-  step_detail: string | null;
-  page_count: number;
-  batch_count: number;
-  result_id: string | null;
-  attempts: number;
-  error: string | null;
-  error_code: string | null;
-  retryable: boolean;
-  awaiting_review: boolean;
-  created_at: number;
-  updated_at: number;
-  finished_at: number | null;
-  summary?: LargePdfSummary;
-  batches?: LargePdfBatch[];
-  plan?: {
-    page_count: number;
-    single_pass: boolean;
-    batch_count: number;
-    batches: { index: number; start: number; end: number; pages: number }[];
-  } | null;
-  plan_notes?: string[];
-}
-
-export interface LargePdfProgress {
-  stage: { state: string; label: string };
-  current_batch: number | null;
-  batch_total: number | null;
-  page_count: number;
-  pages_done: number;
-  current_batch_pages: { start: number; end: number } | null;
-  questions_total: number | null;
-  questions_marked: number;
-  batch_summary: {
-    total: number; pending: number; processing: number;
-    completed: number; failed: number; review: number;
-  };
-}
-
-export interface LargePdfListing {
-  config: {
-    enabled: boolean; threshold_pages: number; target_min: number;
-    target_max: number; concurrency: number;
-  };
-  counts: {
-    queued: number; inspecting: number; planning: number; ready: number;
-    processing: number; awaiting_review: number; completed: number; failed: number;
-  };
-  jobs: LargePdfJob[];
-  progress?: Record<string, LargePdfProgress>;
-}
-
-export function largePdfJobs(): Promise<LargePdfListing> {
-  return api<LargePdfListing>("/large-pdf/jobs");
-}
-
-export function largePdfJob(jobId: string): Promise<LargePdfJob> {
-  return api<LargePdfJob>(`/large-pdf/jobs/${encodeURIComponent(jobId)}`);
-}
-
-/** Upload a student answer PDF + mark scheme; inspects and plans batches. */
-export function largePdfCreate(form: FormData): Promise<LargePdfJob> {
-  return postForm<LargePdfJob>("/large-pdf/jobs", form);
-}
-
-export function largePdfProcess(jobId: string): Promise<LargePdfJob> {
-  return api<LargePdfJob>(`/large-pdf/jobs/${encodeURIComponent(jobId)}/process`,
-    { method: "POST" });
-}
-
-export function largePdfRetryJob(jobId: string): Promise<LargePdfJob> {
-  return api<LargePdfJob>(`/large-pdf/jobs/${encodeURIComponent(jobId)}/retry`,
-    { method: "POST" });
-}
-
-export function largePdfRetryBatch(jobId: string, batchIndex: number): Promise<LargePdfJob> {
-  return api<LargePdfJob>(
-    `/large-pdf/jobs/${encodeURIComponent(jobId)}/batches/${batchIndex}/retry`,
-    { method: "POST" });
-}
-
-export function largePdfCancel(jobId: string): Promise<LargePdfJob> {
-  return api<LargePdfJob>(`/large-pdf/jobs/${encodeURIComponent(jobId)}/cancel`,
-    { method: "POST" });
-}
-
-/* =============================================== unified PDF correction (§3) */
-
-/** The real routing facts (page threshold, whether batching is enabled). */
-export interface PipelineInfo {
-  threshold_pages: number;
-  large_pdf_enabled: boolean;
-  options: { value: "auto" | "standard" | "large";
-             label: string; detail: string }[];
-}
-
-export function correctionPipelines(): Promise<PipelineInfo> {
-  return api<PipelineInfo>("/corrections/pipelines");
-}
+/* =============================================== unified PDF correction */
 
 export interface UnifiedCorrectionResult {
-  /** Which EXISTING pipeline actually ran. */
-  applied_pipeline: "standard" | "large";
   job_id?: string;
-  large_pdf_job_id?: string;
   page_count: number;
-  page_limit: number;
   reason: string;
   files: Record<string, { name: string; bytes: number }>;
-  job: Job & Partial<LargePdfJob>;
+  job: Job;
 }
 
-/**
- * Upload one student PDF plus its mark scheme. The backend decides the pipeline
- * from the student PDF's real page count (or the teacher's explicit override),
- * and the response names the pipeline that ran.
- */
+/** Upload one student PDF plus its mark scheme to the standard correction
+ *  pipeline. The response reports the document's real page count. */
 export function unifiedCorrection(form: FormData): Promise<UnifiedCorrectionResult> {
   return postForm<UnifiedCorrectionResult>("/corrections/unified", form);
 }

@@ -381,7 +381,7 @@ export default function StoragePage() {
 
   return (
     <>
-      <PageHeader title="Storage"
+      <PageHeader kicker="System · Storage" title="Storage"
         sub="Everything this installation has saved — and how to move it to another computer."
         icon="database">
         {/* Sync Classroom is genuinely relevant here: it is what populates the

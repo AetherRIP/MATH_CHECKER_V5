@@ -94,10 +94,6 @@ public static class Program
             var review = await api.ReviewQueueAsync();
             Check("review queue answers", review.Total >= 0, $"total={review.Total}");
 
-            var pipelines = await api.CorrectionPipelinesAsync();
-            Check("pipeline facts answer", pipelines.TryGetProperty("threshold_pages", out _),
-                "threshold_pages present");
-
             var pdfs = CreatePdfs(backendDirectory, dataRoot);
             if (pdfs is null)
             {
@@ -154,19 +150,17 @@ public static class Program
     private static async Task CorrectionRoundTripAsync(MathCheckerApiClient api, string submission,
         string scheme)
     {
-        var queued = await api.SubmitUnifiedCorrectionAsync(submission, scheme, "Student E2E", "standard",
+        var queued = await api.SubmitUnifiedCorrectionAsync(submission, scheme, "Student E2E",
             null, CancellationToken.None);
         Console.WriteLine("  unified response: " + queued.GetRawText()[..Math.Min(400,
             queued.GetRawText().Length)]);
         var jobId = queued.TryGetProperty("job_id", out var j) ? j.GetString() : null;
-        var largeId = queued.TryGetProperty("large_pdf_job_id", out var l) ? l.GetString() : null;
-        Check("unified correction is accepted", jobId is not null || largeId is not null,
-            jobId is not null ? "job=" + jobId : "large=" + largeId);
+        Check("unified correction is accepted", jobId is not null,
+            jobId is not null ? "job=" + jobId : "no job id");
 
         if (jobId is null)
         {
-            Console.WriteLine("  batched pipeline chosen; its worker runs in the background. "
-                              + "The standard path is covered by the unit tests.");
+            Console.WriteLine("  no correction job was returned; the round trip cannot continue.");
             return;
         }
 

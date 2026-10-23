@@ -1,0 +1,206 @@
+/* ============================================================================
+   ui-style-kit-css — integration layer  (imported before styles.css)
+
+   The library is imported in main.tsx as `presets/paper-editorial.css`. That
+   bundle paints its own `.usk-*` components from the shared `--usk-*` colour
+   roles selected by `data-ui` / `data-theme` / `data-mode` on <html>.
+
+   This file is the only glue between the two systems, in four parts:
+
+     1. typography + geometry overrides (the app is offline-first, so the
+        preset's font stacks are replaced with the self-hosted Plex faces);
+     2. the app's semantic tokens, re-pointed at the library's colour roles —
+        one palette for the kit's components AND every existing page, flipping
+        with `data-mode` without a second hard-coded dark block;
+     3. a single neutraliser for the library's 2px element spacing floor,
+        because this app owns its spacing ramp;
+     4. small density corrections where the preset's marketing-scale geometry
+        (44px buttons, uppercase actions) is wrong for a marking desk.
+
+   Everything the app writes itself stays unlayered, and unlayered CSS beats
+   the library's `@layer ui-style-kit.*` rules regardless of specificity, so
+   styles.css remains authoritative for layout.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- 1. faces */
+
+/* Documented `--<prefix>-font-*` override tokens. Keeping the preset's display
+   serif for headings and the sans for body/controls gives the paper register
+   without shipping a second webfont or reaching the network. */
+:root {
+  --paper-font-sans: "Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --paper-font-body: var(--paper-font-sans);
+  --paper-font-display: "Plex Serif", Georgia, "Times New Roman", serif;
+  --paper-font-heading: var(--paper-font-display);
+  --paper-font-control: var(--paper-font-sans);
+  --paper-font-mono: "Plex Mono", "Cascadia Code", Consolas, monospace;
+
+  /* Preset radii are print-square (1px). Softened by two pixels: the corners
+     still read as ruled paper, but controls remain comfortable to hit. */
+  --paper-radius-xs: 2px;
+  --paper-radius-sm: 3px;
+  --paper-radius-md: 4px;
+  --paper-radius-lg: 6px;
+  --paper-radius-xl: 10px;
+}
+
+/* --------------------------------------------------------- 2. token bridge */
+
+/* `--usk-*` roles are theme-driven (walnut-clay here) and flip with data-mode,
+   so this is the whole palette: there is no second dark palette to drift. */
+:root {
+  color-scheme: light;
+
+  --canvas: rgb(var(--usk-bg-rgb));
+  --surface: rgb(var(--usk-surface-rgb));
+  --surface-sunken: rgb(var(--usk-surface-soft-rgb));
+  --surface-strong: rgb(var(--usk-surface-strong-rgb));
+  --surface-solid: rgb(var(--usk-surface-strong-rgb));
+  --surface-hover: color-mix(in srgb, rgb(var(--usk-primary-rgb)) 5%, rgb(var(--usk-surface-rgb)));
+
+  --rule: rgb(var(--usk-border-rgb));
+  --rule-strong: color-mix(in srgb, rgb(var(--usk-border-rgb)) 55%, rgb(var(--usk-text-rgb)));
+  --control-border: color-mix(in srgb, rgb(var(--usk-border-rgb)) 42%, rgb(var(--usk-text-rgb)));
+
+  --ink: rgb(var(--usk-text-rgb));
+  --text: rgb(var(--usk-text-rgb));
+  --text-dim: rgb(var(--usk-text-muted-rgb));
+  --muted: rgb(var(--usk-text-muted-rgb));
+  --text-faint: color-mix(in srgb, rgb(var(--usk-text-muted-rgb)) 88%, rgb(var(--usk-text-rgb)));
+  --faint: var(--text-faint);
+
+  --accent: rgb(var(--usk-primary-rgb));
+  --accent-2: rgb(var(--usk-primary-rgb));
+  --accent-ink: rgb(var(--usk-primary-text-rgb));
+  --accent-soft: color-mix(in srgb, rgb(var(--usk-primary-rgb)) 9%, rgb(var(--usk-surface-rgb)));
+  --accent-line: color-mix(in srgb, rgb(var(--usk-primary-rgb)) 34%, rgb(var(--usk-surface-rgb)));
+  --accent-gradient: rgb(var(--usk-primary-rgb));
+
+  /* Correction red: marks, lost marks, destructive actions. */
+  --mark: rgb(var(--usk-danger-rgb));
+  --mark-soft: color-mix(in srgb, rgb(var(--usk-danger-rgb)) 10%, rgb(var(--usk-surface-rgb)));
+
+  --ok: rgb(var(--usk-success-rgb));
+  --ok-soft: color-mix(in srgb, rgb(var(--usk-success-rgb)) 10%, rgb(var(--usk-surface-rgb)));
+  --ok-line: color-mix(in srgb, rgb(var(--usk-success-rgb)) 36%, rgb(var(--usk-surface-rgb)));
+
+  --warn: rgb(var(--usk-warning-rgb));
+  --warn-soft: color-mix(in srgb, rgb(var(--usk-warning-rgb)) 11%, rgb(var(--usk-surface-rgb)));
+  --warn-line: color-mix(in srgb, rgb(var(--usk-warning-rgb)) 38%, rgb(var(--usk-surface-rgb)));
+
+  --err: rgb(var(--usk-danger-rgb));
+  --err-soft: color-mix(in srgb, rgb(var(--usk-danger-rgb)) 10%, rgb(var(--usk-surface-rgb)));
+  --err-line: color-mix(in srgb, rgb(var(--usk-danger-rgb)) 36%, rgb(var(--usk-surface-rgb)));
+
+  --info: rgb(var(--usk-link-rgb));
+  --info-soft: color-mix(in srgb, rgb(var(--usk-link-rgb)) 10%, rgb(var(--usk-surface-rgb)));
+  --info-line: color-mix(in srgb, rgb(var(--usk-link-rgb)) 34%, rgb(var(--usk-surface-rgb)));
+
+  --review: rgb(var(--usk-secondary-rgb));
+  --review-soft: color-mix(in srgb, rgb(var(--usk-secondary-rgb)) 10%, rgb(var(--usk-surface-rgb)));
+  --review-line: color-mix(in srgb, rgb(var(--usk-secondary-rgb)) 34%, rgb(var(--usk-surface-rgb)));
+
+  --focus: rgb(var(--usk-focus-rgb));
+
+  --border: var(--rule);
+  --border-strong: var(--rule-strong);
+  --line: var(--rule);
+  --surface-2: var(--surface-sunken);
+  --surface-3: var(--surface-hover);
+  --bg: var(--canvas);
+
+  /* Neutral ink shadows, so elevation follows the palette in both modes. */
+  --shadow-1: 0 1px 2px rgb(var(--usk-text-rgb) / 0.05);
+  --shadow-2:
+    0 2px 6px rgb(var(--usk-text-rgb) / 0.07),
+    0 24px 56px rgb(var(--usk-text-rgb) / 0.14);
+  --elev-1:
+    0 1px 2px rgb(var(--usk-text-rgb) / 0.06),
+    0 8px 24px rgb(var(--usk-text-rgb) / 0.07);
+  --elev-2:
+    0 2px 6px rgb(var(--usk-text-rgb) / 0.08),
+    0 24px 56px rgb(var(--usk-text-rgb) / 0.16);
+  --shadow-glow: 0 0 0 3px var(--accent-soft);
+  --scrim: rgb(var(--usk-text-rgb) / 0.38);
+
+  --page-bg: var(--canvas);
+  --topbar-bg: color-mix(in srgb, var(--canvas) 92%, transparent);
+  --input-bg: var(--surface-strong);
+
+  /* Navigation is a paper index, not a dark rail: it uses the sunken sheet,
+     so it inherits light/dark automatically and needs no bespoke contrast. */
+  --sidebar-bg: var(--surface-sunken);
+  --sidebar-text: var(--text);
+  --sidebar-dim: var(--text-faint);
+  --sidebar-active: var(--accent-soft);
+  --doc-bg: color-mix(in srgb, rgb(var(--usk-text-rgb)) 14%, var(--canvas));
+}
+
+:root[data-mode="dark"] {
+  --scrim: rgb(0 0 0 / 0.62);
+  --topbar-bg: color-mix(in srgb, var(--canvas) 88%, transparent);
+}
+
+/* ------------------------- 3. spacing floor neutraliser (library contract) */
+
+/* clean-defaults applies `margin: 2px; padding: 2px` to EVERY element inside
+   `[data-ui][data-mode]`. This app has a 4px spacing ramp and full-height
+   panes, so the floor is removed once, here. It is unlayered, hence it wins
+   over the layered floor; every rule in styles.css comes later and restates
+   the spacing those elements actually need. `:where()` keeps it at zero
+   specificity so no component selector has to fight it. */
+[data-ui] :where(*) {
+  margin: 0;
+  padding: 0;
+}
+
+/* ------------------------------------------------ 4. density corrections */
+
+/* The preset is built for marketing pages: 44px actions, uppercase labels on
+   every control. A marking desk needs 32px actions and sentence-case verbs,
+   while keeping the preset's label treatment for badges and table headers. */
+:root .usk-button,
+:root .usk-icon-button {
+  min-height: 0;
+  height: 32px;
+  padding: 0 12px;
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: none;
+}
+
+:root .usk-icon-button {
+  width: 32px;
+  padding: 0;
+}
+
+:root .usk-badge {
+  padding: 1px 7px;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+
+:root .usk-input,
+:root .usk-select,
+:root .usk-textarea {
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  min-height: 34px;
+}
+
+:root .usk-table th {
+  font-family: var(--font);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.08em;
+}
+
+/* The kit's dialog geometry is opt-in in component-composition.css; the app
+   already owns a focused, scroll-locking modal, so only the surface is taken. */
+:root .usk-card {
+  border-radius: var(--radius);
+  box-shadow: none;
+}

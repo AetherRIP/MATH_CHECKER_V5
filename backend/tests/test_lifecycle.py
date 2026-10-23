@@ -398,8 +398,8 @@ def test_a_published_address_holds_the_app_up(fresh_state, monkeypatch):
     busy.reset_hold_cache()
 
 
-def test_automation_leases_and_large_pdfs_are_real_blockers(fresh_state):
-    """A live lease and an in-flight long document are read from the tables."""
+def test_automation_leases_are_real_blockers(fresh_state):
+    """A live automation lease is read from the table."""
     import app.db as db
     from app.automation import store as automation_store
 

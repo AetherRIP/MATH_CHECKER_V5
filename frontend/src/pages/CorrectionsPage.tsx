@@ -252,7 +252,7 @@ export default function CorrectionsPage() {
 
   return (
     <>
-      <PageHeader title="Queue a correction"
+      <PageHeader kicker="Correct · Job log" title="Queue a correction"
         sub="The everyday correction flow is AI → Correct; this older form is kept for existing links." />
 
       <div className="results-layout">
@@ -276,8 +276,8 @@ export default function CorrectionsPage() {
             {uploading ? "Uploading…" : "Queue correction"}
           </button>
           <p className="faint small" style={{ marginBottom: 0, marginTop: 8 }}>
-            Long documents are routed automatically by the same rule the unified
-            page uses, so a large PDF is never marked single-pass by mistake.
+            This queue uses the same standard single-pass correction engine as
+            the New correction page.
           </p>
         </div>
 

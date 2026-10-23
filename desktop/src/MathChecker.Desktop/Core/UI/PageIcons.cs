@@ -16,7 +16,6 @@ public static class PageIcons
         ["correct"] = "\uE710",     // Add
         ["tasks"] = "\uE9D5",       // Checklist
         ["jobs"] = "\uE81C",        // History
-        ["largepdf"] = "\uE8A5",    // Document
         ["automation"] = "\uE945",  // Lightning
         ["review"] = "\uE73E",      // CheckMark
         ["scheme"] = "\uE8A5",      // Document
@@ -42,4 +41,19 @@ public static class PageIcons
 
     public static string For(string? key) =>
         key is not null && Glyphs.TryGetValue(key, out var glyph) ? glyph : Fallback;
+
+    private static readonly Dictionary<string, string> SpaceGlyphs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Desk"] = "\uE80F",      // Home
+        ["Correct"] = "\uE710",   // Add
+        ["Review"] = "\uE73E",    // CheckMark
+        ["Results"] = "\uE9D2",   // Chart
+        ["People"] = "\uE716",    // People
+        ["Config"] = "\uE713",    // Settings
+        ["System"] = "\uE9D9",    // Diagnostic
+    };
+
+    /// <summary>Glyph for a navigation space, used by the rail and palette.</summary>
+    public static string ForSpace(string? space) =>
+        space is not null && SpaceGlyphs.TryGetValue(space, out var glyph) ? glyph : Fallback;
 }

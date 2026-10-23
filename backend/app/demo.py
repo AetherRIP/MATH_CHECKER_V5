@@ -22,7 +22,7 @@ import time
 
 DEMO_ENV = "MC5_DEMO"
 _DEMO_META = "demo_seeded"
-_DEMO_VERSION = "1"
+_DEMO_VERSION = "2"
 
 
 def is_demo() -> bool:
@@ -74,6 +74,81 @@ SYNTHETIC_STUDENTS = [
     ("demo-stu-4", "Student D"),
     ("demo-stu-5", "Student E"),
 ]
+
+# Per-question layout for the synthetic corrections. It exists so Demo Mode
+# can show the same question-level feedback a real correction carries (marks,
+# topics, what was lost) instead of an empty breakdown. Marks are split by the
+# weights below and always sum to the stored total.
+_QUESTION_PLANS = {
+    "demo-work-1": [("Q1", "Solving linear equations", 8),
+                    ("Q2", "Expanding brackets", 6),
+                    ("Q3", "Factorising", 6)],
+    "demo-work-2": [("Q1", "Completing the square", 12),
+                    ("Q2", "Quadratic formula", 10),
+                    ("Q3", "Graphs of quadratics", 8)],
+    "demo-work-3": [("Q1", "SOHCAHTOA", 8),
+                    ("Q2", "Sine and cosine rules", 7)],
+}
+
+
+def _demo_questions(work_id: str, earned: int, available: int) -> list[dict]:
+    """Split a synthetic score across the assignment's questions.
+
+    The split is proportional and rounded so the question marks add up to the
+    stored total exactly — a demo profile must never show a breakdown that
+    contradicts its own score.
+    """
+    plan = _QUESTION_PLANS.get(work_id)
+    if not plan:
+        return []
+    weight = sum(marks for _label, _topic, marks in plan) or available or 1
+    raw = [earned * marks / weight for _label, _topic, marks in plan]
+    awards = [int(value) for value in raw]
+    remainder = max(0, earned - sum(awards))
+    order = sorted(range(len(raw)), key=lambda i: raw[i] - awards[i], reverse=True)
+    for index in order[:remainder]:
+        awards[index] += 1
+
+    questions = []
+    for (label, topic, max_marks), awarded in zip(plan, awards):
+        lost = max_marks - awarded
+        questions.append({
+            "question_number": label,
+            "max_marks": max_marks,
+            "awarded_marks": awarded,
+            "topic": topic,
+            "status": "VALID",
+            "loss_reason": (
+                "Method shown, mark lost in the final step." if lost
+                else "Full marks."),
+            "mark_breakdown": [
+                {"code": "M1", "awarded": True,
+                 "reason": "Correct method selected"},
+                {"code": "A1", "awarded": lost == 0,
+                 "reason": "Correct final answer" if lost == 0
+                 else "Final answer not correct"},
+            ],
+        })
+    return questions
+
+
+def _demo_verification(count: int) -> str:
+    import json
+    return json.dumps({
+        "status": "VALID",
+        "verified": True,
+        "anomalies": [],
+        "warnings": [],
+        "review_questions": [],
+        "coverage": {
+            "expected": count,
+            "marked": count,
+            "requires_review": 0,
+            "unanswered": 0,
+            "verified": True,
+        },
+    })
+
 
 # Which synthetic students submitted each assignment (state, late, earned).
 _SUBMISSIONS = {
@@ -160,16 +235,24 @@ def seed() -> dict:
                     (job_id, sub_id, wid, cid, sid, name, now - 3600, now - 3500,
                      now - 3500, result_id),
                 )
+                questions = _demo_questions(wid, earned, available)
                 conn.execute(
-                    "INSERT OR IGNORE INTO results(id, job_id, coursework_id, "
+                    "INSERT INTO results(id, job_id, coursework_id, "
                     "submission_id, student_id, student_name, earned, available, "
                     "percentage, provisional_grade, marking_model, confidence, "
                     "confidence_reasons, review_required, manual_override, "
-                    "result_json, created_at) "
-                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,?,?)",
+                    "result_json, verification_json, created_at) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,?,?,?) "
+                    # An older demo seed stored an empty breakdown; upgrading it
+                    # keeps the synthetic scores but fills in the questions.
+                    "ON CONFLICT(id) DO UPDATE SET "
+                    "result_json=excluded.result_json, "
+                    "verification_json=excluded.verification_json",
                     (result_id, job_id, wid, sub_id, sid, name, earned, available,
                      100.0 * earned / available, _grade(100.0 * earned / available),
-                     "demo-model", "HIGH", "[]", "{}", now - 3500),
+                     "demo-model", "HIGH", "[]",
+                     json.dumps({"questions": questions}),
+                     _demo_verification(len(questions)), now - 3500),
                 )
 
     db.set_meta(_DEMO_META, _DEMO_VERSION)

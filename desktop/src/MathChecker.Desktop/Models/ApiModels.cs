@@ -547,89 +547,6 @@ public sealed class ClassroomSubmissionListDto
     public int Total { get; set; }
 }
 
-public sealed class LargePdfConfigDto
-{
-    public bool Enabled { get; set; }
-    public int ThresholdPages { get; set; }
-    public int TargetMin { get; set; }
-    public int TargetMax { get; set; }
-    public int Concurrency { get; set; }
-}
-
-public sealed class LargePdfCountsDto
-{
-    public int Queued { get; set; }
-    public int Inspecting { get; set; }
-    public int Planning { get; set; }
-    public int Ready { get; set; }
-    public int Processing { get; set; }
-    public int AwaitingReview { get; set; }
-    public int Completed { get; set; }
-    public int Failed { get; set; }
-}
-
-public class LargePdfJobDto
-{
-    public string Id { get; set; } = string.Empty;
-    public string? StudentName { get; set; }
-    public string? StudentId { get; set; }
-    public string? SubmissionId { get; set; }
-    public string? CourseworkId { get; set; }
-    public string? Status { get; set; }
-    public string? StatusLabel { get; set; }
-    public string? StepDetail { get; set; }
-    public int PageCount { get; set; }
-    public int BatchCount { get; set; }
-    public string? ResultId { get; set; }
-    public int Attempts { get; set; }
-    public string? Error { get; set; }
-    public string? ErrorCode { get; set; }
-    public bool Retryable { get; set; }
-    public bool AwaitingReview { get; set; }
-    public double? CreatedAt { get; set; }
-    public double? UpdatedAt { get; set; }
-    public double? FinishedAt { get; set; }
-
-    public string Name => StudentName ?? StudentId ?? "—";
-    public string ProgressText => BatchCount > 0 ? $"{PageCount} pages / {BatchCount} batches" : "—";
-    public string CreatedText => EpochTime.Format(CreatedAt);
-    public bool CanCancel => Status is not "COMPLETED" and not "FAILED" and not "CANCELLED";
-}
-
-public sealed class LargePdfJobsDto
-{
-    public LargePdfConfigDto? Config { get; set; }
-    public LargePdfCountsDto? Counts { get; set; }
-    public List<LargePdfJobDto> Jobs { get; set; } = new();
-    public JsonElement? Progress { get; set; }
-}
-
-public sealed class BatchDto
-{
-    public int BatchIndex { get; set; }
-    public int BatchNumber { get; set; }
-    public int PageStart { get; set; }
-    public int PageEnd { get; set; }
-    public int Pages { get; set; }
-    public string? Status { get; set; }
-    public string? StatusLabel { get; set; }
-    public int? ValidatedQuestions { get; set; }
-    public List<string> MissingQuestions { get; set; } = new();
-    public bool Ambiguous { get; set; }
-    public int Attempts { get; set; }
-    public string? Error { get; set; }
-    public string? ErrorCode { get; set; }
-
-    public string PagesText => $"p{PageStart}–{PageEnd}";
-    public string MissingText => MissingQuestions.Count == 0 ? "—" : string.Join(", ", MissingQuestions);
-}
-
-public sealed class LargePdfJobDetailDto : LargePdfJobDto
-{
-    public List<BatchDto> Batches { get; set; } = new();
-    public JsonElement? Summary { get; set; }
-}
-
 public sealed class AutomationStatusDto
 {
     public bool Enabled { get; set; }
@@ -812,7 +729,6 @@ public sealed class SettingsDto
     public RetentionSettingsDto? Retention { get; set; }
     public NetworkSettingsDto? Network { get; set; }
     public LifecycleSettingsDto? Lifecycle { get; set; }
-    public JsonElement? LargePdf { get; set; }
 }
 
 public sealed class WorkerSettingsDto

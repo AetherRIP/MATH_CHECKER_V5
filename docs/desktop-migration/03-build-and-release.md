@@ -2,27 +2,34 @@
 
 The desktop client is a WPF application (`net10.0-windows`). It never contains a
 copy of the correction engine: it starts, attaches to, and talks to the existing
-Python backend over HTTP.
+Python backend over HTTP. The release therefore ships the client, the unchanged
+V5 backend and a bundled Python runtime in one folder; double-clicking
+`MATH_CHECKER_V5.exe` starts everything.
 
 ## 1. What a release contains
 
-`desktop\build_release.ps1` stages one folder that the client can run from
-without any developer environment:
+`desktop\build_release.ps1` stages the following tree:
 
 ```
-MathCheckerDesktop\
+desktop\artifacts\MATH_CHECKER_V5\
   main.py                     existing V5 entry point (unmodified)
   backend\                    existing backend package (unmodified)
   runtime\python.exe          bundled Python + the backend's dependencies
   desktop\                    published WPF client (self-contained .NET)
-    MathChecker.Desktop.exe
-    ...
+    MATH_CHECKER_V5.exe       the launcher people double-click
+    ...                       .NET runtime and client DLLs (no .NET install needed)
 ```
 
 The client searches for `main.py` starting at its own folder and walking up to
 eight parents, then uses `runtime\python.exe` from that same root
-(`BackendLocator.FindBackendDirectory`, `ResolvePython`). Nothing about a
-developer checkout is required or referenced at runtime.
+(`BackendLocator.FindBackendDirectory`, `ResolvePython`). The installed and
+portable layouts are therefore identical; nothing about a developer checkout is
+referenced at runtime.
+
+`MATH_CHECKER_V5.exe` is a normal WPF process, not a console wrapper: it has no
+terminal window, enforces one instance per user session (a second double-click
+raises the existing window), waits for `/api/health` before showing the backend
+as ready, and stops the backend process tree it started when the window closes.
 
 ## 2. Prerequisites
 
@@ -30,13 +37,14 @@ developer checkout is required or referenced at runtime.
 |---|---|---|
 | Build the client | .NET SDK 10 (`dotnet --version` = 10.x) | Windows only (WPF) |
 | Build the bundle | A prepared runtime folder containing `python.exe` | Default `MathChecker_Distribution\build\runtime`, produced by `MathChecker_Distribution\build_release.bat` (`scripts\build_runtime.py`) |
-| Build the installer | Inno Setup 6 (`ISCC.exe`) | **Not installed on this machine** — see §5 |
-| Run an installed build | Windows 10/11 x64 | No .NET and no Python installation needed |
+| Build the installer | Inno Setup 6 (`ISCC.exe`) | Detected in `Program Files`, `Program Files (x86)`, the per-user `%LOCALAPPDATA%\Programs\Inno Setup 6`, or on `PATH` |
+| Run the portable/installed build | Windows 10/11 x64 | No .NET and no Python installation needed |
+| Build only the bundle | `-SkipInstaller` | Prints the exact `iscc` command instead |
 
 ## 3. Build commands
 
 ```powershell
-# From the repository root
+# From the repository root: client + backend + runtime + ZIP + installer
 powershell -ExecutionPolicy Bypass -File desktop\build_release.ps1
 
 # Optional arguments
@@ -50,15 +58,15 @@ powershell -ExecutionPolicy Bypass -File desktop\build_release.ps1
 The script:
 
 1. `dotnet publish` of `desktop\src\MathChecker.Desktop` — self-contained,
-   `win-x64`, single folder (no trimming: WPF does not support it);
+   `win-x64`, single folder (no trimming: WPF does not support it), producing
+   `desktop\MATH_CHECKER_V5.exe`;
 2. copies `main.py`, `backend\` and `requirements.txt` from the checkout,
    removing `__pycache__`;
 3. copies the bundled Python runtime;
 4. asserts the layout (`main.py`, `backend\app\main.py`, `runtime\python.exe`,
-   `desktop\MathChecker.Desktop.exe`);
-5. writes `desktop\artifacts\MathChecker_Desktop_Portable.zip`;
-6. builds `MathChecker_Desktop_Setup.exe` when `ISCC.exe` is found, and prints
-   the exact command when it is not;
+   `desktop\MATH_CHECKER_V5.exe`);
+5. writes `desktop\artifacts\MATH_CHECKER_V5_Portable.zip`;
+6. builds `desktop\artifacts\MATH_CHECKER_V5_Setup.exe` when `ISCC.exe` is found;
 7. writes `desktop\artifacts\release_manifest.json`.
 
 Developer-only build commands:
@@ -69,62 +77,88 @@ dotnet test   desktop\tests\MathChecker.Desktop.Tests\MathChecker.Desktop.Tests.
 dotnet run --project desktop\tools\MathChecker.Desktop.E2E
 ```
 
-## 4. Verified on this machine (2026-10-21)
+## 4. Release tests
+
+`desktop\test_release.ps1` exercises a staged build the way a user does: it
+copies the release outside the repository, starts `MATH_CHECKER_V5.exe`,
+confirms the window and the *bundled* interpreter, uploads one correction,
+waits for the job and its stored result, exports a PDF, launches a second copy
+to check the single-instance guard, closes the window and confirms no backend
+process or listening port is left behind.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File desktop\test_release.ps1
+powershell -ExecutionPolicy Bypass -File desktop\test_release.ps1 -KeepTemp   # keep logs/PDFs
+```
+
+It backs up and restores `%APPDATA%\MathCheckerDesktop\settings.json` and runs
+in Demo Mode with a scratch data folder, so no real student record is touched.
+
+## 5. Verified on this machine (2026-10-22)
 
 | Check | Result |
 |---|---|
-| `dotnet publish` (Release, win-x64, self-contained) | succeeded, 0 warnings, 0 errors |
-| Layout assertions | all four required paths present |
-| Portable ZIP | `MathChecker_Desktop_Portable.zip`, **128.3 MB** (134 553 777 bytes) |
-| Launch from the staged bundle with `backendDirectory` cleared | client auto-discovered `artifacts\MathCheckerDesktop\main.py` |
-| Interpreter actually used | `artifacts\MathCheckerDesktop\runtime\python.exe` (bundled, not the checkout's `.venv`) |
-| `/api/health` from the packaged run | `200 {"status":"ok"}` |
-| Window and navigation | `Math Checker`, 26 navigation items, pages rendered |
-| Close | process exited, backend tree stopped, **no orphan `python.exe`** |
+| `dotnet publish` (Release, win-x64, self-contained) | succeeded |
+| `dotnet test desktop\tests\MathChecker.Desktop.Tests` | **137 passed, 0 failed** |
+| `desktop\test_release.ps1` | **19/19 checks passed** |
+| Portable folder | `desktop\artifacts\MATH_CHECKER_V5\` — client, backend and runtime (328 MB on disk) |
+| Portable ZIP | `MATH_CHECKER_V5_Portable.zip`, **128.6 MB** |
+| Installer | `MATH_CHECKER_V5_Setup.exe`, **93.7 MB**, Inno Setup 6.7.3 |
+| Launcher actually run | `MATH_CHECKER_V5.exe` from a copy in `%TEMP%`, window title `MATH_CHECKER_V5` |
+| Interpreter actually used | the copied `runtime\python.exe main.py --serve <port>` — not the checkout's `.venv` |
+| `/api/health` and `/api/dashboard` | `status=ok`, Demo Mode on |
+| Real correction through the packaged backend | job `COMPLETED` (`stage=Correction completed`), stored result, `9/12`, 3 questions |
+| PDF export from the packaged backend | 4 553 bytes, `%PDF` header |
+| Single instance | second launch exited and only one client process existed |
+| Close / shutdown | client exited, backend tree stopped, port closed |
+| Startup failure | with `main.py` removed the packaged app showed the banner *"The correction backend is not available."* + the reason and a **Retry** button instead of crashing |
+| Data location | the packaged backend used the configured data folder, not the repository |
+| Installer install → run → uninstall | **11/11 checks passed**: silent per-user install, launcher exists, backend + runtime present, installed window opened, `/api/health` ok, dashboard served, clean exit, uninstaller exit 0, program folder removed |
 
-The run used Demo Mode with a scratch data folder, so no real student record was
-touched. `%APPDATA%\MathCheckerDesktop\settings.json` was backed up before the
-test and restored afterwards.
+The verification runs used Demo Mode and scratch data folders.
 
-## 5. Installer
+## 6. Installer
 
-`desktop\installer\MathCheckerDesktop.iss` (Inno Setup 6) installs the staged
-tree into `%ProgramFiles%\Math Checker Desktop`, creates Start Menu entries
-(application + desktop log folder), offers an optional desktop shortcut, and
-registers an uninstaller. It does not delete the client's `%APPDATA%` settings or
-the backend's data folder.
+`desktop\installer\MathCheckerDesktop.iss` (Inno Setup 6) is a **per-user**
+install: `PrivilegesRequired=lowest`, default folder
+`%LOCALAPPDATA%\Programs\MATH_CHECKER_V5`, Start Menu entries (application +
+desktop log folder), an optional desktop shortcut, and an uninstaller registered
+in *Apps & features*. No administrator rights are needed.
 
-Build it (requires Inno Setup 6):
+The uninstaller removes the program folders (`desktop\`, `backend\`, `runtime\`,
+generated `__pycache__`) but deliberately keeps:
+
+* `%APPDATA%\MathCheckerDesktop\settings.json` and the logs in
+  `%LOCALAPPDATA%\MathCheckerDesktop\logs` — window state and diagnostics;
+* the backend's data folder (`%LOCALAPPDATA%\Programs\MATH_CHECKER_V5\data` or
+  one the teacher configured) — classes, marked papers, API keys.
+
+Build it (after `build_release.ps1` has staged the tree):
 
 ```powershell
-# after build_release.ps1 has staged the tree
-iscc /DSourceDir="E:\MATH_CHECKER_V5\desktop\artifacts\MathCheckerDesktop" `
+iscc /DSourceDir="E:\MATH_CHECKER_V5\desktop\artifacts\MATH_CHECKER_V5" `
      /DOutputDir="E:\MATH_CHECKER_V5\desktop\artifacts" `
      "E:\MATH_CHECKER_V5\desktop\installer\MathCheckerDesktop.iss"
 ```
 
-**Status: not built and not installed here.** `ISCC.exe` is not present on this
-machine (neither `C:\Program Files\Inno Setup 6` nor PATH), so the installer
-script is delivered but its install/uninstall/Start-Menu/upgrade behaviour is
-**unverified**. Do not claim a tested installer until someone with Inno Setup 6
-runs the command above and installs the result on a clean Windows machine.
+`build_release.ps1` runs exactly this when it finds `ISCC.exe`, so normally no
+separate command is needed. Silent install/uninstall for a scripted check:
 
-Checks that remain to be done with the installer:
+```powershell
+MATH_CHECKER_V5_Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOICONS
+& "$env:LOCALAPPDATA\Programs\MATH_CHECKER_V5\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES
+```
 
-1. install as administrator, confirm the Start Menu shortcut launches the app;
-2. confirm the first start finds the bundled backend and reaches
-   "Backend ready" without any Python/.NET install;
-3. run a correction and export a PDF from the installed copy;
-4. uninstall and confirm no program files remain while `%APPDATA%` settings and
-   the backend data folder are untouched;
-5. install over the previous version (same `AppId`) and confirm settings and data
-   survive.
+**Status: built and tested here** (install → launch installed app → health and
+dashboard → clean exit → uninstall → folder removed). Upgrade-in-place over an
+older version shares the same `AppId` but was not exercised; the settings and
+data folders live outside `{app}`, so an upgrade preserves them.
 
-## 6. Versioning and updates
+## 7. Versioning and updates
 
 * Client identity: `desktop\src\MathChecker.Desktop\MathChecker.Desktop.csproj`
   (`Version`, `FileVersion`, `AssemblyVersion` — currently `1.0.0`), icon
-  `desktop\installer\app.ico`.
+  `desktop\installer\app.ico`, assembly name `MATH_CHECKER_V5`.
 * Installer version: `AppVersion` in `MathCheckerDesktop.iss`; the `AppId` must
   stay stable so upgrades replace rather than duplicate an installation.
 * Backend version is the existing product version (`5.2.1` in the running app);
@@ -132,7 +166,7 @@ Checks that remain to be done with the installer:
 * There is no auto-update channel for the client. Updates are a new installer
   over the old one, or a new portable ZIP.
 
-## 7. Signing and distribution
+## 8. Signing and distribution
 
 Builds are unsigned. Windows SmartScreen will warn on an unknown publisher; for
 distribution, sign both the executable and the installer with an Authenticode
@@ -140,9 +174,9 @@ certificate:
 
 ```powershell
 signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
-    /f certificate.pfx /p <password> MathChecker.Desktop.exe
+    /f certificate.pfx /p <password> MATH_CHECKER_V5.exe
 signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
-    /f certificate.pfx /p <password> MathChecker_Desktop_Setup.exe
+    /f certificate.pfx /p <password> MATH_CHECKER_V5_Setup.exe
 ```
 
 Do not put certificates, passwords, `.env` files, backend `data\secrets.toml` or

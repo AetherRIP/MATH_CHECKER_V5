@@ -16,7 +16,6 @@
 
 import { useMemo } from "react";
 import { Icon, type IconName } from "./Icons";
-import { Badge } from "./components";
 import type { AutomationJob } from "./api";
 
 /** Failure / needs-attention states: the job stopped at its resume stage. */
@@ -285,17 +284,6 @@ export function LiveJobs({ jobs, totalStages, onOpenJob }: {
                 <> · {j.marks_obtained}/{j.maximum_marks}</>
               )}
             </div>
-            {/* §8: say when the LARGE-PDF pipeline is doing the work. The value
-                comes from the real batched-job rows, never a guess. */}
-            {j.pipeline && (
-              <div className="lj-sub small" style={{ marginTop: 2 }}>
-                <Badge tone={j.pipeline === "batched" ? "info" : "mute"}>
-                  {j.pipeline_label ?? (j.pipeline === "batched"
-                    ? "Batched large-PDF pipeline"
-                    : "Standard single-pass pipeline")}
-                </Badge>
-              </div>
-            )}
             {!WAITING_STATES.has(j.status) && (
               <StageBar job={j} total={totalStages} />
             )}

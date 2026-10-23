@@ -50,7 +50,14 @@ public sealed class ResultsViewModel : PageViewModel
         get => _selected;
         set
         {
-            if (SetProperty(ref _selected, value) && value is not null)
+            if (!SetProperty(ref _selected, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(DetailHeader));
+            OnPropertyChanged(nameof(HasSelection));
+            if (value is not null)
             {
                 _ = LoadDetailAsync(value.Id);
             }
@@ -72,8 +79,20 @@ public sealed class ResultsViewModel : PageViewModel
 
     public bool HasDetail => Detail is not null;
 
+    /// <summary>False before a row is chosen: the detail pane must not claim a
+    /// correction is selected or that its breakdown is missing.</summary>
+    public bool HasSelection => Selected is not null;
+
+    public bool HasItems => Items.Count > 0;
+
+    public bool IsEmpty => Items.Count == 0;
+
+    public bool HasQuestions => Questions.Count > 0;
+
+    public bool HasVersions => Versions.Count > 0;
+
     public string DetailHeader => Detail is null
-        ? string.Empty
+        ? Selected?.Name ?? "Correction"
         : $"{Detail.Name} · {Detail.ScoreText} ({Detail.PercentageText}) · grade {Detail.ProvisionalGrade ?? "—"}\n"
           + $"{Detail.ClassLabel ?? "Not assigned"} · confidence {Detail.Confidence ?? "—"} · "
           + $"{(Detail.ManualOverride == 1 ? "teacher override" : "engine result")} · {Detail.CreatedText}";
@@ -278,6 +297,8 @@ public sealed class ResultsViewModel : PageViewModel
 
         Summary = $"{results.Total} corrections stored · showing {Items.Count}"
                   + (results.Total > Items.Count ? " (raise the filter or search to narrow it)" : string.Empty);
+        OnPropertyChanged(nameof(HasItems));
+        OnPropertyChanged(nameof(IsEmpty));
 
         if (previous is not null)
         {
@@ -312,12 +333,16 @@ public sealed class ResultsViewModel : PageViewModel
                 DetailNote = $"{Questions.Count} questions marked.";
             }
 
+            OnPropertyChanged(nameof(HasQuestions));
+
             Versions.Clear();
             var history = await Session.Api.ResultVersionsAsync(resultId);
             foreach (var version in history.Versions)
             {
                 Versions.Add(version);
             }
+
+            OnPropertyChanged(nameof(HasVersions));
         }
         catch (ApiException ex)
         {
@@ -330,6 +355,8 @@ public sealed class ResultsViewModel : PageViewModel
         finally
         {
             _loadingDetail = false;
+            OnPropertyChanged(nameof(HasQuestions));
+            OnPropertyChanged(nameof(HasVersions));
         }
     }
 }

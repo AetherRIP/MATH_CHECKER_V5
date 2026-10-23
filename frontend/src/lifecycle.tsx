@@ -25,6 +25,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { lifecycleHeartbeat, lifecycleLeave, type LifecycleStatus } from "./api";
+import { devBackendOrigin } from "./environment";
 
 const SID_KEY = "mc5.tab.session";
 
@@ -155,6 +156,9 @@ export function useServerSession(): ServerSession {
 export function ServerLifecycleBanner() {
   const { link } = useServerSession();
   if (link !== "away") return null;
+  // In browser development the most likely cause is not an idle-stopped relay
+  // but a wrong MC5_DEV_API. Say so: "it restarts by itself" would be a lie.
+  const devOrigin = devBackendOrigin();
   return (
     <div className="notice warn lifecycle-away" role="status">
       <span>
@@ -162,6 +166,14 @@ export function ServerLifecycleBanner() {
         right now. It starts again by itself when nobody is using it, and this
         page will carry on as soon as it is back. Nothing you had queued is
         lost — a correction in flight resumes from the step it reached.
+        {devOrigin && (
+          <>
+            {" "}
+            <strong>Development server:</strong> no answer from {devOrigin}. If
+            that is not the backend you meant, change MC5_DEV_API in
+            frontend/.env.local and restart the dev server.
+          </>
+        )}
       </span>
       <button className="btn secondary sm" type="button"
         onClick={() => window.location.reload()}>

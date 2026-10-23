@@ -11,11 +11,17 @@ import { fitPaneWidths } from "./paneWidths";
 
 export type Tone = "ok" | "err" | "warn" | "info" | "review" | "mute";
 
+/** The app's tones are a superset of the kit's badge variants. */
+const BADGE_VARIANT: Record<Tone, "primary" | "secondary" | "success" | "warning" | "danger" | undefined> = {
+  ok: "success", err: "danger", warn: "warning", info: "primary",
+  review: "secondary", mute: undefined,
+};
+
 export function Badge({ tone, children, icon }: {
   tone: Tone; children: ReactNode; icon?: IconName;
 }) {
   return (
-    <span className={`badge ${tone}`}>
+    <span className={`badge ${tone} usk-badge`} data-ui-variant={BADGE_VARIANT[tone]}>
       {icon ? <Icon name={icon} size={12} /> : <span className="dot" />}
       <span className="badge-text">{children}</span>
     </span>
@@ -39,6 +45,12 @@ export type ButtonVariant =
   | "default" | "primary" | "secondary" | "success" | "warning"
   | "danger" | "ghost" | "nav";
 
+const BUTTON_VARIANT: Record<ButtonVariant, "primary" | "secondary" | "warning" | "danger" | "ghost"> = {
+  default: "secondary", secondary: "secondary", success: "secondary",
+  primary: "primary", warning: "warning", danger: "danger",
+  ghost: "ghost", nav: "ghost",
+};
+
 export function Button({
   variant = "secondary", size, icon, iconRight, loading, block, tooltip, className,
   children, ...rest
@@ -54,12 +66,13 @@ export function Button({
   children?: ReactNode;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const classes = [
-    "btn", variant !== "default" ? variant : "",
+    "btn", "usk-button", variant !== "default" ? variant : "",
     size ?? "", loading ? "loading" : "", block ? "block" : "", className ?? "",
   ].filter(Boolean).join(" ");
   return (
     <button
       className={classes}
+      data-ui-variant={BUTTON_VARIANT[variant]}
       data-tooltip={tooltip}
       aria-busy={loading || undefined}
       disabled={rest.disabled || loading}
@@ -80,7 +93,8 @@ export function IconButton({
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
-      className={`btn ${variant} icon-only ${size ?? ""} ${active ? "active" : ""}`}
+      className={`btn ${variant} icon-only usk-icon-button ${size ?? ""} ${active ? "active" : ""}`}
+      data-ui-variant={BUTTON_VARIANT[variant]}
       aria-label={label}
       data-tooltip={label}
       {...rest}
@@ -140,10 +154,10 @@ export function Metric({ value, label, scope, tone }: {
   tone?: "ok" | "warn" | "mark";
 }) {
   return (
-    <div className={`metric ${tone ? `tone-${tone}` : ""}`}>
-      <div className="metric-value">{value}</div>
-      <div className="metric-label">{label}</div>
-      {scope != null && <div className="metric-scope">{scope}</div>}
+    <div className={`metric usk-metric ${tone ? `tone-${tone}` : ""}`}>
+      <div className="metric-value usk-metric-value">{value}</div>
+      <div className="metric-label usk-metric-label">{label}</div>
+      {scope != null && <div className="metric-scope usk-metric-detail">{scope}</div>}
     </div>
   );
 }
@@ -201,10 +215,10 @@ export function Progress({ value, thin, tone, label }: {
 }) {
   const pct = Math.round(Math.min(100, Math.max(0, value * 100)));
   return (
-    <div className={`progress ${thin ? "thin" : ""} ${tone ? `tone-${tone}` : ""}`}
+    <div className={`progress usk-progress ${thin ? "thin" : ""} ${tone ? `tone-${tone}` : ""}`}
       role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
       aria-valuetext={`${pct}%`} aria-label={label}>
-      <div className="bar" style={{ width: `${pct}%` }} />
+      <div className="bar usk-progress-bar" style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -239,14 +253,18 @@ export function Empty({ icon, art, title, hint, action }: {
 }) {
   const isName = typeof icon === "string" && /^[a-z-]+$/.test(icon);
   return (
-    <div className="empty">
-      <div className="big">
+    <div className="empty usk-empty-state">
+      <div className="big usk-empty-state-icon">
         {art ? <EmptyArt variant={art} />
           : isName ? <Icon name={icon as IconName} size={30} /> : <span>{icon}</span>}
       </div>
-      <div className="empty-title">{title}</div>
-      {hint && <div className="empty-hint faint">{hint}</div>}
-      {action && <div style={{ marginTop: 14, display: "flex", justifyContent: "center" }}>{action}</div>}
+      <div className="empty-title usk-empty-state-title">{title}</div>
+      {hint && <div className="empty-hint faint usk-empty-state-body">{hint}</div>}
+      {action && (
+        <div className="usk-empty-state-actions" style={{ marginTop: 14, display: "flex", justifyContent: "center" }}>
+          {action}
+        </div>
+      )}
     </div>
   );
 }
@@ -290,14 +308,17 @@ export function ErrorState({ title, detail, onRetry }: {
  * none at all), an optional plain-language subtitle, an optional meta line
  * for scope ("78 students · synced 4 min ago") and the page's actions.
  */
-export function PageHeader({ title, sub, meta, children }: {
+export function PageHeader({ title, sub, meta, children, kicker }: {
   title: string; sub?: string; meta?: ReactNode; children?: ReactNode;
+  /** Small uppercase folio line above the title (destination · section). */
+  kicker?: string;
   /** Accepted for compatibility; page titles no longer carry icons. */
   icon?: IconName;
 }) {
   return (
     <div className="page-head">
       <div className="ph-main">
+        {kicker && <p className="page-kicker">{kicker}</p>}
         <h1 className="page-title">{title}</h1>
         {sub && <p className="page-sub">{sub}</p>}
         {meta != null && <div className="ph-meta">{meta}</div>}
@@ -313,11 +334,13 @@ export function Field({ label, hint, error, children, id }: {
   children: ReactNode; id?: string;
 }) {
   return (
-    <div className={`field ${error ? "invalid" : ""}`}>
-      <span>{id ? <label htmlFor={id}>{label}</label> : label}</span>
+    <div className={`field usk-field ${error ? "invalid" : ""}`}>
+      <span>{id
+        ? <label className="usk-label" htmlFor={id}>{label}</label>
+        : <span className="usk-label">{label}</span>}</span>
       {children}
-      {error ? <div className="field-error">{error}</div>
-        : hint ? <div className="field-hint">{hint}</div> : null}
+      {error ? <div className="field-error" role="alert">{error}</div>
+        : hint ? <div className="field-hint usk-help-text">{hint}</div> : null}
     </div>
   );
 }
@@ -328,7 +351,7 @@ export function Section({ title, hint, actions, children, icon, id }: {
   icon?: IconName; id?: string;
 }) {
   return (
-    <section className="card" id={id}>
+    <section className="card usk-card" id={id}>
       <div className="row between wrap" style={{ marginBottom: 12, gap: 8 }}>
         <h3 style={{ margin: 0 }}>
           {icon && <Icon name={icon} size={16} style={{ color: "var(--accent)" }} />}
@@ -357,8 +380,8 @@ export function DataTable({ head, children, minWidth }: {
   head: ReactNode; children: ReactNode; minWidth?: number;
 }) {
   return (
-    <div className="table-wrap">
-      <table className="table table-stack" style={minWidth ? { minWidth } : undefined}>
+    <div className="table-wrap usk-table-wrap">
+      <table className="table table-stack usk-table" style={minWidth ? { minWidth } : undefined}>
         <thead>{head}</thead>
         <tbody>{children}</tbody>
       </table>
@@ -375,12 +398,12 @@ export function Segmented<T extends string>({ value, options, onChange, ariaLabe
   ariaLabel?: string;
 }) {
   return (
-    <div className="segmented" role="group" aria-label={ariaLabel}>
+    <div className="segmented usk-segmented-control" role="group" aria-label={ariaLabel}>
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
-          className={value === o.value ? "active" : ""}
+          className={`usk-segment ${value === o.value ? "active" : ""}`}
           aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
         >
@@ -400,10 +423,10 @@ export function Tabs<T extends string>({ value, options, onChange, ariaLabel }: 
   ariaLabel?: string;
 }) {
   return (
-    <div className="tabs" role="tablist" aria-label={ariaLabel}>
+    <div className="tabs usk-tabs" role="tablist" aria-label={ariaLabel}>
       {options.map((o) => (
         <button key={o.value} type="button" role="tab"
-          className={`tab ${value === o.value ? "active" : ""}`}
+          className={`tab usk-tab ${value === o.value ? "active" : ""}`}
           aria-selected={value === o.value} onClick={() => onChange(o.value)}>
           {o.icon && <Icon name={o.icon} size={15} />}
           {o.label}
@@ -524,7 +547,7 @@ export function Modal({ title, onClose, children, footer, wide, icon }: {
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className={`modal ${wide ? "wide" : ""}`} role="dialog" aria-modal="true"
+      <div className={`modal usk-card ${wide ? "wide" : ""}`} role="dialog" aria-modal="true"
         ref={dialog} tabIndex={-1}
         aria-label={typeof title === "string" ? title : undefined}>
         <div className="modal-head">
@@ -595,9 +618,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={value}>
       {children}
-      <div className="toast-stack" aria-live="polite">
+      <div className="toast-stack usk-toast-stack" aria-live="polite">
         {items.map((t) => (
-          <div key={t.id} className={`toast tone-${t.tone}`}>
+          <div key={t.id} className={`toast usk-toast tone-${t.tone}`}
+            data-ui-variant={t.tone === "ok" ? "success" : t.tone === "err" ? "danger"
+              : t.tone === "warn" ? "warning" : "info"}>
             <Icon name={iconFor(t.tone)} size={16} style={{ marginTop: 1 }} />
             <span style={{ flex: 1, minWidth: 0 }}>{t.message}</span>
             <button className="toast-close" aria-label="Dismiss"

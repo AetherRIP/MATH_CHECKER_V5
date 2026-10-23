@@ -1,8 +1,16 @@
-# Large PDF Corrector — audit, root causes and repairs
+# Large PDF Corrector — historical audit, root causes and repairs
 
-Date: 2026-10-21 · Scope: `backend/app/large_pdf/*`, the shared reconciliation
-(`engine/blueprint.py`, `engine/verify.py`), the result surfaces that display a
-correction, the correction PDF, and the regression suite.
+> **REMOVED — HISTORICAL RECORD.** The dedicated Large PDF correction pipeline
+> (`backend/app/large_pdf/*`, its routes, scheduler and UI) has been removed
+> from the application. This document is kept only as the audit record of the
+> defects found and the **shared** safeguards that were retained for normal
+> correction (`engine/blueprint.py`, `engine/verify.py`, the result guard and
+> the partial-correction/review handling). Nothing here describes an active
+> feature, and the scripts it names may no longer exist.
+
+Date: 2026-10-21 · Scope at the time: `backend/app/large_pdf/*`, the shared
+reconciliation (`engine/blueprint.py`, `engine/verify.py`), the result surfaces
+that display a correction, the correction PDF, and the regression suite.
 
 ## 1. Evidence used
 

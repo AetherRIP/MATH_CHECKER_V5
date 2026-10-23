@@ -101,13 +101,17 @@ export default function SignIn({
             <Icon name="sparkles" size={18} />
           </div>
           <div>
+            <span className="brand-kicker">Maths · Assessment</span>
             Math Checker
             <small>Marking desk</small>
           </div>
         </div>
 
         <div>
-          <h1 className="page-title" style={{ fontSize: "var(--fs-xl)" }}>
+          <p className="page-kicker">
+            {needsSetup ? "First run" : "Marking desk"}
+          </p>
+          <h1 className="page-title" style={{ fontSize: "var(--fs-2xl)" }}>
             {needsSetup ? "Create the first account" : "Sign in"}
           </h1>
           <p className="muted small" style={{ margin: "4px 0 0" }}>{intro}</p>
@@ -230,6 +234,31 @@ export default function SignIn({
           </div>
         )}
       </div>
+
+      <aside className="signin-aside" aria-label="About Math Checker">
+        <p className="page-kicker">Chalk &amp; ink, on paper</p>
+        <h2>A marking desk that keeps the evidence.</h2>
+        <ul>
+          <li>
+            <Icon name="shield" size={16} />
+            <span><strong>Private by default</strong>
+              Papers, marks and keys stay on the machine running the app.</span>
+          </li>
+          <li>
+            <Icon name="review" size={16} />
+            <span><strong>Every mark checked</strong>
+              Independent verification runs before a mark is ever saved.</span>
+          </li>
+          <li>
+            <Icon name="check-circle" size={16} />
+            <span><strong>You decide</strong>
+              Anything uncertain waits here until a teacher signs it off.</span>
+          </li>
+        </ul>
+        <p className="faint small" style={{ margin: 0 }}>
+          Offline-first. No account data leaves the installation.
+        </p>
+      </aside>
     </main>
   );
 }

@@ -53,74 +53,9 @@ interface Defect {
   status?: string;
 }
 
-interface LargePdfBatch {
-  batch?: number;
-  pages?: [number, number];
-  status?: string;
-  attempts?: number;
-  returned_questions?: number;
-  returned_marks?: number;
-  expected_marks?: number | null;
-  coverage_ratio?: number | null;
-  incomplete?: boolean;
-}
-
-interface LargePdfCase {
-  job_id?: string;
-  artifact?: string;
-  coursework_title?: string | null;
-  page_count?: number;
-  batch_count?: number;
-  blueprint_questions?: number;
-  batches?: LargePdfBatch[];
-  thin_batches?: number[];
-  reported?: {
-    earned?: number;
-    available?: number;
-    percentage?: number;
-    note?: string;
-  };
-  corrected?: {
-    earned?: number;
-    available?: number;
-    percentage?: number;
-    paper_available?: number;
-    unresolved_count?: number;
-    unresolved_marks?: number;
-    unresolved_questions?: string[];
-    score_basis?: string;
-  };
-  missing_after_reconciliation?: string[];
-  retry_plan?: {
-    missing_count?: number;
-    chunk_size?: number;
-    max_chunks?: number;
-    chunks?: number[];
-    chunks_planned?: number;
-    deferred_count?: number;
-    blocked_reason?: string | null;
-    previous_gate_allowed?: boolean | null;
-    previous_gate_reason?: string | null;
-    note?: string;
-  };
-  stored_result?: {
-    earned?: number;
-    available?: number;
-    percentage?: number;
-    review_required?: number;
-    questions_stored?: number;
-  } | null;
-}
-
 interface Summary {
   available?: boolean;
   message?: string;
-  large_pdf?: {
-    available?: boolean;
-    message?: string;
-    note?: string;
-    cases?: LargePdfCase[];
-  };
   generated_at?: number;
   testing_only?: {
     banner?: string;
@@ -448,7 +383,7 @@ export default function AuditPage() {
   if (error) {
     return (
       <>
-        <PageHeader title="Accuracy Audit" sub="Testing-only record" icon="shield" />
+        <PageHeader kicker="System · Accuracy audit" title="Accuracy Audit" sub="Testing-only record" icon="shield" />
         <Empty icon="alert" title="Could not load the audit" hint={error} />
       </>
     );
@@ -456,16 +391,15 @@ export default function AuditPage() {
   if (!data) {
     return (
       <>
-        <PageHeader title="Accuracy Audit" sub="Testing-only record" icon="shield" />
+        <PageHeader kicker="System · Accuracy audit" title="Accuracy Audit" sub="Testing-only record" icon="shield" />
         <Empty icon="clock" title="Loading audit…" hint="Reading the recorded evidence." />
       </>
     );
   }
-  const largePdfCases = data.large_pdf?.cases ?? [];
-  if (data.available === false && largePdfCases.length === 0) {
+  if (data.available === false) {
     return (
       <>
-        <PageHeader title="Accuracy Audit" sub="Testing-only record" icon="shield" />
+        <PageHeader kicker="System · Accuracy audit" title="Accuracy Audit" sub="Testing-only record" icon="shield" />
         <Empty icon="info" title="No audit recorded yet" hint={data.message} />
       </>
     );
@@ -524,159 +458,6 @@ export default function AuditPage() {
             className="report-preview"
             src={repairPreview.url}
           />
-        </section>
-      )}
-
-      {largePdfCases.length > 0 && (
-        <section className="card">
-          <h3>Large PDF (long-document) marking — replayed real runs</h3>
-          <p className="muted">{data.large_pdf?.note}</p>
-          {largePdfCases.map((c) => {
-            const reported = c.reported ?? {};
-            const corrected = c.corrected ?? {};
-            const recoveredMarks =
-              (corrected.percentage ?? 0) - (reported.percentage ?? 0);
-            return (
-              <article className="defect" key={c.job_id}>
-                <h4>
-                  <Badge tone={corrected.unresolved_count ? "err" : "ok"}>
-                    {corrected.unresolved_count
-                      ? `PIPELINE ERROR — ${corrected.unresolved_marks} marks unmarked`
-                      : "every mark-scheme question answered"}
-                  </Badge>{" "}
-                  {c.coursework_title ?? "Long-document run"} · {c.page_count}{" "}
-                  pages · {c.batch_count} batches · {c.blueprint_questions}{" "}
-                  mark-scheme questions
-                  {c.job_id ? (
-                    <span className="muted"> · job {c.job_id.slice(0, 8)}</span>
-                  ) : null}
-                </h4>
-
-                <div className="stat-row">
-                  <div className="stat">
-                    <span className="value">
-                      {reported.earned}/{reported.available}
-                    </span>
-                    <span className="label">
-                      reported at the time · {reported.percentage}%
-                    </span>
-                  </div>
-                  <div className="stat">
-                    <span className="value">
-                      {corrected.earned}/{corrected.available}
-                    </span>
-                    <span className="label">
-                      marked-only · {corrected.percentage}%
-                    </span>
-                  </div>
-                  <div className="stat">
-                    <span className="value">
-                      {recoveredMarks > 0 ? `+${recoveredMarks.toFixed(1)}` : "0"}
-                    </span>
-                    <span className="label">points wrongly lost (pipeline)</span>
-                  </div>
-                  <div className="stat">
-                    <span className="value">
-                      {corrected.unresolved_count ?? 0}
-                    </span>
-                    <span className="label">
-                      unmarked · {corrected.unresolved_marks ?? 0} marks · held
-                      for review
-                    </span>
-                  </div>
-                </div>
-
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Batch</th>
-                      <th>Pages</th>
-                      <th>Returned</th>
-                      <th>Expected marks</th>
-                      <th>Coverage</th>
-                      <th>Verdict</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(c.batches ?? []).map((b) => (
-                      <tr key={b.batch} className={b.incomplete ? "row-changed" : ""}>
-                        <td>{Number(b.batch) + 1} of {c.batch_count}</td>
-                        <td>{b.pages?.[0]}–{b.pages?.[1]}</td>
-                        <td>
-                          {b.returned_questions} rows · {b.returned_marks} marks
-                        </td>
-                        <td>{b.expected_marks ?? "—"}</td>
-                        <td>
-                          {b.coverage_ratio === null ||
-                          b.coverage_ratio === undefined
-                            ? "—"
-                            : `${Math.round(b.coverage_ratio * 100)}%`}
-                        </td>
-                        <td>
-                          {b.incomplete ? (
-                            <Badge tone="err">INCOMPLETE — re-marked</Badge>
-                          ) : (
-                            <Badge tone="ok">complete</Badge>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                {(c.missing_after_reconciliation ?? []).length > 0 && (
-                  <p>
-                    <strong>
-                      Questions the mark scheme requires that no batch
-                      returned:
-                    </strong>{" "}
-                    <span className="muted">
-                      {(c.missing_after_reconciliation ?? []).join(", ")} — these
-                      are UNMARKED (not confirmed zeros) and keep the result in
-                      the review queue.
-                    </span>
-                  </p>
-                )}
-                {!!c.retry_plan?.missing_count && (
-                  <p>
-                    <strong>Targeted retry:</strong>{" "}
-                    {c.retry_plan.blocked_reason ? (
-                      <Badge tone="warn">not run</Badge>
-                    ) : (
-                      <Badge tone="ok">
-                        {c.retry_plan.chunks_planned} bounded chunk(s)
-                      </Badge>
-                    )}{" "}
-                    <span className="muted">
-                      {c.retry_plan.chunks?.length
-                        ? `chunks of ${c.retry_plan.chunks.join(" + ")} questions `
-                        : ""}
-                      (max {c.retry_plan.chunk_size} per request, ceiling{" "}
-                      {c.retry_plan.max_chunks}) for {c.retry_plan.missing_count}{" "}
-                      unmarked question(s)
-                      {c.retry_plan.deferred_count
-                        ? `, ${c.retry_plan.deferred_count} deferred by the budget`
-                        : ", nothing deferred"}
-                      .{" "}
-                      {c.retry_plan.previous_gate_allowed === false
-                        ? "The previous single-round gate REFUSED a gap this " +
-                          "large, which is why the whole block stayed unmarked."
-                        : ""}{" "}
-                      {c.retry_plan.blocked_reason ?? ""}
-                    </span>
-                  </p>
-                )}
-                {c.stored_result && (
-                  <p className="muted">
-                    Stored result: {c.stored_result.earned}/
-                    {c.stored_result.available} = {c.stored_result.percentage}% ·
-                    review_required {c.stored_result.review_required} · evidence
-                    artefact {c.artifact}
-                  </p>
-                )}
-              </article>
-            );
-          })}
         </section>
       )}
 

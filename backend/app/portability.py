@@ -210,8 +210,6 @@ DELIBERATELY_EXCLUDED: dict[str, str] = {
     "automation_jobs": "workflow queue state",
     "automation_log": "workflow activity log",
     "automation_assignments": "workflow selection flags",
-    "large_pdf_jobs": "in-flight long-document jobs",
-    "large_pdf_batches": "per-batch progress for long-document jobs",
     "repair_runs": "repair session bookkeeping",
     "repair_items": "repair item bookkeeping",
     "pending_manual_files": "temporary upload staging",

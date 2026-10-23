@@ -42,6 +42,7 @@ public class PaperPaneTests
 
     [Theory]
     [InlineData("retention_disabled", "Retention settings")]
+    [InlineData("retention_expired", "Retention settings")]
     [InlineData("file_missing", "Re-check storage")]
     [InlineData("file_unreadable", "Re-correct paper")]
     [InlineData("processing", "Check again")]
@@ -59,6 +60,32 @@ public class PaperPaneTests
         Assert.True(paper.IsMissing);
         Assert.Equal(label, paper.MissingActionLabel);
         Assert.Equal("The backend explains this itself.", paper.MissingBody);
+    }
+
+    [Fact]
+    public async Task An_expired_retention_copy_names_the_window_and_opens_settings()
+    {
+        const string message =
+            "This correction finished on 12 Sep 2026, more than the 30-day retention "
+            + "window, so the stored original was removed when the window ended.";
+        var handler = new PageHandler
+        {
+            Metadata = PageHandler.Missing("retention_expired", message),
+        };
+        var (session, _) = await SessionAsync(handler);
+        var paper = Paper(session);
+        string? navigated = null;
+        session.Navigate = key => navigated = key;
+
+        await paper.OpenAsync("r1");
+
+        Assert.Equal("retention_expired", paper.Reason);
+        Assert.Equal("The stored copy has expired", paper.MissingTitle);
+        Assert.Equal(message, paper.MissingBody);
+        Assert.Equal("Retention settings", paper.MissingActionLabel);
+
+        paper.MissingActionCommand.Execute(null);
+        Assert.Equal("privacy", navigated);
     }
 
     [Fact]

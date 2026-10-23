@@ -41,14 +41,12 @@ folder cleanup and preserve their regression tests.
 
 `backend/app/jobs/` stores correction jobs and coordinates retry, recovery,
 cancellation and duplicate prevention. `backend/app/workers/` runs isolated
-workers. `backend/app/large_pdf/` owns the resumable large-document workflow;
-it shares the correction engine and database rather than implementing a second
-marking policy. Long-document preparation reads each PDF **once**
-(`engine/pdf_inspect.py`): the student's page count and per-page question
-evidence come from the same read, and the mark scheme's page count plus official
-question ids come from one deterministic analysis. That derived mark-scheme
-evidence is reused for the same file, keyed by absolute path, size and
-`mtime_ns` — a replaced scheme is re-read immediately, and a failed read is
+workers. One standard single-pass correction pipeline handles every submission.
+`engine/pdf_inspect.py` provides deterministic, read-only document inspection:
+page counts (used by the viewer and inventories), per-page question evidence,
+and the mark scheme's official question ids from one analysis. That derived
+mark-scheme evidence is reused for the same file, keyed by absolute path, size
+and `mtime_ns` — a replaced scheme is re-read immediately, and a failed read is
 never cached.
 
 ### Google Classroom, reports and automation
@@ -126,7 +124,7 @@ jobs: no job, result, grade, report or upload record is deleted.
 ### HTTP and UI boundaries
 
 Backend route modules live in `backend/app/api/`, with dedicated packages for
-scheme review, lifecycle, large-PDF processing and Classroom tracking. The
+scheme review, lifecycle and Classroom tracking. The
 application registers these routers in `backend/app/main.py`. The frontend
 navigation and pages under `frontend/src/` call the API through the shared
 frontend API module. Page components are loaded on demand (route-level chunks);

@@ -136,7 +136,7 @@ export default function SchemeReviewPage({ discrepancyId }: { discrepancyId?: st
 
   return (
     <>
-      <PageHeader title="Mark-Scheme Review" icon="alert"
+      <PageHeader kicker="Review · Scheme mismatches" title="Mark-Scheme Review" icon="alert"
         sub="Suspect a supplied mark scheme is wrong? The engine verifies independently and records the disagreement. No existing grade changes without your explicit approval.">
         <Button variant="ghost" icon="refresh" onClick={loadList}>Refresh</Button>
       </PageHeader>

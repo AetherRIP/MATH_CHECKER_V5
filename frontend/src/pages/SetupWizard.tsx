@@ -109,21 +109,30 @@ export default function SetupWizard({ onDone }: { onDone: () => void }) {
     : <Badge tone="warn">Not set</Badge>;
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: "32px 20px" }}>
-      <div className="brand" style={{ marginBottom: 8 }}>
-        <div className="brand-badge">∑</div>
-        <div>{status.app_name}<small>First-time setup · v{status.version}</small></div>
+    <div className="setup-wrap">
+      <div className="brand setup-brand">
+        <div className="brand-badge" aria-hidden="true">∑</div>
+        <div>
+          <span className="brand-kicker">First-time setup</span>
+          {status.app_name}
+          <small>Version {status.version} · every step can be skipped and finished later</small>
+        </div>
       </div>
 
-      <div className="row wrap" style={{ gap: 8, margin: "14px 0 22px" }}>
+      <nav className="usk-stepper setup-steps" aria-label="Setup steps">
         {steps.map((label, i) => (
-          <button key={label}
-            className={`btn sm ${i === step ? "primary" : i < step ? "" : "ghost"}`}
-            onClick={() => setStep(i)}>{i + 1}. {label}</button>
+          <button key={label} type="button"
+            className={`setup-step ${i === step ? "current" : ""} ${i < step ? "done" : ""}`}
+            data-state={i < step ? "complete" : i === step ? "current" : "upcoming"}
+            aria-current={i === step ? "step" : undefined}
+            onClick={() => setStep(i)}>
+            <span className="step-n" aria-hidden="true">{i < step ? "✓" : i + 1}</span>
+            <span>{label}</span>
+          </button>
         ))}
-      </div>
+      </nav>
 
-      <div className="card">
+      <div className="card usk-card">
         {step === 0 && (
           <>
             <h3>Welcome</h3>

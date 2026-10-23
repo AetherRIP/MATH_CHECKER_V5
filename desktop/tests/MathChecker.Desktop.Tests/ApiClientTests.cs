@@ -135,6 +135,38 @@ public class ApiClientTests
     }
 
     [Fact]
+    public async Task Download_prefers_the_rfc5987_name_for_a_non_ascii_student()
+    {
+        // The backend sends an ASCII fallback plus the real name; the app must
+        // use the real one so an exported report is not saved as "student_.pdf".
+        var handler = new StubHttpHandler().Respond(HttpStatusCode.OK, "%PDF-1.4", "application/pdf",
+            "attachment; filename=\"student____10_20261022_101500.pdf\"; "
+            + "filename*=UTF-8''%D8%AE%D8%A7%D9%84%D8%AF_10_20261022_101500.pdf");
+        using var client = Client(handler);
+
+        var file = await client.ExportResultAsync("r1", "pdf");
+
+        Assert.Equal("خالد_10_20261022_101500.pdf", file.FileName);
+    }
+
+    [Fact]
+    public async Task Download_never_writes_a_path_out_of_a_hostile_filename()
+    {
+        var handler = new StubHttpHandler().Respond(HttpStatusCode.OK, "%PDF-1.4", "application/pdf",
+            "attachment; filename=\"../../etc/passwd.pdf\"");
+        using var client = Client(handler);
+
+        var file = await client.ExportResultAsync("r1", "pdf");
+
+        // Separators are neutralised, so the save dialog's folder still wins.
+        Assert.DoesNotContain("/", file.FileName);
+        Assert.DoesNotContain("\\", file.FileName);
+        var folder = Path.Combine(Path.GetTempPath(), "mc5-export-check");
+        var resolved = Path.GetFullPath(Path.Combine(folder, file.FileName));
+        Assert.StartsWith(Path.GetFullPath(folder), resolved);
+    }
+
+    [Fact]
     public async Task Unified_upload_sends_both_files_and_form_fields()
     {
         var temp = Directory.CreateTempSubdirectory("mc5-upload-");
@@ -146,13 +178,12 @@ public class ApiClientTests
             await File.WriteAllTextAsync(scheme, "SCHEME");
 
             var handler = new StubHttpHandler().Respond(HttpStatusCode.OK,
-                """{"applied_pipeline":"standard","job_id":"abc","page_count":4,"page_limit":30,"reason":"fits"}""");
+                """{"job_id":"abc","page_count":4,"reason":"standard"}""");
             using var client = Client(handler);
 
-            var result = await client.SubmitUnifiedCorrectionAsync(submission, scheme, "Student A", "auto",
+            var result = await client.SubmitUnifiedCorrectionAsync(submission, scheme, "Student A",
                 null, CancellationToken.None);
 
-            Assert.Equal("standard", result.GetProperty("applied_pipeline").GetString());
             Assert.Equal("abc", result.GetProperty("job_id").GetString());
 
             var request = handler.Requests[0];
@@ -160,7 +191,7 @@ public class ApiClientTests
             Assert.Contains("multipart/form-data", request.Headers["Content-Type"]);
             Assert.Contains("name=student_name", request.Body);
             Assert.Contains("Student A", request.Body);
-            Assert.Contains("name=pipeline", request.Body);
+            Assert.DoesNotContain("name=pipeline", request.Body);
             Assert.Contains("name=submission", request.Body);
             Assert.Contains("answers.pdf", request.Body);
             Assert.Contains("name=mark_scheme", request.Body);

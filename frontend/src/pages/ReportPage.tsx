@@ -386,6 +386,7 @@ export default function ReportPage({ deepLink = {} }: { deepLink?: ReportDeepLin
   return (
     <>
       <PageHeader
+        kicker="Results · Reports"
         title="Reports"
         sub={`Choose a report type, class and assignments, preview it, then export the same data as an A4 PDF.${model ? ` Last preview ${timeAgo(typeof model.generated_at === "number" ? model.generated_at : null)}.` : ""}`}
         icon="reports"

@@ -168,22 +168,6 @@ keep_days = 30
 cleanup_temp_on_start = true
 
 
-[large_pdf]
-# Multi-part marking for long papers.
-enabled = true
-# Papers above this page count are split.
-threshold_pages = 30
-target_min = 24
-target_max = 28
-concurrency = 2
-max_retries = 2
-# Questions of overlap kept between neighbouring chunks (0 = clean split).
-context_overlap = 0
-# Recovery pass for questions a chunk dropped.
-recovery_chunk_questions = 6
-recovery_max_chunks = 8
-
-
 [network]
 # "local" = this computer only. "lan" is an explicit opt-in; public/tunnel
 # access is switched on from Settings -> Public Address, not here.

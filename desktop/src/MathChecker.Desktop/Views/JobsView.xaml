@@ -1,62 +1,103 @@
 <UserControl x:Class="MathChecker.Desktop.Views.JobsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="150" />
-        </Grid.RowDefinitions>
-
-        <DockPanel Grid.Row="0">
-            <StackPanel DockPanel.Dock="Left">
-                <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" />
-                <TextBlock Style="{StaticResource Muted}">
-                    <Run Text="Updates: " />
-                    <Run Text="{Binding LiveMode, Mode=OneWay}" />
-                </TextBlock>
-            </StackPanel>
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top"
-                        HorizontalAlignment="Right">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
+    <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}"
+                  Description="{Binding LiveMode, StringFormat=Updates: {0}}"
+                  StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
+                  BodyPadding="0,18,0,0">
+        <ui:PageFrame.Actions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
                 <Button Content="Cancel job" Command="{Binding CancelJobCommand}" />
                 <Button Content="Retry job" Command="{Binding RetryJobCommand}" />
-                <Button Content="Open result" Command="{Binding OpenResultCommand}" />
+                <Button Content="Open result" Command="{Binding OpenResultCommand}" Margin="0" />
             </StackPanel>
-        </DockPanel>
+        </ui:PageFrame.Actions>
 
-        <StackPanel Grid.Row="1" Margin="0,6,0,0">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Status" Style="{StaticResource FieldLabel}" />
-                <ComboBox Width="160" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding StatusFilter}" />
-            </StackPanel>
-            <Border Style="{StaticResource Card}" Margin="0,8,0,0"
-                    Visibility="{Binding ShowWorkers, Converter={StaticResource BoolToVis}}">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Worker pool" Style="{StaticResource FieldLabel}" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding WorkersText}" VerticalAlignment="Center" Margin="8,0,16,0" />
-                    <TextBlock Text="Size" Style="{StaticResource FieldLabel}" />
-                    <TextBox Width="60" Text="{Binding WorkerCount, UpdateSourceTrigger=PropertyChanged}" />
-                    <Button Content="Resize" Command="{Binding ResizeWorkersCommand}" />
-                </StackPanel>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="150" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Style="{StaticResource FilterBar}" Margin="0,0,0,12">
+                <WrapPanel>
+                    <TextBlock Text="Status" Style="{StaticResource FieldLabel}" />
+                    <ComboBox Width="160" ItemsSource="{Binding StatusFilters}"
+                              SelectedItem="{Binding StatusFilter}" />
+                    <Border Style="{StaticResource Chip}" Padding="9,3" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Items.Count, StringFormat={}{0} jobs}"
+                                   FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                    </Border>
+                    <Border Style="{StaticResource Chip}" Padding="9,3" Margin="8,0,0,0"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding ShowWorkers, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding WorkersText}" FontSize="10.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                    </Border>
+                    <TextBlock Text="Size" Style="{StaticResource FieldLabel}" Margin="14,0,6,0"
+                               Visibility="{Binding ShowWorkers, Converter={StaticResource BoolToVis}}" />
+                    <TextBox Width="56" Text="{Binding WorkerCount, UpdateSourceTrigger=PropertyChanged}"
+                             Visibility="{Binding ShowWorkers, Converter={StaticResource BoolToVis}}" />
+                    <Button Content="Resize" Command="{Binding ResizeWorkersCommand}" Height="34" Padding="12,4"
+                            Visibility="{Binding ShowWorkers, Converter={StaticResource BoolToVis}}" />
+                </WrapPanel>
             </Border>
-        </StackPanel>
 
-        <DataGrid Grid.Row="2" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" Margin="0,8,0,0">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Student" Binding="{Binding StudentName}" Width="160" />
-                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="120" />
-                <DataGridTextColumn Header="Stage" Binding="{Binding StageText}" Width="*" />
-                <DataGridTextColumn Header="Progress" Binding="{Binding Progress, StringFormat={}{0:P0}}" Width="80" />
-                <DataGridTextColumn Header="Attempt" Binding="{Binding Attempts}" Width="70" />
-                <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="140" />
-                <DataGridTextColumn Header="Result" Binding="{Binding ResultId}" Width="180" />
-            </DataGrid.Columns>
-        </DataGrid>
+            <Border Grid.Row="1" Style="{StaticResource TableCard}">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
+                        <DockPanel>
+                            <TextBlock Text="{Binding Title, StringFormat=All {0}}"
+                                       Style="{StaticResource RowTitle}" VerticalAlignment="Center" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding LiveMode}"
+                                       Style="{StaticResource CardSubtitle}" VerticalAlignment="Center"
+                                       HorizontalAlignment="Right" />
+                        </DockPanel>
+                    </Border>
 
-        <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0">
-            <TextBox Style="{StaticResource JsonBox}" Text="{Binding SelectedDetail, Mode=OneWay}" />
-        </Border>
-    </Grid>
+                    <Grid>
+                        <DataGrid Style="{StaticResource DataTable}" ui:TableLayout.FillColumn="2" ItemsSource="{Binding Items}"
+                                  SelectedItem="{Binding Selected}" AutomationProperties.Name="Jobs">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Student" Binding="{Binding StudentName}" Width="150" />
+                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="112" />
+                                <DataGridTextColumn Header="Stage" Binding="{Binding StageText}" Width="*" MinWidth="120" />
+                                <DataGridTextColumn Header="Progress"
+                                                    Binding="{Binding Progress, StringFormat={}{0:P0}}" Width="80"
+                                                    ui:TableLayout.Priority="2" />
+                                <DataGridTextColumn Header="Attempt" Binding="{Binding Attempts}" Width="70"
+                                                    ui:TableLayout.Priority="2" />
+                                <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="130"
+                                                    ui:TableLayout.Priority="1" />
+                                <DataGridTextColumn Header="Result" Binding="{Binding ResultId}" Width="170"
+                                                    ui:TableLayout.Priority="3" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <Border Style="{StaticResource EmptyState}" MaxWidth="360"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="No jobs in this filter" Style="{StaticResource EmptyTitle}" />
+                                <TextBlock Text="New corrections appear here as soon as they are queued."
+                                           Style="{StaticResource EmptyText}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,12,0,0" Padding="12">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="SELECTED JOB" Style="{StaticResource SectionLabel}"
+                               Margin="2,0,0,6" />
+                    <TextBox Style="{StaticResource JsonBox}" Text="{Binding SelectedDetail, Mode=OneWay}"
+                             Margin="0" />
+                </DockPanel>
+            </Border>
+        </Grid>
+    </ui:PageFrame>
 </UserControl>

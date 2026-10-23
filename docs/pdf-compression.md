@@ -1,8 +1,8 @@
 # PDF compression — student papers and mark schemes
 
-Date: **2026-10-21**. Applies to the **Normal PDF Corrector** (worker pool) and
-the **Large PDF Corrector** (batched runner), for **both** the student
-submission and the mark scheme (`app/engine/pdf_optimize.py`).
+Date: **2026-10-21**. Applies to the standard correction pipeline (worker
+pool), for **both** the student submission and the mark scheme
+(`app/engine/pdf_optimize.py`).
 
 Nothing in this pass was committed or pushed.
 
@@ -17,11 +17,11 @@ Nothing in this pass was committed or pushed.
 | Same file compressed repeatedly? | Not compressed at all — but the *same* scheme was re-uploaded for every student. |
 | Before or after upload? | n/a |
 | Original preserved when retention is on? | Yes, `retain_job_submissions` copied it into `retained_files`; compression was not a factor. |
-| Large and Normal sharing utilities? | The pipelines share staging, routing and validation, but had no compression utility to share. |
+| One shared utility? | The pipeline shared staging and validation, but had no compression utility. |
 | Could compression damage maths? | Unproven — there was no compression. |
 | Sizes/times measured? | No. |
 
-So the change is one shared optimizer, wired into both pipelines' single
+So the change is one shared optimizer, wired into the pipeline's single
 preparation step, rather than a second compression system.
 
 ## 2. What runs now
@@ -63,7 +63,7 @@ Artifacts live in `data/tmp/pdf_cache/<2-hex>/<key>.pdf` (+ `.json` sidecar) wit
 key = sha256(source bytes)[:20] + sha256(role, lossy, dpi, quality, algorithm version)[:10]
 ```
 
-So a retry, a re-claimed job after restart, a second batch of the same job, or
+So a retry, a re-claimed job after restart, a second student on the same job, or
 the *next student on the same mark scheme* reuses one validated artifact. The
 key includes the role and every compression setting, so a submission can never
 reuse a scheme's artifact (or another student's). A cache hit is answered from
@@ -78,12 +78,7 @@ artifacts are shared reference documents and stay until the age/size sweep.
 
 | Pipeline | Where | Documents |
 |---|---|---|
-| Normal | `WorkerPool._stage_inputs` — the once-per-job preparation step, used on the first attempt only; retries reuse `prepared.json` | submission PDFs, mark scheme, question paper |
-| Large | `LargePdfRunner._processing_pdf` — called by `prepare`, batch uploads, retries and recovery uploads | submission, mark scheme |
-
-Routing to the Large pipeline happens **after** optimization, so a delegated
-document is handed over as the optimized copy and its page count (what routing
-inspects) is unchanged by construction.
+| Standard | `WorkerPool._stage_inputs` — the once-per-job preparation step, used on the first attempt only; retries reuse `prepared.json` | submission PDFs, mark scheme, question paper |
 
 ## 3. Original vs processing copy
 
@@ -97,7 +92,7 @@ inspects) is unchanged by construction.
 * If retention itself fails (disk full, locked file), cleanup stops before
   deleting anything — including the cache copy — so the only copy of a paper the
   teacher asked to keep is never lost.
-* Batch page renders and OCR/vision input use the optimized copy; nothing writes
+* Page renders and OCR/vision input use the optimized copy; nothing writes
   back into it.
 
 ## 4. Report recorded per document
@@ -120,7 +115,7 @@ contents are logged.
 
 ## 5. Tests
 
-`backend/tests/test_pdf_optimize.py` (22 tests) covers:
+`backend/tests/test_pdf_optimize.py` (21 tests) covers:
 
 * a scanned **student paper** and a scanned **mark scheme** both shrink, with
   page count, geometry, rotation, text layer and ink preserved;
@@ -138,21 +133,16 @@ contents are logged.
 * the **Normal pipeline's staging step** produces optimized copies for the
   student *and* the mark scheme in one job, and a retry reuses the prepared
   manifest;
-* the **Large runner** resolves both documents through the same optimizer and
-  memoises the answer;
 * retention keeps the **original bytes** after optimization, and the compressed
   submission copy is released at cleanup;
 * cache release drops submission copies but keeps shared mark-scheme copies;
 * the size cap evicts, and `cache_stats` reports real savings.
 
-The Large pipeline's question coverage is pinned by
-`test_large_pdf_incomplete_batch.py`: every batch is still marked against the
-identical **complete** scheme (page count asserted), and the coverage/stub
-checks are unchanged. The check was updated only because the scheme now reaches
-the engine as its verified optimized copy rather than the staging path.
+The shared mark-scheme coverage and verification tests are unchanged.
 
-Whole backend suite after the change: **2188 passed, 1 skipped** (9 m 33 s,
-including the new ink-gate and normal-pipeline tests).
+At the time of this measurement the whole backend suite reported **2188
+passed, 1 skipped** (9 m 33 s). The Large PDF pipeline has since been removed;
+see the repository's final removal report for current results.
 
 ## 6. Measured results
 
@@ -200,16 +190,6 @@ Compression cost is paid **once per document per job**: ~516 ms/page for a
 roughly **2× faster** on the optimized scan because there is less image data to
 decode; text extraction is unchanged (±1 ms).
 
-### Question coverage
-
-The deterministic Large PDF plan for a 60-page paper against a 30-page scheme:
-
-```
-original copy:  60 pages, 3 batches [20, 20, 20], 30 scheme questions,
-                60 questions detected, 60 question pages, not blocked
-optimized copy: identical
-```
-
 ### Bandwidth and storage
 
 * AI-side upload per student paper: 1.5 MiB → 0.5 MiB (**≈1 MiB less per
@@ -226,16 +206,16 @@ optimized copy: identical
 
 | Criterion | Result |
 |---|---|
-| Both document types compressed | Yes — one utility, both roles, both pipelines |
+| Both document types compressed | Yes — one utility, both roles |
 | Originals preserved per retention policy | Yes — tested byte-for-byte |
 | No repeated compression | Yes — content+settings cache key, 2–5 ms warm |
 | Maths readability protected | 200 dpi floor, q85/88, identical text layer, pixel + ink gates |
-| No skipped questions | Plan identical; coverage tests unchanged and passing |
-| Normal / Large correctors intact | 2188 passed, 1 skipped, 0 failed |
+| Shared reconciliation tests unchanged | Yes |
+| Normal corrector intact | 2188 passed, 1 skipped, 0 failed at measurement time |
 | Regression tests and real benchmarks | 22 optimizer tests + script/JSON above |
 
 Neither "PDFs got smaller" nor a passing suite alone is the success claim: the
-claim rests on measured savings **with** identical page/text/plan evidence.
+claim rests on measured savings **with** identical page/text evidence.
 
 ## 8. Known limits / honest gaps
 

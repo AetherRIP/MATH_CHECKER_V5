@@ -27,7 +27,7 @@ Why this order:
    checks below; otherwise the original is used.
 
 Cache key = SHA-256 of the source bytes + the settings id, so a retry, a second
-student on the same mark scheme, or the Large PDF Worker re-preparing a job
+student on the same mark scheme, or a restarted job re-preparing its input
 reuses one validated artifact instead of compressing the same document again.
 """
 

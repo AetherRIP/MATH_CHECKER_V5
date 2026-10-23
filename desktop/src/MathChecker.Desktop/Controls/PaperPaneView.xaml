@@ -10,9 +10,9 @@
         </Grid.RowDefinitions>
 
         <!-- Header + zoom. Zoom is disabled while there is no paper to zoom. -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,10">
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <Ellipse Width="6" Height="6" Fill="{StaticResource LimeBrush}"
+        <WrapPanel Grid.Row="0" Margin="0,0,0,10">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0">
+                <Ellipse Width="6" Height="6" Fill="{StaticResource AccentBrush}"
                          Margin="0,0,8,0" VerticalAlignment="Center" />
                 <TextBlock DockPanel.Dock="Left" Text="{Binding HeaderText}" FontSize="11.5"
                            FontWeight="Medium" Foreground="{StaticResource TextSecondaryBrush}"
@@ -20,7 +20,7 @@
                            TextWrapping="NoWrap" MaxWidth="280"
                            ToolTip="{Binding HeaderText}" />
             </StackPanel>
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right"
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                         IsEnabled="{Binding IsAvailable}">
                 <Button Content="−" Command="{Binding ZoomOutCommand}" Style="{StaticResource IconButton}"
                         Width="30" Height="30" Margin="0,0,4,0" ToolTip="Zoom out (Ctrl -)"
@@ -34,7 +34,7 @@
                         Height="30" Padding="12,4" Margin="0"
                         ToolTip="Fit the page to this pane (Ctrl 0)" />
             </StackPanel>
-        </DockPanel>
+        </WrapPanel>
 
         <Border Grid.Row="1" Background="{StaticResource PaperSurroundBrush}"
                 BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1"
@@ -156,9 +156,9 @@
                                         <Setter Property="Margin" Value="3,0,0,0" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsCurrent}" Value="True">
-                                                <Setter Property="Background" Value="{StaticResource LimeBrush}" />
-                                                <Setter Property="BorderBrush" Value="{StaticResource LimeBrush}" />
-                                                <Setter Property="Foreground" Value="{StaticResource LimeInkBrush}" />
+                                                <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                                                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                                <Setter Property="Foreground" Value="{StaticResource AccentInkBrush}" />
                                                 <Setter Property="FontWeight" Value="SemiBold" />
                                             </DataTrigger>
                                         </Style.Triggers>

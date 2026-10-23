@@ -184,7 +184,8 @@ export default function DashboardPage({ onNavigate, data }: {
   return (
     <>
       <PageHeader
-        title="Today"
+        kicker="Desk · Today"
+        title="Today's marking desk"
         sub={data.mock_mode
           ? "Mock mode is active: AI calls are simulated, so these numbers describe a rehearsal, not real marking."
           : "Everything you have to mark, in one place. Start with what is waiting."}
@@ -201,8 +202,8 @@ export default function DashboardPage({ onNavigate, data }: {
         <Button variant="secondary" icon="review" onClick={() => onNavigate("review")}>
           Review queue{reviewTotal ? ` · ${reviewTotal}` : ""}
         </Button>
-        <Button variant="primary" icon="wand" onClick={() => onNavigate("correct")}>
-          Correct a PDF
+        <Button variant="primary" icon="wand" size="lg" onClick={() => onNavigate("correct")}>
+          Start a correction
         </Button>
       </PageHeader>
 
@@ -223,12 +224,12 @@ export default function DashboardPage({ onNavigate, data }: {
         <div style={{ minWidth: 0 }} className="stack">
           <section className="card" aria-labelledby="waiting-heading">
             <div className="row between wrap" style={{ marginBottom: "var(--s3)" }}>
-              <h2 id="waiting-heading" style={{ margin: 0, fontSize: "var(--fs-md)" }}>
+              <h2 id="waiting-heading" className="card-title">
                 Waiting on you
               </h2>
               <Button size="sm" variant="ghost" iconRight="arrow-right"
                 onClick={() => onNavigate("assignments")}>
-                All assignments
+                {queue.length > 0 ? `All ${queue.length} assignments` : "All assignments"}
               </Button>
             </div>
 
@@ -306,7 +307,7 @@ export default function DashboardPage({ onNavigate, data }: {
           <section className="card" aria-labelledby="throughput-heading">
             <div className="row between wrap" style={{ marginBottom: "var(--s2)" }}>
               <div className="row wrap" style={{ gap: 8 }}>
-                <h2 id="throughput-heading" style={{ margin: 0, fontSize: "var(--fs-md)" }}>
+                <h2 id="throughput-heading" className="card-title">
                   Marking throughput
                 </h2>
                 <span className="faint small">papers per day, last 30 days</span>
@@ -339,7 +340,7 @@ export default function DashboardPage({ onNavigate, data }: {
 
           <section className="card" aria-labelledby="averages-heading">
             <div className="row wrap" style={{ gap: 8, marginBottom: "var(--s2)" }}>
-              <h2 id="averages-heading" style={{ margin: 0, fontSize: "var(--fs-md)" }}>
+              <h2 id="averages-heading" className="card-title">
                 Class averages
               </h2>
               <span className="faint small">per assignment, marked work only</span>
@@ -368,7 +369,7 @@ export default function DashboardPage({ onNavigate, data }: {
         <aside className="stack" style={{ minWidth: 0 }} aria-label="Attention and system state">
           <section className="card" aria-labelledby="attention-heading">
             <div className="row between" style={{ marginBottom: "var(--s3)" }}>
-              <h2 id="attention-heading" style={{ margin: 0, fontSize: "var(--fs-md)" }}>
+              <h2 id="attention-heading" className="card-title">
                 Needs your attention
               </h2>
               <Button size="sm" variant="ghost" onClick={() => onNavigate("review")}>
@@ -379,7 +380,7 @@ export default function DashboardPage({ onNavigate, data }: {
           </section>
 
           <section className="card" aria-labelledby="live-heading">
-            <h2 id="live-heading" style={{ margin: "0 0 var(--s3)", fontSize: "var(--fs-md)" }}>
+            <h2 id="live-heading" className="card-title" style={{ marginBottom: "var(--s3)" }}>
               Running now
             </h2>
             {active.length === 0 ? (
@@ -408,7 +409,7 @@ export default function DashboardPage({ onNavigate, data }: {
 
           <section className="card" aria-labelledby="system-heading">
             <div className="row between" style={{ marginBottom: "var(--s2)" }}>
-              <h2 id="system-heading" style={{ margin: 0, fontSize: "var(--fs-md)" }}>System</h2>
+              <h2 id="system-heading" className="card-title">System</h2>
               <Button size="sm" variant="ghost" icon="key" onClick={() => onNavigate("ai")}>
                 Keys
               </Button>

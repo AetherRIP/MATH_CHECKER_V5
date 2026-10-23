@@ -1,4 +1,4 @@
-; Math Checker Desktop — Inno Setup 6 installer.
+; MATH_CHECKER_V5 — Inno Setup 6 installer.
 ;
 ; Built by desktop\build_release.ps1 (which passes SourceDir and OutputDir):
 ;   iscc /DSourceDir=<staged tree> /DOutputDir=<output> MathCheckerDesktop.iss
@@ -14,10 +14,10 @@
   #define OutputDir "..\artifacts"
 #endif
 
-#define AppName "Math Checker Desktop"
+#define AppName "MATH_CHECKER_V5"
 #define AppVersion "1.0.0"
 #define AppPublisher "Math Checker"
-#define AppExeName "MathChecker.Desktop.exe"
+#define AppExeName "MATH_CHECKER_V5.exe"
 #define AppId "{{2C8E1F4A-9B37-4D51-8A6E-6F0D4B71C2E9}"
 
 [Setup]
@@ -25,16 +25,18 @@ AppId={#AppId}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
-DefaultDirName={autopf}\Math Checker Desktop
-DefaultGroupName=Math Checker Desktop
+DefaultDirName={localappdata}\Programs\MATH_CHECKER_V5
+DefaultGroupName=MATH_CHECKER_V5
 UninstallDisplayIcon={app}\desktop\{#AppExeName}
 SetupIconFile=app.ico
 OutputDir={#OutputDir}
-OutputBaseFilename=MathChecker_Desktop_Setup
+OutputBaseFilename=MATH_CHECKER_V5_Setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-PrivilegesRequired=admin
+; Per-user install: a teacher can install it without an administrator,
+; and the app's settings and data already live in the user's profile.
+PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
@@ -56,5 +58,11 @@ Filename: "{app}\desktop\{#AppExeName}"; Description: "Launch {#AppName}"; Flags
 [UninstallDelete]
 ; The client's own settings and logs stay in %APPDATA%/%LOCALAPPDATA% so an
 ; upgrade keeps the user's window state and diagnostics. The backend's data
-; folder is never touched by this installer.
+; folder ({app}\data or one the teacher chose) is never touched: an uninstall
+; must not delete classes, marked papers or API keys. Program folders are
+; removed wholesale because running the backend writes __pycache__ files the
+; installer never placed.
 Type: filesandordirs; Name: "{app}\desktop"
+Type: filesandordirs; Name: "{app}\backend"
+Type: filesandordirs; Name: "{app}\runtime"
+Type: filesandordirs; Name: "{app}\__pycache__"

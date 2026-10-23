@@ -46,7 +46,7 @@ export default function PrivacyPage() {
 
   return (
     <>
-      <PageHeader title="Privacy & Data" icon="shield"
+      <PageHeader kicker="System · Privacy" title="Privacy & Data" icon="shield"
         sub="What is stored locally, how to remove it, and how to share a safe support file.">
         <Button variant="secondary" icon="download" onClick={exportDiagnostics}>
           Export Diagnostics

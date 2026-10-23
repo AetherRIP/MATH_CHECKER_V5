@@ -319,6 +319,12 @@ For local UI development, install Node.js/npm, then from `frontend/` run
 pins the dependency tree. `start.bat` serves `frontend/dist`, not the Vite dev
 server.
 
+The Vite dev server has **no default backend**: `npm run dev` refuses to start
+until `frontend/.env.local` names one (copy `.env.development.example`). It
+never falls back to a port that happens to be listening, and the UI labels the
+backend it reached (`DEMO` / `DEV` / `LIVE` / `No backend`) on every page. See
+[docs/development-environments.md](docs/development-environments.md).
+
 ### Tests and diagnostics
 
 From the project root, run every check with one command:

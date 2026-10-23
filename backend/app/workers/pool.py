@@ -405,38 +405,6 @@ class WorkerPool:
     def _launch(self, worker: CorrectionWorker, job: dict) -> None:
         paths = self._stage_inputs(job)
 
-        # ---- ONE central routing decision, before ANY Gemini upload. ----
-        # EVERY entry point (manual upload, Classroom, bulk/assignment, API and
-        # automation jobs) reaches the AI only through this pool, so taking the
-        # decision here means none of them can bypass it. A long document is
-        # handed to the Large AI Worker and this worker is released without a
-        # single model request; a short document continues unchanged.
-        from ..engine.router import RoutingError, delegate_long_document
-        try:
-            handed_off = delegate_long_document(
-                dict(job), paths.get("submission"), paths.get("mark_scheme"))
-        except (RoutingError, RuntimeError) as exc:
-            # Fail safely with an actionable message — a long or unreadable
-            # document is never silently forced through the normal pipeline.
-            log_event("workers", "routing failed", level=logging.ERROR,
-                      job_id=job["id"], error=str(exc)[:300])
-            db.execute(
-                "UPDATE correction_jobs SET status = ?, error = ?, "
-                "stage_detail = NULL, error_code = 'routing_failed', "
-                "finished_at = ?, updated_at = ? WHERE id = ?",
-                ("FAILED", str(exc)[:500], time.time(), time.time(), job["id"]),
-            )
-            cleanup_job_files(job["id"])
-            with self._lock:
-                worker.mark_idle()
-            return
-        if handed_off:
-            log_event("workers", "routed to Large AI Worker",
-                      job_id=job["id"], student=job["student_name"])
-            with self._lock:
-                worker.mark_idle()
-            return
-
         cfg = get_config()
         # Offline demo / mock mode builds a MockGeminiClient in the child and
         # never contacts Gemini — so no API key is required. Leasing a key here

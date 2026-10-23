@@ -26,9 +26,8 @@ shown, not from documentation.
 | Optional bundled Python runtime for recipients | `MathChecker_Distribution/scripts/build_runtime.py` |
 
 **The application is a local server plus a browser UI.** The engine, the
-database, the Classroom integration, the report renderer, the automation
-worker and the batched large-PDF pipeline all live behind the HTTP API on
-`127.0.0.1`.
+database, the Classroom integration, the report renderer and the automation
+worker all live behind the HTTP API on `127.0.0.1`.
 
 ## 2. Current architecture (as implemented)
 
@@ -38,12 +37,12 @@ worker and the batched large-PDF pipeline all live behind the HTTP API on
  (React SPA,        │  /api/*  + static dist/      │
   frontend/dist)    └──────────────┬───────────────┘
                                    │
-        ┌──────────────┬───────────┼─────────────┬────────────────┐
-        │              │           │             │                │
-   engine/*       jobs/manager  workers/pool  large_pdf/*     automation/*
- (blueprint,     (queue, SSE)  (orchestrator) (inspect →      (Classroom
-  legacy_marking,                              plan → batch   workflows)
-  verify, batching,                            → merge)
+        ┌──────────────┬───────────┼─────────────┐
+        │              │           │             │
+   engine/*       jobs/manager  workers/pool  automation/*
+ (blueprint,     (queue, SSE)  (orchestrator) (Classroom
+  legacy_marking,                             workflows)
+  verify, batching,
   pdf_optimize)
         │
    gemini/client_proxy + key_manager   ──▶ Gemini API
@@ -87,7 +86,6 @@ Grouped by module (`dev_local/route_dump.py` prints all 262):
 | `product_routes.py` | 18 | `/api/classes`, `/api/assignments`, `/api/attention`, mark-scheme endpoints |
 | `report_routes.py` | 9 | `/api/reports/class/{id}`, `/reports/assignment/{id}`, `/export` |
 | `classroom/tracking_routes.py` | 11 | `/api/classroom/sync`, `/tracking`, `/permissions` |
-| `large_pdf/routes.py` | 8 | `/api/large-pdf/jobs`, `/process`, `/batches/{n}/retry` |
 | `auth_routes.py` | 7 | `/api/health`, `/api/auth/*`, `/api/remote/status` |
 | `setup_routes.py` | 13 | `/api/setup/status`, `/api/review`, `/api/results/{id}/override` |
 | `scheme_routes.py` | 9 | `/api/scheme/discrepancies`, `/proposals` |
@@ -166,7 +164,7 @@ Desktop app ──starts──▶ python main.py --serve <port>   (child, hidden
 | Desktop executable embedding credentials | no keys in the client; keys stay in `data/secrets.toml`; settings file holds only paths/port |
 | Logging student data | log lines carry job/result ids and counts; a redactor strips `AIza…`/Bearer tokens; no student names written by the desktop log |
 | Session cookie in public mode | `HttpClientHandler.CookieContainer` in memory only; never persisted; CSRF header forwarded from `/api/auth/status` |
-| Backend crashes mid-correction | the backend already recovers in-flight jobs on boot (`jobs/manager.recover_on_boot`, `large_pdf` recovery); the client shows the outage and reconnects |
+| Backend crashes mid-correction | the backend already recovers in-flight jobs on boot (`jobs/manager.recover_on_boot`); the client shows the outage and reconnects |
 | Duplicate correction on double-click | buttons disable while a request is in flight; backend rejects duplicate jobs (`DuplicateJobError`) |
 | `result_json`/`verification_json` shape drift | DTOs ignore unknown fields; per-question view reads an optional list and shows "no per-question breakdown" when absent |
 | Python runtime missing on a clean machine | backend locator tries bundled `runtime\python.exe`, then repo `.venv`, then PATH `py`/`python`; a missing runtime is a named, actionable error, not a silent failure |
@@ -179,7 +177,7 @@ Desktop app ──starts──▶ python main.py --serve <port>   (child, hidden
 3. Shell + navigation + dashboard.
 4. Correction workflow (unified upload, live jobs, retry/cancel).
 5. Results, review queue, remark/override/export, reports.
-6. Classes, students, assignments, Classroom sync, large-PDF, automation.
+6. Classes, students, assignments, Classroom sync, automation.
 7. System area: settings, AI keys, storage, privacy, diagnostics, prompts,
    audit, multi-school.
 8. Tests: unit (client/DTO/host/redaction) + live backend end-to-end on demo
@@ -195,6 +193,6 @@ Desktop app ──starts──▶ python main.py --serve <port>   (child, hidden
 | Does local mode need a login? | no — `auth_gate.gate_enabled()` is false unless public mode or `security.login_required` |
 | Where does student data live? | `<data>/app.db`; desktop never copies it |
 | Are there developer-only APIs? | yes; `/api/diagnostics` returned 403 in a teacher-role run |
-| Can a 30+ page PDF be corrected through one call? | yes; `/api/corrections/unified` routes to the batched pipeline by page count |
+| Can a 30+ page PDF be corrected through one call? | yes; `/api/corrections/unified` uses the same standard pipeline for every page count |
 | Is there demo/synthetic data for E2E testing? | yes; `--demo` seeds an isolated `data/demo` DB with mock marking (`app/demo.py`) |
-| Does the backend recover after a crash? | yes; boot recovery for jobs, automation and large-PDF batches |
+| Does the backend recover after a crash? | yes; boot recovery for correction jobs and automation |

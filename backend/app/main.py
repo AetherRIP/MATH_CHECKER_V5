@@ -96,25 +96,11 @@ async def lifespan(app: FastAPI):
     automation_recovery = automation_store.recover_in_flight()
     log_event("automation", "boot recovery done", **automation_recovery)
 
-    # Large PDF Worker: reuse the SAME correction engine for long documents.
-    # Boot recovery requeues any batch interrupted by a crash; the scheduler
-    # then drives queued/ready jobs, so work resumes without re-doing the
-    # batches that already completed.
-    from .large_pdf import store as large_pdf_store
-    from .large_pdf.scheduler import LargePdfSchedulerHolder
-    large_recovery = large_pdf_store.recover_in_flight()
-    log_event("large_pdf", "boot recovery done", **large_recovery)
-
     # Worker pool: the orchestrator around the trusted correction engine.
     from .workers.pool import WorkerPoolHolder
     pool = WorkerPoolHolder.instance()
     pool.start()
     app.state.pool = pool
-
-    large_scheduler = LargePdfSchedulerHolder.instance()
-    if get_config().large_pdf.enabled:
-        large_scheduler.start()
-    app.state.large_pdf = large_scheduler
 
     # Disk hygiene: drop orphaned per-job staging dirs from earlier crashes,
     # and reclaim retained originals whose teacher-set expiry has passed (§19).
@@ -216,10 +202,6 @@ async def lifespan(app: FastAPI):
         pass
     try:
         scheduler.stop()
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        LargePdfSchedulerHolder.instance().stop()
     except Exception:  # noqa: BLE001
         pass
     pool.shutdown(drain=True)
@@ -382,10 +364,6 @@ privacy_routes.register(app)
 from .api import auth_routes  # noqa: E402
 
 auth_routes.register(app)
-
-from .large_pdf import routes as large_pdf_routes  # noqa: E402
-
-large_pdf_routes.register(app)
 
 from .automation import routes as automation_routes  # noqa: E402
 

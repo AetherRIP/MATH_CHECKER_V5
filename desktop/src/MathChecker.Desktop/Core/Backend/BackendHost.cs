@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Text.Json;
 using MathChecker.Desktop.Core.Configuration;
 using MathChecker.Desktop.Core.Diagnostics;
 
@@ -18,14 +19,22 @@ public enum BackendState
 }
 
 /// <summary>What the shell shows in the status bar.</summary>
+/// <param name="Demo">True when the backend that answered reports demo mode.
+/// null = the backend did not answer the environment probe.</param>
+/// <param name="Warning">A visible environment mismatch (demo vs real data,
+/// or a different data folder than configured). Never only a log line.</param>
 public sealed record BackendStatus(
     BackendState State,
     int Port,
     bool Owned,
     string Detail,
-    string? DataDirectory = null)
+    string? DataDirectory = null,
+    bool? Demo = null,
+    string? Warning = null)
 {
     public bool IsUsable => State is BackendState.Ready or BackendState.Attached;
+
+    public bool HasWarning => !string.IsNullOrWhiteSpace(Warning);
 
     public string Summary => State switch
     {
@@ -61,6 +70,57 @@ public interface IProcessStarter
     IProcessHandle Start(BackendLaunchPlan plan);
 }
 
+/// <summary>What a running backend says about itself: its data folder and
+/// whether it is the demo process. Read, never guessed.</summary>
+public sealed record BackendEnvironment(string? DataDirectory, bool Demo, bool MockMode);
+
+public interface IBackendEnvironmentProbe
+{
+    Task<BackendEnvironment?> ReadAsync(int port, CancellationToken cancellationToken);
+}
+
+/// <summary>Reads /api/privacy/info: a local route that already exposes the
+/// redacted data folder, plus two booleans saying which environment answered.
+/// Unavailable information is null, never an assumption.</summary>
+public sealed class HttpBackendEnvironmentProbe : IBackendEnvironmentProbe
+{
+    public async Task<BackendEnvironment?> ReadAsync(int port, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            using var response = await client.GetAsync(
+                $"http://127.0.0.1:{port}/api/privacy/info", cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var folder = root.TryGetProperty("data_directory", out var value)
+                ? value.GetString()
+                : null;
+
+            var demo = false;
+            var mock = false;
+            if (root.TryGetProperty("environment", out var environment)
+                && environment.ValueKind == JsonValueKind.Object)
+            {
+                demo = environment.TryGetProperty("demo", out var d) && d.ValueKind == JsonValueKind.True;
+                mock = environment.TryGetProperty("mock_mode", out var m) && m.ValueKind == JsonValueKind.True;
+            }
+
+            return new BackendEnvironment(folder, demo, mock);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+}
+
 public interface IProcessHandle : IDisposable
 {
     bool HasExited { get; }
@@ -84,6 +144,7 @@ public sealed class BackendHost : IAsyncDisposable
     private readonly IFileLog _log;
     private readonly IProcessStarter _starter;
     private readonly IHealthProbe _health;
+    private readonly IBackendEnvironmentProbe _environment;
     private readonly string _appBaseDirectory;
     private readonly TimeSpan _heartbeatInterval;
     private readonly string _sessionId = "desktop-" + Guid.NewGuid().ToString("N");
@@ -97,12 +158,14 @@ public sealed class BackendHost : IAsyncDisposable
 
     public BackendHost(DesktopSettings settings, IFileLog log,
         IProcessStarter? starter = null, IHealthProbe? health = null,
-        string? appBaseDirectory = null, TimeSpan? heartbeatInterval = null)
+        string? appBaseDirectory = null, TimeSpan? heartbeatInterval = null,
+        IBackendEnvironmentProbe? environment = null)
     {
         _settings = settings;
         _log = log;
         _starter = starter ?? new ProcessStarter();
         _health = health ?? new HttpHealthProbe();
+        _environment = environment ?? new HttpBackendEnvironmentProbe();
         _appBaseDirectory = appBaseDirectory ?? AppContext.BaseDirectory;
         _heartbeatInterval = heartbeatInterval ?? TimeSpan.FromSeconds(20);
     }
@@ -226,9 +289,107 @@ public sealed class BackendHost : IAsyncDisposable
 
     private async Task BecomeReadyAsync(int port, bool owned, CancellationToken cancellationToken)
     {
-        var dataFolder = await TryReadDataFolderAsync(port, cancellationToken).ConfigureAwait(false);
+        var environment = await _environment.ReadAsync(port, cancellationToken).ConfigureAwait(false);
+        var warning = DescribeEnvironmentMismatch(environment, _settings);
+        if (warning is not null)
+        {
+            _log.Warn("backend environment mismatch: " + warning);
+        }
+
         SetStatus(new BackendStatus(owned ? BackendState.Ready : BackendState.Attached, port, owned,
-            owned ? "Backend started" : "Attached to a running backend", dataFolder));
+            owned ? "Backend started" : "Attached to a running backend",
+            environment?.DataDirectory, environment?.Demo, warning));
+    }
+
+    /// <summary>
+    /// The desktop must never look like it is showing the teacher's class when
+    /// it is not. Two things are checked against what the desktop ASKED for:
+    /// demo vs real data, and the data folder the backend reports.
+    /// Returns null when everything matches (or when the backend cannot say).
+    /// </summary>
+    internal static string? DescribeEnvironmentMismatch(
+        BackendEnvironment? environment, DesktopSettings settings)
+    {
+        if (environment is null)
+        {
+            return null;
+        }
+
+        var wantsDemo = (settings.EnvironmentVariables ?? new Dictionary<string, string>())
+            .Any(kv =>
+                string.Equals(kv.Key, "MC5_DEMO", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(kv.Value?.Trim(), "1", StringComparison.Ordinal));
+
+        var warnings = new List<string>();
+        if (environment.Demo && !wantsDemo)
+        {
+            warnings.Add("This backend is running in DEMO mode: every student, assignment and "
+                         + "result shown is synthetic demo data, not your class. Nothing you see "
+                         + "here is real student work.");
+        }
+        else if (!environment.Demo && wantsDemo)
+        {
+            warnings.Add("The desktop is configured to start DEMO data, but this backend is "
+                         + "serving real data. Nothing has been changed; check the demo setting "
+                         + "before editing anything.");
+        }
+
+        var expected = ExpectedDataDirectory(settings, wantsDemo);
+        if (expected is not null && environment.DataDirectory is not null
+            && !SameFolder(expected, environment.DataDirectory))
+        {
+            warnings.Add($"This backend is using a different data folder ({environment.DataDirectory}) "
+                         + $"than the one configured here ({expected}).");
+        }
+
+        return warnings.Count == 0 ? null : string.Join(" ", warnings);
+    }
+
+    /// <summary>The folder this launch should have produced, mirroring
+    /// main.py --demo (which appends \"demo\" to the base folder once).</summary>
+    private static string? ExpectedDataDirectory(DesktopSettings settings, bool wantsDemo)
+    {
+        if (string.IsNullOrWhiteSpace(settings.DataDirectory))
+        {
+            return null;
+        }
+
+        try
+        {
+            var expected = Path.GetFullPath(
+                Environment.ExpandEnvironmentVariables(settings.DataDirectory.Trim()));
+            if (wantsDemo && !string.Equals(Path.GetFileName(expected.TrimEnd(
+                    Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+                    "demo", StringComparison.OrdinalIgnoreCase))
+            {
+                expected = Path.Combine(expected, "demo");
+            }
+
+            return expected;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Compares folders after expanding the backend's redacted
+    /// %USERPROFILE% prefix, so redaction does not read as a mismatch.</summary>
+    internal static bool SameFolder(string expected, string reported)
+    {
+        static string Normalize(string path) => Path.GetFullPath(
+                Environment.ExpandEnvironmentVariables(path.Trim()))
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        try
+        {
+            return string.Equals(Normalize(expected), Normalize(reported),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>Returns null when ready, otherwise the failure detail.</summary>
@@ -259,35 +420,6 @@ public sealed class BackendHost : IAsyncDisposable
         var tailAtTimeout = LastLines(_process?.Tail, 12);
         return $"The backend did not answer /api/health within {timeoutSeconds} s."
                + (string.IsNullOrWhiteSpace(tailAtTimeout) ? string.Empty : Environment.NewLine + tailAtTimeout);
-    }
-
-    /// <summary>
-    /// Reads the real data folder from the backend rather than guessing it.
-    /// /api/privacy/info is a local, session-gated route; when it is unavailable
-    /// the status simply omits the folder.
-    /// </summary>
-    private async Task<string?> TryReadDataFolderAsync(int port, CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            using var response = await client.GetAsync(
-                $"http://127.0.0.1:{port}/api/privacy/info", cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                return null;
-            }
-
-            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var document = System.Text.Json.JsonDocument.Parse(body);
-            return document.RootElement.TryGetProperty("data_directory", out var value)
-                ? value.GetString()
-                : null;
-        }
-        catch (Exception)
-        {
-            return null;
-        }
     }
 
     private void StartMonitoring()

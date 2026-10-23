@@ -77,9 +77,18 @@ def privacy_info():
     data = data_dir()
     def exists(rel: str) -> bool:
         return (data / rel).exists()
+    # Which environment answered? Two booleans, no data and no secrets: the
+    # desktop shell reads them to prove it is attached to the backend it meant
+    # (a demo process on a shared port must never look like the real class).
+    from ..demo import is_demo
+
     return {
         "data_directory": _redact_path(data),
         "application_files_separate": True,
+        "environment": {
+            "demo": is_demo(),
+            "mock_mode": bool(app_config.get_config().mock_mode),
+        },
         "items": [
             {"key": "config", "label": "Configuration", "present": exists("config.toml")},
             {"key": "credentials", "label": "API keys & Google credentials",

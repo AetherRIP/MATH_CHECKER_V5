@@ -1,8 +1,10 @@
-// Theme management: light + dark, persisted, applied to <html data-theme>.
+// Display-mode management: light + dark, persisted, applied to <html data-mode>.
 //
-// The stylesheet defines both palettes under :root[data-theme="…"]; this
-// provider only flips the attribute and remembers the choice. "system" tracks
-// the OS preference live so the app feels native on a teacher's laptop.
+// `data-mode` is ui-style-kit-css's mode attribute; the library resolves the
+// walnut-clay palette for it, and every app token is bridged to those roles in
+// kit.css. `data-theme` therefore stays reserved for the library's colour
+// scheme (set once in index.html) and is not touched here. "system" tracks the
+// OS preference live so the app feels native on a teacher's laptop.
 
 import {
   createContext, useCallback, useContext, useEffect, useMemo, useState,
@@ -45,7 +47,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const apply = () => {
       const next = choice === "system" ? systemPreferred() : choice;
       setResolved(next);
-      document.documentElement.setAttribute("data-theme", next);
+      document.documentElement.setAttribute("data-mode", next);
       document.documentElement.style.colorScheme = next;
     };
     apply();

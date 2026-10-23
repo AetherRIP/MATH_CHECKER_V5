@@ -916,7 +916,7 @@ export default function SettingsPage() {
   if (!settings) {
     return (
       <>
-        <PageHeader title="Settings" icon="settings"
+        <PageHeader kicker="System · Settings" title="Settings" icon="settings"
           sub="Local configuration — changes apply immediately." />
         <div className="skeleton" style={{ height: 220 }} />
       </>
@@ -942,7 +942,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" icon="settings"
+      <PageHeader kicker="System · Settings" title="Settings" icon="settings"
         sub="Everything this installation needs, grouped by what it affects.">
         {/* §7: connection + synchronization are configured on this page, so the
             shared sync action belongs here too — and it is the same button. */}

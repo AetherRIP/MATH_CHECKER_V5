@@ -3,7 +3,7 @@
 Produces data/fixtures/student_submission.pdf and mark_scheme.pdf — a tiny
 4-question Edexcel-style quiz with an official-style mark scheme, so the
 friend's engine (and V5) have genuinely markable input without consuming
-large PDF processing.
+correction testing.
 """
 
 from __future__ import annotations

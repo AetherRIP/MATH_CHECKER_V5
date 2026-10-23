@@ -83,7 +83,7 @@ function AssignmentsList({ onNavigate }: { onNavigate: (hash: string) => void })
 
   return (
     <>
-      <PageHeader title="Assignments" icon="assignments"
+      <PageHeader kicker="Classes · Assignments" title="Assignments" icon="assignments"
         sub="Every assignment: what was submitted, what has been corrected, and what can be published to Classroom.">
         <input className="input" style={{ maxWidth: 220 }} placeholder="Search assignments…"
           value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search assignments" />
@@ -941,7 +941,7 @@ function AssignmentDetailView({ id, onNavigate }: { id: string; onNavigate: (has
 
   return (
     <>
-      <PageHeader title={detail.title} icon="assignments"
+      <PageHeader kicker="Assignments · Assignment" title={detail.title} icon="assignments"
         sub={`${detail.course_name ?? "Class"}${detail.due_date ? ` · due ${detail.due_date}` : ""}`}>
         <ManagedBadge assignment={detail} />
         <Button variant="ghost" icon="arrow-left" onClick={() => onNavigate("#/assignments")}>

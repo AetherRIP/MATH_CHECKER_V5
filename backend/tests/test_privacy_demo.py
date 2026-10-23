@@ -11,6 +11,23 @@ import json
 from fastapi.testclient import TestClient
 
 
+def test_privacy_info_reports_which_environment_answered(fresh_state, monkeypatch):
+    """The desktop shell reads /api/privacy/info to prove the backend it
+    attached to is the backend it meant to use. A demo process must say so; a
+    normal process must never claim to be demo."""
+    from app.main import app
+
+    with TestClient(app) as client:
+        monkeypatch.delenv("MC5_DEMO", raising=False)
+        body = client.get("/api/privacy/info").json()
+        assert body["environment"]["demo"] is False
+        assert isinstance(body["environment"]["mock_mode"], bool)
+
+        monkeypatch.setenv("MC5_DEMO", "1")
+        body = client.get("/api/privacy/info").json()
+        assert body["environment"]["demo"] is True
+
+
 def test_factory_reset_requires_confirmation(fresh_state):
     from app.main import app
 
@@ -188,6 +205,19 @@ def test_demo_seed_creates_synthetic_data(fresh_state):
     assert names == {"Student A", "Student B", "Student C", "Student D", "Student E"}
     results = db.query_one("SELECT COUNT(*) AS n FROM results")["n"]
     assert results > 0
+
+    # A demo correction carries the same question-level shape a real one does,
+    # and its question marks add up to the stored score.
+    import json
+    rows = db.query("SELECT earned, available, result_json FROM results")
+    for row in rows:
+        payload = json.loads(row["result_json"] or "{}")
+        questions = payload.get("questions") or []
+        assert questions, "demo results must carry a question breakdown"
+        assert sum(q["awarded_marks"] for q in questions) == row["earned"]
+        assert sum(q["max_marks"] for q in questions) == row["available"]
+        assert all(q.get("topic") for q in questions)
+
     # idempotent
     assert demo.seed()["seeded"] is False
 

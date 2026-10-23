@@ -1,7 +1,7 @@
 """PDF optimization tests (§ compression) — smaller, never less markable.
 
-The optimizer is shared by the Normal and Large PDF pipelines for BOTH the
-student submission and the mark scheme. These tests pin the behaviour that
+The optimizer serves the standard correction pipeline for BOTH the student
+submission and the mark scheme. These tests pin the behaviour that
 makes it safe to enable by default:
 
 * a scanned paper and a scanned mark scheme both shrink, with page count,
@@ -417,28 +417,6 @@ class TestPipelineIntegration:
         again = pool._stage_inputs(job)
         assert again["submission"] == paths["submission"]
         assert again["mark_scheme"] == paths["mark_scheme"]
-
-    def test_the_large_pdf_runner_optimises_both_documents(self, tmp_path,
-                                                           fresh_state):
-        from test_large_pdf import _pdf_bytes
-        from app.large_pdf.runner import LargePdfRunner
-
-        student = tmp_path / "student.pdf"
-        scheme = tmp_path / "scheme.pdf"
-        student.write_bytes(_pdf_bytes(52).getvalue())
-        scheme.write_bytes(_pdf_bytes(8).getvalue())
-        runner = LargePdfRunner(engine=lambda **kw: None)
-
-        job = {"id": "job-opt", "student_pdf_path": str(student),
-               "mark_scheme_path": str(scheme)}
-        submission_path = runner._processing_pdf(job, "submission")
-        scheme_path = runner._processing_pdf(job, "scheme")
-
-        # Both roles resolved through the shared optimizer (cache or original).
-        assert submission_path
-        assert scheme_path
-        # A second call is memoised: same answer, no extra work.
-        assert runner._processing_pdf(job, "submission") == submission_path
 
     def test_retention_still_keeps_the_original_after_optimisation(
             self, tmp_path, fresh_state):

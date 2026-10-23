@@ -14,6 +14,9 @@
             <conv:NullToVisibilityConverter x:Key="NullToVisibility" />
             <conv:EmptyStringToVisibilityConverter x:Key="EmptyToVisibility" />
             <conv:InverseBoolConverter x:Key="InverseBool" />
+            <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
+            <conv:ZeroToVisibilityConverter x:Key="ZeroToVis" />
+            <conv:NonZeroToVisibilityConverter x:Key="NonZeroToVis" />
 
             <!-- View-model to view mapping. Navigation shows a view model; WPF
                  picks the view. Adding a page never changes the shell. -->
@@ -28,9 +31,6 @@
             </DataTemplate>
             <DataTemplate DataType="{x:Type vm:JobsViewModel}">
                 <views:JobsView />
-            </DataTemplate>
-            <DataTemplate DataType="{x:Type vm:LargePdfViewModel}">
-                <views:LargePdfView />
             </DataTemplate>
             <DataTemplate DataType="{x:Type vm:AutomationViewModel}">
                 <views:AutomationView />

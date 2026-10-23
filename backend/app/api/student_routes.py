@@ -23,6 +23,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from .. import db
+from ..downloads import attachment_header
 from ..classroom import submissions as cs
 from ..errors import AppError
 from ..logging_setup import log_event
@@ -305,6 +306,14 @@ def _profile(student_id: str) -> dict:
                     "title": r.get("coursework_title"),
                     "status": r["status"],
                     "status_label": r["status_label"],
+                    # The desktop profile must filter/summarise with the SAME
+                    # rules the statistics above use, so the decisions are
+                    # computed here once (submission_status.resolve) instead of
+                    # being re-guessed in the UI.
+                    "submitted": (r.get("status") or "") in _SUBMITTED_STATUSES,
+                    "outstanding": resolve_tracking(
+                        r.get("status"), row_grade_of(r)).outstanding,
+                    "returned": (r.get("status") or "") in ("RETURNED", "GRADED"),
                     "raw_state": r.get("raw_state"),
                     "late": r.get("late"),
                     "attachments": len(r.get("attachments") or []),
@@ -332,7 +341,11 @@ def _profile(student_id: str) -> dict:
             "total_available": total_available,
             "overall_percentage": round(overall_pct, 1) if overall_pct is not None else None,
             "needs_review": sum(1 for r in results if r.get("needs_review")),
+            # ``recent`` stays the small list the report and older clients use.
+            # ``history`` is the full stored list so a profile can show every
+            # correction instead of silently dropping everything past the 10th.
             "recent": results[:10],
+            "history": results,
             "jobs": jobs[:10],
             "last_corrected_at": results[0]["created_at"] if results else None,
         },
@@ -754,7 +767,7 @@ def student_report(student_id: str, format: str = "pdf"):
         return StreamingResponse(
             buf, media_type="application/pdf",
             headers={"Content-Disposition":
-                     f'attachment; filename="student_{safe_name}_{stamp}.pdf"'})
+                     attachment_header(f"student_{safe_name}_{stamp}.pdf")})
 
     if fmt == "csv":
         import csv as _csv
@@ -785,7 +798,7 @@ def student_report(student_id: str, format: str = "pdf"):
         return StreamingResponse(
             iter([buf.getvalue()]), media_type="text/csv",
             headers={"Content-Disposition":
-                     f'attachment; filename="student_{safe_name}_{stamp}.csv"'})
+                     attachment_header(f"student_{safe_name}_{stamp}.csv")})
 
     raise AppError(f"Unknown report format: {format}. Use pdf or csv.",
                    status=400, code="bad_report_format")
@@ -840,5 +853,5 @@ def student_assignment_report(student_id: str, coursework_id: str,
     return StreamingResponse(
         buf, media_type="application/pdf",
         headers={"Content-Disposition":
-                 f'attachment; filename="{safe_base or 'report'}_{stamp}.pdf"'})
+                 attachment_header(f"{safe_base or 'report'}_{stamp}.pdf")})
 

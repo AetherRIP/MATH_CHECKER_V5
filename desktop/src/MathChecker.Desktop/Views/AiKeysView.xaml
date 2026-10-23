@@ -1,63 +1,91 @@
 <UserControl x:Class="MathChecker.Desktop.Views.AiKeysView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="2*" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <DockPanel Grid.Row="0">
-            <StackPanel DockPanel.Dock="Left">
-                <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" />
-                <TextBlock Text="{Binding Summary}" Style="{StaticResource Muted}" />
-            </StackPanel>
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right"
-                        VerticalAlignment="Top">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
+    <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}" Description="{Binding Summary}"
+                  StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
+                  BodyPadding="0,18,0,0">
+        <ui:PageFrame.Actions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
                 <Button Content="Test selected" Command="{Binding TestSelectedCommand}" />
-                <Button Content="Test all" Command="{Binding TestAllCommand}" />
+                <Button Content="Test all" Style="{StaticResource PrimaryButton}" Command="{Binding TestAllCommand}" />
                 <Button Content="Disable" Command="{Binding DisableCommand}" />
                 <Button Content="Re-enable" Command="{Binding EnableCommand}" />
-                <Button Content="Remove" Command="{Binding RemoveCommand}" />
+                <Button Content="Remove" Command="{Binding RemoveCommand}" Margin="0" />
             </StackPanel>
-        </DockPanel>
+        </ui:PageFrame.Actions>
 
-        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,8,0,0">
-            <StackPanel>
-                <TextBlock Text="Add keys" Style="{StaticResource SectionTitle}" Margin="0,0,0,2" />
-                <TextBlock Text="One key per line. Keys are sent to the backend, tested against the real API and stored in its secret store — the desktop app never keeps a copy."
-                           Style="{StaticResource Muted}" Margin="0,0,0,6" />
-                <TextBox Height="60" AcceptsReturn="True" Text="{Binding NewKeys, UpdateSourceTrigger=PropertyChanged}"
-                         VerticalScrollBarVisibility="Auto" />
-                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                    <Button Content="Submit keys" Command="{Binding AddKeysCommand}" />
-                    <ProgressBar Width="120" Height="8" IsIndeterminate="True" Margin="6,0,12,0"
-                                 Visibility="{Binding TestingAll, Converter={StaticResource BoolToVis}}" />
-                    <TextBlock Text="Worker pool" Style="{StaticResource FieldLabel}" />
-                    <TextBlock Text="{Binding WorkersText}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <TextBox Width="50" Text="{Binding WorkerCount, UpdateSourceTrigger=PropertyChanged}" />
-                    <Button Content="Resize" Command="{Binding ResizeWorkersCommand}" />
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="150" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="ADD KEYS" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="One key per line. Keys are sent to the backend, tested against the real API and stored in its secret store — the desktop app never keeps a copy."
+                               Style="{StaticResource CardSubtitle}" Margin="0,5,0,8" />
+                    <TextBox Height="64" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                             Text="{Binding NewKeys, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="New API keys" />
+                    <WrapPanel Margin="0,8,0,0">
+                        <Button Content="Submit keys" Style="{StaticResource PrimaryButton}"
+                                Command="{Binding AddKeysCommand}" Height="34" Padding="14,4" />
+                        <ProgressBar Width="110" Height="6" IsIndeterminate="True" Margin="8,0,14,0"
+                                     VerticalAlignment="Center"
+                                     Visibility="{Binding TestingAll, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="Worker pool" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Text="{Binding WorkersText}" FontSize="12" VerticalAlignment="Center"
+                                   Margin="0,0,8,0" />
+                        <TextBox Width="52" Text="{Binding WorkerCount, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Content="Resize" Command="{Binding ResizeWorkersCommand}" Height="34" Padding="12,4" />
+                    </WrapPanel>
                 </StackPanel>
-            </StackPanel>
-        </Border>
+            </Border>
 
-        <DataGrid Grid.Row="2" ItemsSource="{Binding Keys}" SelectedItem="{Binding Selected}" Margin="0,8,0,0">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Label" Binding="{Binding Label}" Width="140" />
-                <DataGridTextColumn Header="Fingerprint" Binding="{Binding Fingerprint}" Width="180" />
-                <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="120" />
-                <DataGridTextColumn Header="Cooldown" Binding="{Binding CooldownText}" Width="90" />
-                <DataGridTextColumn Header="Error" Binding="{Binding ErrorKind}" Width="140" />
-                <DataGridTextColumn Header="Message" Binding="{Binding ErrorMessage}" Width="*" />
-            </DataGrid.Columns>
-        </DataGrid>
+            <Border Grid.Row="1" Style="{StaticResource TableCard}">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
+                        <TextBlock Text="Stored keys" Style="{StaticResource RowTitle}" />
+                    </Border>
+                    <Grid>
+                        <DataGrid Style="{StaticResource DataTable}" ui:TableLayout.FillColumn="5" ItemsSource="{Binding Keys}"
+                                  SelectedItem="{Binding Selected}" AutomationProperties.Name="API keys">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Label" Binding="{Binding Label}" Width="140" />
+                                <DataGridTextColumn Header="Fingerprint" Binding="{Binding Fingerprint}" Width="180" />
+                                <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="120" />
+                                <DataGridTextColumn Header="Cooldown" Binding="{Binding CooldownText}" Width="90"
+                                                    ui:TableLayout.Priority="2" />
+                                <DataGridTextColumn Header="Error" Binding="{Binding ErrorKind}" Width="130"
+                                                    ui:TableLayout.Priority="2" />
+                                <DataGridTextColumn Header="Message" Binding="{Binding ErrorMessage}" Width="*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
 
-        <TextBlock Grid.Row="3" Text="Backend response" Style="{StaticResource SectionTitle}" />
+                        <Border Style="{StaticResource EmptyState}" MaxWidth="340"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="{Binding Keys.Count, Converter={StaticResource ZeroToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="No keys configured" Style="{StaticResource EmptyTitle}" />
+                                <TextBlock Text="Add one or more Gemini keys above; marking cannot run without one."
+                                           Style="{StaticResource EmptyText}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </DockPanel>
+            </Border>
 
-        <TextBox Grid.Row="4" Style="{StaticResource JsonBox}" Text="{Binding ResultText, Mode=OneWay}" />
-    </Grid>
+            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,12,0,0" Padding="12">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="BACKEND RESPONSE" Style="{StaticResource SectionLabel}"
+                               Margin="2,0,0,6" />
+                    <TextBox Style="{StaticResource JsonBox}" Text="{Binding ResultText, Mode=OneWay}" Margin="0" />
+                </DockPanel>
+            </Border>
+        </Grid>
+    </ui:PageFrame>
 </UserControl>

@@ -59,11 +59,6 @@ def _tables(cw: str):
         ("automation_log", SUBMISSION_SCOPED, {"cw": cw}),
         ("automation_jobs", "coursework_id = :cw", {"cw": cw}),
         ("automation_assignments", "coursework_id = :cw", {"cw": cw}),
-        # large PDF worker (child then parent)
-        ("large_pdf_batches",
-         "job_id IN (SELECT id FROM large_pdf_jobs WHERE coursework_id = :cw)",
-         {"cw": cw}),
-        ("large_pdf_jobs", "coursework_id = :cw", {"cw": cw}),
         # per-job bookkeeping
         ("job_remote_files",
          "job_id IN (SELECT id FROM correction_jobs WHERE coursework_id = :cw)",
@@ -119,8 +114,7 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def _collect_files(data_dir: Path, cw: str, job_ids: list[str],
-                   large_ids: list[str]) -> list[Path]:
+def _collect_files(data_dir: Path, cw: str, job_ids: list[str]) -> list[Path]:
     """Every assignment-owned file we can trace, in deterministic order."""
     found: list[Path] = []
 
@@ -132,11 +126,6 @@ def _collect_files(data_dir: Path, cw: str, job_ids: list[str],
     prev = data_dir / "mark_schemes" / "_previous"
     if prev.is_dir():
         found.extend(sorted(p for p in prev.glob(f"{cw}-*.pdf") if p.is_file()))
-    for jid in large_ids:
-        add(data_dir / "tmp" / "router_merged" / f"{jid}_student.pdf")
-        d = data_dir / "tmp" / "large_pdf" / jid
-        if d.is_dir():
-            found.extend(sorted(p for p in d.rglob("*") if p.is_file()))
     for jid in job_ids:
         d = data_dir / "tmp" / f"job-{jid}"
         if d.is_dir():
@@ -220,12 +209,10 @@ def main() -> int:
 
     job_ids = [r[0] for r in con.execute(
         "SELECT id FROM correction_jobs WHERE coursework_id = ?", (cw,))]
-    large_ids = [r[0] for r in con.execute(
-        "SELECT id FROM large_pdf_jobs WHERE coursework_id = ?", (cw,))]
     run_ids = [r[0] for r in con.execute(
         "SELECT id FROM repair_runs WHERE coursework_id = ?", (cw,))]
 
-    files = _collect_files(data_dir, cw, job_ids, large_ids)
+    files = _collect_files(data_dir, cw, job_ids)
     dirs = _dirs_to_prune(data_dir, run_ids)
 
     print("== rows scheduled for deletion ==")

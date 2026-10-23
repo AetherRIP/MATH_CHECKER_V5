@@ -1,11 +1,10 @@
-"""Deterministic PDF inspection for the Large PDF Worker.
+"""Deterministic PDF inspection helpers.
 
 Nothing here calls a model. This module answers, offline and reproducibly:
 
-* how many pages a file has (the student answer PDF's count drives routing);
-* which question numbers appear on which page of the student answer PDF
-  (the evidence the batch planner uses to keep questions whole);
-* how to slice a page range out into its own PDF for one batch.
+* how many pages a file has (used by the read-only viewer and inventories);
+* which question numbers appear on which page of a student answer PDF;
+* how to slice a page range out into its own PDF.
 
 Text extraction prefers PyMuPDF (already used by the mark-scheme analyser) and
 falls back to pypdf, which is also a hard dependency. When neither can read a

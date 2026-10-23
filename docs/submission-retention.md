@@ -16,8 +16,8 @@ frontend alone.
 
 A submission reaches a job in one of two ways:
 
-* **Manual upload** (Normal corrector or Large PDF Worker). The uploaded bytes
-  are the original and are registered in `pending_manual_files`.
+* **Manual upload** (the New correction page). The uploaded bytes are the
+  original and are registered in `pending_manual_files`.
 * **Classroom**. The attachment is downloaded and normalised (PDF/A-style
   compression) into `data/tmp/job-<id>/submission_*`. That normalised file is
   what the marking models see and the only local copy the job has; there is no

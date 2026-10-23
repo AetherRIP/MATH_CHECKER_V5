@@ -1924,7 +1924,7 @@ export default function ResultsPage({ resultId, onNavigate }: {
     const i = rows.findIndex((r) => r.id === resultId);
     return (
       <>
-        <PageHeader title="Correction detail"
+        <PageHeader kicker="Results · Correction" title="Correction detail"
           sub="The marking workspace — the student's work, the question tree and the result side by side.">
           <Button variant="secondary" size="sm" icon="arrow-left"
             onClick={() => onNavigate?.("#/results")}>All results</Button>
@@ -1942,7 +1942,7 @@ export default function ResultsPage({ resultId, onNavigate }: {
 
   return (
     <>
-      <PageHeader title="Results"
+      <PageHeader kicker="Results · Ledger" title="Every correction"
         sub="Every completed correction, with the mark, the decision and what happened in Classroom."
         meta={
           <>

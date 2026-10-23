@@ -227,8 +227,11 @@ public sealed class AutomationViewModel : PageViewModel
         LogText = Json.Pretty(log);
         OnPropertyChanged(nameof(WorkerText));
         OnPropertyChanged(nameof(CountsText));
+        OnPropertyChanged(nameof(IsEmpty));
     }
 
     public override void OnActivated() => _timer.Start();
     public override void OnDeactivated() => _timer.Stop();
+
+    public bool IsEmpty => Items.Count == 0;
 }

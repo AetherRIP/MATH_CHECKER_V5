@@ -1,19 +1,23 @@
 <!doctype html>
-<html lang="en">
+<!-- data-ui / data-theme select the ui-style-kit-css visual preset and colour
+     scheme; data-mode (light/dark) is set before paint by the script below. -->
+<html lang="en" data-ui="paper-editorial" data-theme="walnut-clay" data-mode="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#fbf9f6" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#101317" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f8f1e9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#120c09" media="(prefers-color-scheme: dark)" />
     <meta name="description" content="Mark maths PDFs against a mark scheme, keep the evidence, and hand back feedback that reads like a teacher wrote it." />
     <title>Math Checker</title>
     <!-- Self-hosted (offline-first): one preloaded weight covers the first
          screen; the rest arrive with the stylesheet. -->
     <link rel="preload" href="/fonts/ibm-plex-sans-400.woff2" as="font" type="font/woff2" crossorigin />
     <script>
-      // Apply the persisted theme BEFORE first paint (no flash of the wrong
-      // theme). Mirrors theme.tsx: stored choice wins, "system" follows the OS.
+      // Apply the persisted display mode BEFORE first paint (no flash of the
+      // wrong palette). Mirrors theme.tsx: stored choice wins, "system"
+      // follows the OS. `data-mode` is the ui-style-kit-css mode attribute;
+      // `data-theme` is reserved for the library's colour scheme.
       (function () {
         try {
           var choice = localStorage.getItem("mc5.theme");
@@ -22,7 +26,7 @@
               window.matchMedia &&
               window.matchMedia("(prefers-color-scheme: dark)").matches);
           var root = document.documentElement;
-          root.setAttribute("data-theme", dark ? "dark" : "light");
+          root.setAttribute("data-mode", dark ? "dark" : "light");
           root.style.colorScheme = dark ? "dark" : "light";
         } catch (e) { /* private mode: defaults apply */ }
       })();

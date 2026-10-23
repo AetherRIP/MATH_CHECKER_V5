@@ -1,18 +1,11 @@
 /**
- * Dashboard coverage against SEEDED data — every populated card loop.
+ * Dashboard coverage against SEEDED data — every populated card.
  *
- * Why: each Dashboard card has an empty state and a populated one, and a stock
- * install only ever renders the empty ones. The loops that draw real work (queue
- * rows with their badges, the throughput line, the pipeline donut, live job
- * rows, the usage gauges, the per-assignment bars, the failed-corrections
- * notice) therefore went untested — and so did the layout hazard that only the
- * populated branches create (the charts' hidden a11y tables, which are the
- * absolutely positioned elements that used to stretch the whole document).
- *
- * The app is booted against a seeded throwaway data directory by
- * `tests/helpers/dashboardApp.ts`; every expectation is read back from the
- * app's own API, so the assertions compare the DOM with the real data instead
- * of with hard-coded numbers.
+ * The Desk dashboard is built from API aggregates, and a stock install only
+ * ever renders the empty states. This test boots the app against a seeded
+ * throwaway data directory (`tests/helpers/dashboardApp.ts`) and compares the
+ * rendered metrics, waiting queue, charts, live jobs and system strip with the
+ * same API responses the page consumed.
  *
  * Requirements: a Chrome/Chromium/Edge binary (CHROME_PATH) and a Python with
  * uvicorn+fastapi (the repo `.venv`, or MC5_PYTHON). Set DASHBOARD_FIXTURE_URL
@@ -35,14 +28,14 @@ interface DashboardPayload {
   completed: number; failed: number;
   jobs: Record<string, number>;
   api_health: { healthy: number; total: number; has_keys: boolean };
-  classroom: { configured: boolean; connected: boolean };
+  classroom: { configured: boolean; connected: boolean; last_sync: number | null };
   first_run: boolean;
 }
 
 interface AssignmentRow {
   id: string; title: string; checked: number; submitted: number;
   needs_review: number; failed: number; processing: number;
-  average: number | null;
+  students_total: number; average: number | null;
 }
 
 interface ActivityPayload {
@@ -53,8 +46,8 @@ interface ActivityPayload {
 
 interface JobRow {
   id: string; status: string; student_name: string | null;
-  stage_detail: string | null; progress: number;
-  attempts: number; max_attempts: number;
+  display_name?: string | null; stage_detail: string | null;
+  progress: number; attempts: number; max_attempts: number;
 }
 
 interface UsagePayload {
@@ -62,61 +55,58 @@ interface UsagePayload {
   limits: { hourly_mb: number; daily_mb: number };
 }
 
-interface AttentionPayload { total: number; items: { type: string; title: string }[] }
+interface AttentionPayload {
+  items: { title: string; detail?: string }[];
+  total: number;
+}
 
 interface Snapshot {
-  hero: { value: string | null; stats: { label: string; n: string; color: string | null }[] };
-  queue: {
-    hint: string | null;
-    rows: { text: string; badges: string[]; progressPct: number | null }[];
+  metrics: { label: string | null; value: string | null; scope: string | null; tone: string | null }[];
+  waiting: {
+    button: string | null;
+    rows: { name: string | null; progress: number | null; outstanding: string | null }[];
   } | null;
-  attention: { header: string | null; items: { title: string; detail: string }[] } | null;
-  throughput: { svg: boolean; circles: number; rows: [string, string][] } | null;
-  pipeline: { legend: string[]; center: string | null; rows: [string, string][] } | null;
-  live: {
-    empty: boolean;
-    rows: { name: string; status: string; stage: string; attempts: string; progressPct: number | null }[];
+  attention: { header: string | null; items: { title: string | null; detail: string | null }[] } | null;
+  throughput: { svg: boolean; circles: number; rows: [string, string][]; hint: string | null } | null;
+  pipeline: {
+    legend: string[]; center: string | null; rows: [string, string][];
+    system: Record<string, string>;
+    gauges: { detail: string | null; aria: string | null }[];
   } | null;
-  health: {
-    keys: string | null; classroom: string | null;
-    gauges: { detail: string; aria: string | null }[];
-  } | null;
+  live: { empty: boolean; rows: { name: string | null; status: string | null; stage: string | null; progress: number | null }[] } | null;
   performance: { bars: string[]; rows: [string, string][] } | null;
-  failedNotice: { text: string; button: string | null } | null;
-  scroll: { extra: number; escapees: { what: string; bottom: number }[] };
+  scroll: { extra: number; escapees: { what: string; bottom: number }[]; topbarTop: number | null };
 }
 
 const SNAPSHOT = String.raw`(() => {
   const text = (el) => (el ? (el.textContent || "").trim() : null);
-  const cardFor = (needle) => [...document.querySelectorAll(".main-inner .card")]
-    .find((c) => ((c.querySelector("h3") || {}).innerText || "").includes(needle)) || null;
-  const tableRows = (root) => [...root.querySelectorAll("table.visually-hidden tr")]
+  const cards = [...document.querySelectorAll(".main-inner section.card")];
+  const cardFor = (needle) => cards.find((c) =>
+    ((c.querySelector(".card-title") || {}).textContent || "").includes(needle)) || null;
+  const tableRows = (root) => [...root.querySelectorAll("table.visually-hidden tbody tr")]
     .map((tr) => [text(tr.querySelector("th")), text(tr.querySelector("td"))]);
 
-  const heroCard = document.querySelector(".hero-band");
-  const hero = {
-    value: text(heroCard && heroCard.querySelector(".hero-value")),
-    stats: heroCard ? [...heroCard.querySelectorAll(".hero-stat")].map((s) => ({
-      label: text(s.querySelector(".l")),
-      n: text(s.querySelector(".n")),
-      color: (s.querySelector(".n") || {}).style ? s.querySelector(".n").style.color || null : null,
-    })) : [],
-  };
+  const metrics = [...document.querySelectorAll(".metric-row .metric")].map((m) => ({
+    label: text(m.querySelector(".metric-label")),
+    value: text(m.querySelector(".metric-value")),
+    scope: text(m.querySelector(".metric-scope")),
+    tone: [...m.classList].find((c) => c.startsWith("tone-")) || null,
+  }));
 
-  const queueCard = cardFor("Marking queue");
-  const queue = queueCard ? {
-    hint: text(queueCard.querySelector("h3 .hint")),
-    rows: [...queueCard.querySelectorAll(".attention-item")].map((row) => {
-      const bar = row.querySelector("[role=progressbar]");
+  const waitingCard = cardFor("Waiting on you");
+  const waiting = waitingCard ? {
+    button: text(waitingCard.querySelector("button")),
+    rows: [...waitingCard.querySelectorAll("tbody tr")].map((tr) => {
+      const bar = tr.querySelector("[role=progressbar]");
       return {
-        text: (row.innerText || "").replace(/\s+/g, " ").trim(),
-        badges: [...row.querySelectorAll(".badge")].map((b) => text(b)),
-        progressPct: bar ? Number(bar.getAttribute("aria-valuenow")) : null,
+        name: text(tr.querySelector(".cell-strong")),
+        progress: bar ? Number(bar.getAttribute("aria-valuenow")) : null,
+        outstanding: text(tr.querySelector("td.num")),
       };
     }),
   } : null;
 
-  const attentionCard = cardFor("What needs my attention?");
+  const attentionCard = cardFor("Needs your attention");
   const attention = attentionCard ? {
     header: text(attentionCard.querySelector(".small.muted")),
     items: [...attentionCard.querySelectorAll(".attention-item")].map((i) => ({
@@ -130,67 +120,54 @@ const SNAPSHOT = String.raw`(() => {
     svg: !!throughputCard.querySelector("svg.chart-svg"),
     circles: throughputCard.querySelectorAll("svg.chart-svg circle").length,
     rows: tableRows(throughputCard),
+    hint: text(throughputCard.querySelector(".chart-title .hint")),
   } : null;
 
-  const pipelineCard = cardFor("Pipeline right now");
-  const pipeline = pipelineCard ? {
-    legend: [...pipelineCard.querySelectorAll(".chart-legend .key")].map((k) => text(k)),
+  const systemCard = cardFor("System");
+  const donut = systemCard
+    ? [...systemCard.querySelectorAll(".chart-card")].find((c) =>
+        ((c.querySelector(".chart-title") || {}).textContent || "").startsWith("Job states")) || null
+    : null;
+  const pipeline = systemCard ? {
+    legend: donut ? [...donut.querySelectorAll(".chart-legend .key")].map((k) => text(k)) : [],
     center: (() => {
-      const svg = pipelineCard.querySelector("svg.chart-svg");
+      const svg = donut && donut.querySelector("svg.chart-svg");
       if (!svg) return null;
-      const label = [...svg.querySelectorAll("text")].map((t) => text(t))
-        .find((t) => t !== null && /^[0-9]+$/.test(t));
-      return label === undefined ? null : label;
+      return [...svg.querySelectorAll("text")].map((t) => text(t))
+        .find((t) => t !== null && /^[0-9]+$/.test(t)) ?? null;
     })(),
-    rows: tableRows(pipelineCard),
+    rows: donut ? tableRows(donut) : [],
+    system: Object.fromEntries([...systemCard.querySelectorAll(".kv")].map((row) => [
+      text(row.querySelector(".k")), text(row.querySelector(".v")),
+    ])),
+    gauges: [...systemCard.querySelectorAll(".chart-card")]
+      .filter((c) => c.querySelector(".progress[role=img]"))
+      .map((c) => ({
+        detail: text(c.querySelector(".faint")),
+        aria: c.querySelector(".progress[role=img]").getAttribute("aria-label"),
+      })),
   } : null;
 
-  const liveCard = cardFor("Live job activity");
+  const liveCard = cardFor("Running now");
   const live = liveCard ? {
     empty: !!liveCard.querySelector(".empty"),
-    rows: [...liveCard.querySelectorAll(".card > .stack > .stack")].map((row) => {
+    rows: [...liveCard.querySelectorAll(":scope > .stack > .stack")].map((row) => {
       const bar = row.querySelector("[role=progressbar]");
       const lines = row.querySelectorAll(".row");
       const foot = lines.length ? lines[lines.length - 1] : null;
       return {
         name: text(lines.length ? lines[0].querySelector("span") : null),
-        status: text(row.querySelector(".badge")),
+        status: text(row.querySelector(".badge-text")),
         stage: text(foot && foot.children[0]),
-        attempts: text(foot && foot.children[1]),
-        progressPct: bar ? Number(bar.getAttribute("aria-valuenow")) : null,
+        progress: bar ? Number(bar.getAttribute("aria-valuenow")) : null,
       };
     }),
   } : null;
 
-  const healthCard = cardFor("System health");
-  const statValue = (label) => {
-    if (!healthCard) return null;
-    // textContent, not innerText: the label is upper-cased by CSS.
-    const stat = [...healthCard.querySelectorAll(".stat")].find((s) =>
-      text(s.querySelector(".label")) === label);
-    if (!stat) return null;
-    const badge = stat.querySelector(".badge");
-    return text(badge) || text(stat.querySelector(".value"));
-  };
-  const health = healthCard ? {
-    keys: statValue("AI keys healthy"),
-    classroom: statValue("Classroom"),
-    gauges: [...healthCard.querySelectorAll(".chart-card")].map((c) => ({
-      detail: text(c.querySelector(".faint")),
-      aria: c.querySelector("[role=img]") ? c.querySelector("[role=img]").getAttribute("aria-label") : null,
-    })),
-  } : null;
-
-  const perfCard = cardFor("Class performance");
+  const perfCard = cardFor("Class averages");
   const performance = perfCard ? {
-    bars: [...perfCard.querySelectorAll("svg.chart-svg rect")].map((r) => text(r.querySelector("title"))),
+    bars: [...perfCard.querySelectorAll("svg.chart-svg rect title")].map((t) => text(t)),
     rows: tableRows(perfCard),
-  } : null;
-
-  const notice = liveCard ? liveCard.querySelector(".notice.err") : null;
-  const failedNotice = notice ? {
-    text: (notice.innerText || "").replace(/\s+/g, " ").trim(),
-    button: text(notice.querySelector("button")),
   } : null;
 
   const se = document.scrollingElement;
@@ -200,20 +177,23 @@ const SNAPSHOT = String.raw`(() => {
     const cs = getComputedStyle(el);
     if (cs.position !== "absolute" && cs.position !== "fixed") return;
     const op = el.offsetParent;
-    if (op && op !== document.body) return;      // still clipped by the shell
+    if (op && op !== document.body) return;
     const box = el.getBoundingClientRect();
     if (box.bottom > shellHeight + 1 || box.right > se.clientWidth + 1) {
       escapees.push({ what: el.tagName + "." + String(el.className || "").slice(0, 32), bottom: Math.round(box.bottom) });
     }
   });
+  const topbar = document.querySelector(".topbar");
 
   return {
-    hero, queue, attention, throughput, pipeline, live, health, performance, failedNotice,
-    scroll: { extra: se.scrollHeight - shellHeight, escapees },
+    metrics, waiting, attention, throughput, pipeline, live, performance,
+    scroll: {
+      extra: se.scrollHeight - shellHeight,
+      escapees,
+      topbarTop: topbar ? Math.round(topbar.getBoundingClientRect().top) : null,
+    },
   };
 })()`;
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function getJson<T>(base: string, path: string): Promise<T> {
   const res = await fetch(base + path, { signal: AbortSignal.timeout(15_000) });
@@ -221,21 +201,15 @@ async function getJson<T>(base: string, path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** Filters the same rule the component uses, so the DOM can be compared. */
 const outstanding = (a: AssignmentRow) =>
   Math.max(0, a.submitted - a.checked) + a.needs_review + a.failed + a.processing;
 
-const expectedBadges = (a: AssignmentRow) => [
-  a.processing > 0 ? `${a.processing} processing` : null,
-  a.failed > 0 ? `${a.failed} failed` : null,
-  a.needs_review > 0 ? `${a.needs_review} review` : null,
-  Math.max(0, a.submitted - a.checked) > 0 ? `${Math.max(0, a.submitted - a.checked)} to mark` : null,
-].filter((b): b is string => b !== null);
+const rank = (a: AssignmentRow) =>
+  (a.processing > 0 ? 0 : 1) * 1000 + (a.failed + a.needs_review) * 10 +
+  Math.max(0, a.submitted - a.checked);
 
 const executable = chromiumPath();
 const runtime = fixtureRuntime();
-// `false` (not null): Node's runner reads a null skip option as "skip" and
-// would report a fully executed test as skipped.
 const skipReason: string | false = !executable
   ? "no Chrome/Chromium/Edge binary found (set CHROME_PATH to enable)"
   : runtime.reason ?? false;
@@ -244,13 +218,14 @@ test("the populated Dashboard renders every card's real data", { skip: skipReaso
   const app = await startDashboardApp();
   const browser = await launchBrowser(executable as string);
   try {
-    const [dash, assignmentsPayload, activity, jobsPayload, usage, attention] = await Promise.all([
+    const [dash, assignmentsPayload, activity, jobsPayload, usage, attention, review] = await Promise.all([
       getJson<DashboardPayload>(app.url, "/api/dashboard"),
       getJson<{ assignments: AssignmentRow[] }>(app.url, "/api/assignments"),
       getJson<ActivityPayload>(app.url, "/api/analytics/activity?days=30"),
       getJson<{ jobs: JobRow[] }>(app.url, "/api/jobs?limit=20"),
       getJson<UsagePayload>(app.url, "/api/usage"),
       getJson<AttentionPayload>(app.url, "/api/attention"),
+      getJson<{ total: number }>(app.url, "/api/review?limit=1"),
     ]);
     const assignments = assignmentsPayload.assignments;
     const active = jobsPayload.jobs.filter((j) => ACTIVE_STATUSES.includes(j.status));
@@ -275,13 +250,13 @@ test("the populated Dashboard renders every card's real data", { skip: skipReaso
 
     // Every lazy card must have resolved (skeletons gone) before measuring.
     await page.waitFor(
-      "!!document.querySelector('.hero-band') && !document.querySelector('.skeleton') "
+      "!!document.querySelector('.metric-row') && !document.querySelector('.skeleton') "
       + "&& !document.querySelector('.skeleton-lines') && !!document.querySelector('.chart-svg')",
       30_000, "the dashboard cards to load");
-    // The hero number counts up on first paint: wait for it to land on the API value.
+    // The corrected-today number counts up on first paint: wait for the API value.
     await page.waitFor(
-      `(document.querySelector('.hero-value') || {}).textContent === "${dash.corrections_today}"`,
-      15_000, "the hero counter to settle");
+      `[...document.querySelectorAll('.metric-value')][0].textContent === "${dash.corrections_today}"`,
+      15_000, "the corrected-today counter to settle");
     if (active.length > 0) {
       await page.waitFor(
         "!!document.querySelector('[role=progressbar][aria-label^=\"Correcting\"]')",
@@ -289,77 +264,93 @@ test("the populated Dashboard renders every card's real data", { skip: skipReaso
     }
     const snap = await page.evaluate<Snapshot>(SNAPSHOT);
 
-    await t.test("hero band shows the live counters", () => {
-      assert.equal(snap.hero.value, String(dash.corrections_today),
-        "the hero value is the API's corrections-today");
-      const expected = [
-        ["Pending", dash.pending],
-        ["Processing", dash.processing],
-        ["Completed", dash.completed],
-        ["Failed", dash.failed],
-      ] as const;
-      assert.deepEqual(snap.hero.stats.map((s) => [s.label, Number(s.n)]), expected.map((e) => [e[0], e[1]]),
-        "the hero stats match /api/dashboard");
-      // Both conditional colour branches only render when the count is non-zero.
+    await t.test("the metric strip is the day's real aggregates", () => {
       assert.ok(dash.processing > 0 && dash.failed > 0,
-        "the fixture must exercise the processing/failed colour branches");
-      assert.equal(snap.hero.stats[1].color, "var(--accent)", "processing is highlighted");
-      assert.equal(snap.hero.stats[3].color, "var(--err)", "failures are shown in the error tone");
+        "the fixture must exercise the running/failed tones");
+      const checked = assignments.reduce((n, a) => n + a.checked, 0);
+      const submitted = assignments.reduce((n, a) => n + a.submitted, 0);
+      const weighted = assignments.reduce((n, a) => n + (a.average ?? 0) * a.checked, 0);
+      const expected = [
+        ["Corrected today", String(dash.corrections_today), "finished correction jobs"],
+        ["Submitted, not marked", String(Math.max(0, submitted - checked)), "from Classroom"],
+        ["Waiting on a decision", String(review.total), "review queue"],
+        ["Failed", String(dash.failed), "needs a retry"],
+        ["Class average", checked > 0 ? `${Math.round(weighted / checked)}%` : "—",
+          checked > 0 ? `${checked} marked` : "nothing marked yet"],
+      ];
+      assert.deepEqual(snap.metrics.map((m) => [m.label, m.value, m.scope]), expected,
+        "every metric is its API field, with its provenance");
+      assert.equal(snap.metrics[0].tone, "tone-ok", "finished work is marked as good");
+      assert.equal(snap.metrics[2].tone, "tone-warn", "a non-empty review queue is highlighted");
+      assert.equal(snap.metrics[3].tone, "tone-mark", "failures are shown in the mark tone");
     });
 
-    await t.test("marking queue lists exactly the work outstanding, with its badges", () => {
-      assert.ok(snap.queue, "the marking queue card rendered");
-      const rows = assignments.filter((a) => outstanding(a) > 0).slice(0, 6);
+    await t.test("waiting on you lists exactly the outstanding work, most urgent first", () => {
+      assert.ok(snap.waiting, "the waiting card rendered");
+      const rows = assignments.filter((a) => outstanding(a) > 0)
+        .sort((a, b) => rank(a) - rank(b)).slice(0, 6);
       assert.ok(rows.length > 0, "the fixture must leave work outstanding");
-      assert.equal(snap.queue!.rows.length, rows.length,
-        `queue rows ${snap.queue!.rows.length} != outstanding assignments ${rows.length}`);
-      assert.equal(snap.queue!.hint, `${rows.length} assignment(s) with work outstanding`);
-      for (const a of rows) {
-        const row = snap.queue!.rows.find((r) => r.text.includes(a.title));
-        assert.ok(row, `a queue row for "${a.title}"`);
-        assert.deepEqual(row!.badges, expectedBadges(a),
-          `badges on the "${a.title}" row (review/failed/to mark)`);
-        assert.notEqual(row!.progressPct, null, `a progress bar on the "${a.title}" row`);
-      }
-      // An assignment with nothing outstanding must not be listed at all.
+      assert.equal(snap.waiting!.rows.length, rows.length,
+        `queue rows ${snap.waiting!.rows.length} != outstanding assignments ${rows.length}`);
+      assert.equal(snap.waiting!.button,
+        rows.length > 0 ? `All ${rows.length} assignments` : "All assignments",
+        "the card's link counts the same queue");
+      rows.forEach((a, i) => {
+        const row = snap.waiting!.rows[i];
+        assert.equal(row.name, a.title, `row ${i} is the most urgent outstanding assignment`);
+        const pct = a.students_total > 0
+          ? Math.round(Math.min(1, a.checked / a.students_total) * 100) : 0;
+        assert.equal(row.progress, pct, `the progress bar on "${a.title}"`);
+        const todo = Math.max(0, a.submitted - a.checked);
+        for (const fragment of [
+          a.processing > 0 ? `${a.processing} running` : null,
+          a.needs_review > 0 ? `${a.needs_review} to decide` : null,
+          a.failed > 0 ? `${a.failed} failed` : null,
+          todo > 0 ? `${todo} to mark` : null,
+        ]) {
+          if (fragment) assert.ok(row.outstanding?.includes(fragment),
+            `"${a.title}" shows ${fragment} (saw "${row.outstanding}")`);
+        }
+      });
+      // Nothing outstanding must not be listed at all.
       for (const a of assignments.filter((x) => outstanding(x) === 0)) {
-        assert.ok(!snap.queue!.rows.some((r) => r.text.includes(a.title)),
+        assert.ok(!snap.waiting!.rows.some((r) => r.name === a.title),
           `"${a.title}" has nothing outstanding and must be absent from the queue`);
       }
     });
 
     await t.test("the attention card lists the real feed", () => {
       assert.ok(snap.attention, "the attention card rendered");
-      assert.ok(attention.total > 0, "the fixture must raise attention items");
-      assert.equal(snap.attention!.items.length, attention.total,
+      assert.ok(attention.items.length > 0, "the fixture must raise attention items");
+      assert.equal(snap.attention!.items.length, attention.items.length,
         "one row per /api/attention item");
       assert.equal(snap.attention!.header,
-        `${attention.total} item${attention.total === 1 ? "" : "s"} need you`);
+        `${attention.items.length} item${attention.items.length === 1 ? "" : "s"} need you`);
       for (const item of snap.attention!.items) {
         assert.ok(item.title && item.title.length > 0, "every attention row has a title");
-        assert.ok(item.detail && item.detail.length > 0, "every attention row has a detail line");
       }
     });
 
     await t.test("throughput chart draws the API's window", () => {
       assert.ok(snap.throughput, "the throughput card rendered");
       assert.equal(snap.throughput!.svg, true, "the line chart drew an svg");
+      assert.equal(snap.throughput!.hint, `${activity.totals.results} in 30 days`,
+        "the chart hint names the API total");
       assert.deepEqual(snap.throughput!.rows.map((r) => Number(r[1])),
         activity.days.map((d) => d.results),
         "the hidden data table carries one row per day, in order");
       assert.equal(snap.throughput!.circles, activity.days.length,
         "one point per day on the line");
-      assert.equal(
-        snap.throughput!.rows.reduce((n, r) => n + Number(r[1]), 0), activity.totals.results,
-        "the charted total is the API's total");
+      assert.equal(snap.throughput!.rows.reduce((n, r) => n + Number(r[1]), 0),
+        activity.totals.results, "the charted total is the API's total");
       assert.ok(activity.days.filter((d) => d.results > 0).length >= 3,
         "the fixture must spread results over several days");
     });
 
-    await t.test("pipeline donut matches the job counts", () => {
-      assert.ok(snap.pipeline, "the pipeline card rendered");
+    await t.test("the job-state donut matches /api/dashboard", () => {
+      assert.ok(snap.pipeline, "the system card rendered");
       const expected = Object.entries(dash.jobs).filter(([, n]) => n > 0)
-        .map(([status, n]) => [status, String(n)] as [string, string]);
+        .map(([status, n]) => [status.replace(/_/g, " "), String(n)] as [string, string]);
       assert.deepEqual(snap.pipeline!.rows, expected, "hidden table = /api/dashboard jobs map");
       assert.deepEqual(snap.pipeline!.legend,
         expected.map(([status, n]) => `${status} (${n})`), "one legend key per job state");
@@ -367,56 +358,52 @@ test("the populated Dashboard renders every card's real data", { skip: skipReaso
         String(expected.reduce((n, [, v]) => n + Number(v), 0)), "the donut's centre is the total");
     });
 
-    await t.test("live job activity lists the in-flight jobs", () => {
-      assert.ok(snap.live, "the live activity card rendered");
-      const expected = active.slice(0, 5);
+    await t.test("live work lists the in-flight jobs", () => {
+      assert.ok(snap.live, "the running-now card rendered");
+      const expected = active.slice(0, 4);
       assert.equal(snap.live!.empty, false, "in-flight work must not show the empty state");
       assert.equal(snap.live!.rows.length, expected.length, "one row per active job");
       for (const job of expected) {
-        const row = snap.live!.rows.find((r) => r.name === (job.student_name ?? "Student"));
-        assert.ok(row, `a live row for ${job.student_name}`);
+        const name = job.display_name?.trim() || job.student_name?.trim() || "Student";
+        const row = snap.live!.rows.find((r) => r.name === name);
+        assert.ok(row, `a live row for ${name}`);
         assert.equal(row!.status, job.status.replace(/_/g, " "), "the status badge");
-        assert.equal(row!.stage, job.stage_detail, "the stage detail line");
-        assert.ok(row!.attempts.includes(`attempt ${job.attempts}/${job.max_attempts}`),
-          `the attempt counter (saw "${row!.attempts}")`);
-        assert.ok(row!.attempts.includes("·"), "the elapsed-to-attempt separator is present");
-        assert.equal(row!.progressPct, Math.round(job.progress * 100), "the progress bar value");
+        assert.equal(row!.stage, job.stage_detail ?? job.status.replace(/_/g, " "),
+          "the stage detail line");
+        assert.equal(row!.progress, Math.round(job.progress * 100), "the progress bar value");
       }
     });
 
-    await t.test("system health shows the gauges and key health", () => {
-      assert.ok(snap.health, "the system health card rendered");
-      assert.equal(snap.health!.keys, `${dash.api_health.healthy}/${dash.api_health.total}`,
-        "the AI key badge counts the configured keys");
+    await t.test("system health shows the real flags, totals and gauges", () => {
+      assert.ok(snap.pipeline, "the system card rendered");
+      assert.equal(snap.pipeline!.system["Pipeline"],
+        `${dash.pending} queued · ${dash.processing} running`, "the queue/running totals");
+      assert.equal(snap.pipeline!.system["AI keys"],
+        dash.api_health.has_keys ? `${dash.api_health.healthy}/${dash.api_health.total} healthy` : "not added",
+        "the AI key health");
       const classroom = !dash.classroom.configured ? "Not set up"
         : dash.classroom.connected ? "Connected" : "Offline";
-      assert.equal(snap.health!.classroom, classroom, "the Classroom badge matches the API flags");
+      assert.equal(snap.pipeline!.system["Google Classroom"], classroom,
+        "the Classroom badge matches the API flags");
       const mb = (bytes: number) => (bytes / 1_048_576).toFixed(1);
-      assert.deepEqual(snap.health!.gauges.map((g) => g.detail), [
-        `${mb(usage.hour.total)} / ${usage.limits.hourly_mb} MB`,
-        `${mb(usage.day.total)} / ${usage.limits.daily_mb} MB`,
+      const limit = (value: number, cap: number) => cap > 0 ? `${value} / ${cap} MB` : "no limit";
+      assert.deepEqual(snap.pipeline!.gauges.map((g) => g.detail), [
+        limit(mb(usage.hour.total), usage.limits.hourly_mb),
+        limit(mb(usage.day.total), usage.limits.daily_mb),
       ], "both usage gauges show used vs cap");
-      assert.ok(snap.health!.gauges.every((g) => g.aria && g.aria.includes(" of ")),
+      assert.ok(snap.pipeline!.gauges.every((g) => g.aria && g.aria.includes(" of ")),
         "each gauge is announced with its numbers");
       assert.ok(usage.hour.total > 0, "the fixture must meter some traffic");
     });
 
-    await t.test("class performance bars match the assignment averages", () => {
-      assert.ok(snap.performance, "the class performance card rendered");
+    await t.test("class-average bars match the assignment averages", () => {
+      assert.ok(snap.performance, "the class-averages card rendered");
       const rated = assignments.filter((a) => a.checked > 0).slice(0, 8);
       assert.ok(rated.length > 0, "the fixture must have corrected work");
       assert.deepEqual(snap.performance!.bars.map((b) => b.split(": ").pop()),
         rated.map((a) => `${Math.round(a.average ?? 0)}%`), "one bar per corrected assignment");
       assert.deepEqual(snap.performance!.rows.map((r) => r[1]),
         rated.map((a) => `${Math.round(a.average ?? 0)}%`), "the hidden table carries the averages");
-    });
-
-    await t.test("the failed-corrections notice offers the failure route", () => {
-      const failed = assignments.reduce((n, a) => n + a.failed, 0);
-      if (failed === 0) { assert.equal(snap.failedNotice, null, "no notice without failures"); return; }
-      assert.ok(snap.failedNotice, "failures must raise the notice");
-      assert.match(snap.failedNotice!.text, new RegExp(`${failed} correction\\(s\\) failed`));
-      assert.equal(snap.failedNotice!.button, "Review failures");
     });
 
     await t.test("the populated page still cannot scroll the whole site", async () => {
@@ -431,20 +418,6 @@ test("the populated Dashboard renders every card's real data", { skip: skipReaso
         + " topbarTop: bar ? Math.round(bar.getBoundingClientRect().top) : null }; })()");
       assert.equal(scrolled.top, 0, "the window must not scroll at all");
       assert.equal(scrolled.topbarTop, 0, "the topbar stays pinned");
-    });
-
-    await t.test("the failure button navigates to the task manager", async () => {
-      if (assignments.reduce((n, a) => n + a.failed, 0) === 0) return;
-      const clicked = await page.evaluate<boolean>(
-        "(() => { const card = [...document.querySelectorAll('.main-inner .card')]"
-        + ".find((c) => ((c.querySelector('h3') || {}).innerText || '').includes('Live job activity'));"
-        + " const btn = card && [...card.querySelectorAll('button')]"
-        + ".find((b) => b.innerText.trim() === 'Review failures');"
-        + " if (!btn) return false; btn.click(); return true; })()");
-      assert.ok(clicked, "the Review failures button exists");
-      await sleep(400);
-      assert.equal(await page.evaluate<string>("location.hash"), "#/tasks",
-        "the button routes to the task manager");
     });
   } finally {
     await browser.close();

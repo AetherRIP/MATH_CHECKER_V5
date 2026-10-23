@@ -317,6 +317,7 @@ export default function StudentsPage({
     return (
       <>
         <PageHeader
+          kicker="Students · Profile"
           title={p?.display_name ?? "Student"}
           sub={p && p.nickname && p.official_name
             ? `${classLabel(p)} · official Classroom name: ${p.official_name}`
@@ -979,7 +980,7 @@ export default function StudentsPage({
   /* ------------------------------------------------------------- list view */
   return (
     <>
-      <PageHeader title="Students"
+      <PageHeader kicker="Classes · Students" title="Students"
         sub="Personal dashboards built from Google Classroom truth plus this app's corrections — nothing inferred." />
 
       {error && <div className="notice err" style={{ marginBottom: 12 }}>⚠ {error}</div>}

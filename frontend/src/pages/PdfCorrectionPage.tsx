@@ -1,19 +1,12 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
-  correctionPipelines, largePdfCancel, largePdfJob, largePdfJobs,
-  largePdfRetryBatch, largePdfRetryJob, unifiedCorrection,
-  type LargePdfJob, type PipelineInfo, type UnifiedCorrectionResult,
+  unifiedCorrection, type UnifiedCorrectionResult,
 } from "../api";
 import {
-  Badge, Button, Field, Icon, PageHeader, Section, Stamp, useToast,
+  Badge, Button, Field, Icon, PageHeader, Stamp, useToast,
 } from "../components";
 import { friendlyError } from "../errors";
-import { useAdaptivePoll } from "../useAdaptivePoll";
-import { startLargeJobPoll } from "../largePdfPolling";
 import { JobQueue } from "./CorrectionsPage";
-import { LargePdfJobDetail } from "./LargePdfWorkerPage";
-
-type Pipeline = "auto" | "standard" | "large";
 
 function humanBytes(bytes: number): string {
   if (!bytes) return "0 B";
@@ -45,7 +38,7 @@ function FileSlot({ id, label, hint, accept, file, onPick, icon }: {
 
   return (
     <div
-      className={`dropzone ${dragging ? "dragging" : ""}`}
+      className={`dropzone usk-dropzone ${dragging ? "dragging" : ""}`}
       onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => {
@@ -98,64 +91,24 @@ function FileSlot({ id, label, hint, accept, file, onPick, icon }: {
 }
 
 /**
- * ONE correction entry point (§3).
+ * ONE correction entry point.
  *
- * The backend reads the student PDF's real page count and routes to the
- * EXISTING single-pass engine or the EXISTING large-PDF worker. Advanced
- * options exposes the same choice manually, and the response always names the
- * pipeline that actually ran. Nothing here marks anything itself.
+ * The student PDF and the official mark scheme go to the standard
+ * single-pass correction engine. Nothing here marks anything itself.
  */
 export default function PdfCorrectionPage({ onOpenResult }: {
   onOpenResult?: (resultId: string) => void;
 }) {
   const toast = useToast();
-  const [pipelines, setPipelines] = useState<PipelineInfo | null>(null);
   const [studentName, setStudentName] = useState("");
   const [submission, setSubmission] = useState<File | null>(null);
   const [markScheme, setMarkScheme] = useState<File | null>(null);
-  const [pipeline, setPipeline] = useState<Pipeline>("auto");
-  const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ReturnType<typeof friendlyError> | null>(null);
   const [outcome, setOutcome] = useState<UnifiedCorrectionResult | null>(null);
-  const [largeJob, setLargeJob] = useState<LargePdfJob | null>(null);
   const [queueKey, setQueueKey] = useState(0);
   const subId = useId();
   const msId = useId();
-
-  useEffect(() => {
-    correctionPipelines().then(setPipelines).catch(() => {});
-  }, []);
-
-  // Follow a batched job with the real per-batch rows from the backend.
-  const largeJobId = outcome?.large_pdf_job_id ?? null;
-  const [largePollToken, setLargePollToken] = useState(0);
-
-  useEffect(() => {
-    if (!largeJobId) { setLargeJob(null); return; }
-    return startLargeJobPoll({
-      fetchJob: () => largePdfJob(largeJobId),
-      onJob: setLargeJob,
-    });
-  }, [largeJobId, largePollToken]);
-
-  // The queued summary cards come from the real listing, so the page can say
-  // how many batched documents are still running.
-  const [largeListing, setLargeListing] = useState<{ counts: Record<string, number> } | null>(null);
-  const loadLargeListing = useCallback(() => largePdfJobs()
-    .then((l) => setLargeListing({ counts: l.counts as unknown as Record<string, number> }))
-    .catch(() => {}), []);
-  useEffect(() => { void loadLargeListing(); }, [loadLargeListing]);
-
-  const largeActive = useMemo(() => {
-    const c = largeListing?.counts ?? {};
-    return (c.queued ?? 0) + (c.ready ?? 0) + (c.processing ?? 0)
-      + (c.inspecting ?? 0) + (c.planning ?? 0);
-  }, [largeListing]);
-
-  // The queue summary only needs to move while the batched worker is busy.
-  useAdaptivePoll(loadLargeListing,
-    { active: largeActive > 0, fast: 5000, idle: 30_000, immediate: false });
 
   const ready = Boolean(submission && markScheme);
 
@@ -168,19 +121,18 @@ export default function PdfCorrectionPage({ onOpenResult }: {
       });
       return;
     }
-    setBusy(true); setError(null); setOutcome(null); setLargeJob(null);
+    setBusy(true); setError(null); setOutcome(null);
     try {
       const form = new FormData();
       form.append("submission", submission);
       form.append("mark_scheme", markScheme);
       form.append("student_name",
         studentName.trim() || submission.name.replace(/\.[^.]+$/, ""));
-      form.append("pipeline", pipeline);
       const result = await unifiedCorrection(form);
       setOutcome(result);
-      toast("ok", result.applied_pipeline === "large"
-        ? `Queued for batched correction — ${result.page_count} pages in ${result.job.batch_count ?? "?"} batch(es).`
-        : "Queued for the single-pass pipeline — progress appears below.");
+      toast("ok", result.page_count
+        ? `Queued for correction — ${result.page_count} pages. Progress appears below.`
+        : "Queued for correction — progress appears below.");
       setStudentName("");
       setSubmission(null); setMarkScheme(null);
       setQueueKey((n) => n + 1);
@@ -191,51 +143,26 @@ export default function PdfCorrectionPage({ onOpenResult }: {
     }
   }
 
-  async function act(label: string, fn: () => Promise<LargePdfJob>) {
-    setBusy(true);
-    try {
-      setLargeJob(await fn());
-      setLargePollToken((t) => t + 1); // resume polling if the job moved
-      toast("ok", label);
-    } catch (e) {
-      toast("err", friendlyError(e).summary);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const limit = pipelines?.threshold_pages;
-
   return (
     <>
       <PageHeader
-        title="Correct a PDF"
+        kicker="Correct · New correction"
+        title="Correct a paper"
         sub="Upload the student's work and the official mark scheme. Page counts, question matching and marking all happen on your machine."
         meta={
           <>
-            <span>{limit ? `up to ${limit} pages in one pass` : "page count checked on upload"}</span>
+            <span>page count read on upload</span>
             <span aria-hidden="true">·</span>
             <span>PDF, PNG or JPG</span>
-            {largeActive > 0 && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>{largeActive} batched document{largeActive === 1 ? "" : "s"} in progress</span>
-              </>
-            )}
           </>
         }
-      >
-        {largeActive > 0 && (
-          <Button variant="ghost" icon="cpu" onClick={() => { window.location.hash = "#/largepdf"; }}>
-            View batched jobs
-          </Button>
-        )}
-      </PageHeader>
+      />
 
       <div className="upload-layout">
         <section className="card" aria-labelledby="upload-heading">
           <div className="row between wrap" style={{ marginBottom: "var(--s4)" }}>
-            <h2 id="upload-heading" style={{ margin: 0, fontSize: "var(--fs-md)" }}>
+            <h2 id="upload-heading" className="card-title">
+              <span className="step-n" aria-hidden="true">1</span>
               The two documents
             </h2>
             <Stamp>{ready ? "Both chosen" : "Two files needed"}</Stamp>
@@ -271,63 +198,12 @@ export default function PdfCorrectionPage({ onOpenResult }: {
             />
           </div>
 
-          <div style={{ marginTop: "var(--s4)" }}>
-            <button className="btn ghost sm" type="button"
-              aria-expanded={advanced}
-              onClick={() => setAdvanced((v) => !v)}>
-              <Icon name={advanced ? "chevron-down" : "chevron-right"} size={14} />
-              Advanced: choose the pipeline
-              {pipeline !== "auto" && (
-                <Badge tone="warn">{pipeline === "large" ? "batched" : "single pass"} forced</Badge>
-              )}
-            </button>
-
-            {advanced && (
-              <div style={{ marginTop: "var(--s2)" }}>
-                <div className="stack" style={{ gap: 6 }}>
-                  {(pipelines?.options ?? []).map((o) => (
-                    <label key={o.value} className={`choice ${pipeline === o.value ? "checked" : ""}`}>
-                      <input type="radio" name="pipeline" value={o.value}
-                        checked={pipeline === o.value}
-                        disabled={o.value === "large" && pipelines?.large_pdf_enabled === false}
-                        onChange={() => setPipeline(o.value as Pipeline)} />
-                      <span className="choice-body">
-                        <span className="choice-title">{o.label}</span>
-                        <span className="choice-detail">
-                          {o.detail}
-                          {o.value === "large" && pipelines?.large_pdf_enabled === false
-                            ? " — currently switched off in Settings." : ""}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <p className="faint small" style={{ margin: "var(--s2) 0 0" }}>
-                  Automatic is the same rule the whole application uses, so every
-                  entry point agrees. Forcing a method changes only which existing
-                  pipeline runs for this upload.
-                </p>
-              </div>
-            )}
-          </div>
-
           {error && (
             <div className="notice err" role="alert" style={{ marginTop: "var(--s4)" }}>
               <Icon name="alert" size={16} />
               <span>
                 <strong>{error.summary}</strong>
                 {error.action && <> {error.action}</>}
-              </span>
-            </div>
-          )}
-
-          {pipelines?.large_pdf_enabled === false && pipeline === "auto" && (
-            <div className="notice warn small" style={{ marginTop: "var(--s4)" }}>
-              <Icon name="info" size={15} />
-              <span>
-                Batched correction is switched off in Settings, so a document over
-                {" "}{pipelines.threshold_pages} pages will be refused until it is
-                switched back on.
               </span>
             </div>
           )}
@@ -340,14 +216,14 @@ export default function PdfCorrectionPage({ onOpenResult }: {
             </span>
             <Button variant="primary" icon="wand" loading={busy}
               disabled={!ready} onClick={submit}>
-              {busy ? "Inspecting…" : "Inspect and correct"}
+              {busy ? "Uploading…" : "Inspect and correct"}
             </Button>
           </div>
         </section>
 
         <aside className="stack" style={{ minWidth: 0 }}>
           <section className="card" aria-labelledby="how-heading">
-            <h2 id="how-heading" style={{ margin: "0 0 var(--s3)", fontSize: "var(--fs-md)" }}>
+            <h2 id="how-heading" className="card-title" style={{ marginBottom: "var(--s3)" }}>
               What happens next
             </h2>
             <ol className="steps">
@@ -355,7 +231,7 @@ export default function PdfCorrectionPage({ onOpenResult }: {
                 <span className="step-n">1</span>
                 <span>
                   <strong>Inspect</strong>
-                  <span className="faint small">The page count and layout are read; the pipeline is chosen.</span>
+                  <span className="faint small">The page count and layout are read.</span>
                 </span>
               </li>
               <li>
@@ -389,23 +265,15 @@ export default function PdfCorrectionPage({ onOpenResult }: {
           {outcome && (
             <section className="card" aria-labelledby="outcome-heading" aria-live="polite">
               <div className="row between" style={{ marginBottom: "var(--s3)" }}>
-                <h2 id="outcome-heading" style={{ margin: 0, fontSize: "var(--fs-md)" }}>
+                <h2 id="outcome-heading" className="card-title">
                   Queued
                 </h2>
-                <Badge tone={outcome.applied_pipeline === "large" ? "info" : "ok"}>
-                  {outcome.applied_pipeline === "large" ? "Batched" : "Single pass"}
-                </Badge>
+                <Badge tone="ok">Single pass</Badge>
               </div>
               <div className="kv">
                 <span className="k">Pages</span>
                 <span className="v mono">{outcome.page_count}</span>
               </div>
-              {outcome.job.batch_count != null && (
-                <div className="kv">
-                  <span className="k">Batches</span>
-                  <span className="v mono">{outcome.job.batch_count}</span>
-                </div>
-              )}
               {outcome.files?.submission && (
                 <div className="kv">
                   <span className="k">File</span>
@@ -428,24 +296,6 @@ export default function PdfCorrectionPage({ onOpenResult }: {
           )}
         </aside>
       </div>
-
-      {largeJob && (
-        <Section title="Batched correction detail" icon="cpu"
-          hint="inspect → plan → mark batches → validate → merge">
-          <LargePdfJobDetail
-            job={largeJob}
-            busy={busy}
-            onClose={() => setLargeJob(null)}
-            onRetryJob={() => act("Job retry started",
-              () => largePdfRetryJob(largeJob.id))}
-            onCancel={() => act("Job cancelled", () => largePdfCancel(largeJob.id))}
-            onRetryBatch={(index) => act(`Retrying batch ${index + 1}…`,
-              () => largePdfRetryBatch(largeJob.id, index))}
-            onOpenResult={(resultId) => onOpenResult?.(resultId)}
-            onRefresh={() => act("Refreshed", () => largePdfJob(largeJob.id))}
-          />
-        </Section>
-      )}
 
       <div style={{ marginTop: "var(--s4)" }}>
         <JobQueue key={queueKey} compact activeJobId={outcome?.job_id ?? null} />

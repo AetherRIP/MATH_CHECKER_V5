@@ -30,6 +30,10 @@ public sealed class ReviewViewModel : PageViewModel
 
     public bool HasSelection => Selected is not null;
 
+    public bool HasItems => Items.Count > 0;
+
+    public bool IsEmpty => Items.Count == 0;
+
     public string Summary
     {
         get => _summary;
@@ -112,5 +116,7 @@ public sealed class ReviewViewModel : PageViewModel
         Summary = review.Total == 0
             ? "Nothing is waiting for review."
             : $"{review.Total} results need a teacher decision.";
+        OnPropertyChanged(nameof(HasItems));
+        OnPropertyChanged(nameof(IsEmpty));
     }
 }

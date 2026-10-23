@@ -50,9 +50,9 @@ Endpoint paths are relative to `/api`. "Desktop view" names the WPF view.
 |---|---|---|---|---|---|
 | Class list + aggregates | `/classes` | SQLite | Reuse | live call | implemented |
 | Class trend analytics | `/analytics/activity`, `/analytics/class/{id}/trend` | SQLite | Reuse | live call | implemented |
-| Student list / profile | `/students`, `/students/{id}` | SQLite | Reuse; native search + class filter | live call + `StudentsPageTests` + UI walkthrough (5 rows) | verified |
+| Student list / profile | `/students`, `/students/{id}` | SQLite + Classroom tracking | Reuse; native roster plus a typed profile (Overview, Assignments, Corrections, Progress, Details), no raw JSON | `StudentProfileTests`, `test_student_profiles.py` (13), live-window profile probe | verified |
 | Global search | `/search` | SQLite | Reuse; one search box + result table | UI walkthrough (12 real matches) | verified |
-| Nickname / class assignment | `/students/{id}/nickname`, `/details`, `/bulk-details` | none | Reuse | live save | implemented |
+| Nickname / class assignment | `/students/{id}/nickname`, `/details`, `/bulk-details` | none | Reuse; validated inline editor on the profile Details tab | live save + probe (`Bee` / `10B` persisted) | verified |
 | Student report | `/students/{id}/report` | report renderer | Reuse | live call | implemented |
 | Assignment list / detail | `/assignments`, `/assignments/{id}` | SQLite | Reuse | live call | implemented |
 | Local assignment create | `/assignments/local` | none | Reuse | live create on demo data | implemented |
@@ -76,14 +76,11 @@ Endpoint paths are relative to `/api`. "Desktop view" names the WPF view.
 | File validation / size limits | `routes_all.py` (50/200 MB, suffixes) | none | Same limits enforced client-side before upload | unit test of validator | implemented |
 | Temp-file cleanup | `engine/service.py:cleanup_job_files`, retention worker | none | Reuse (backend-owned) | not applicable to client | not applicable |
 
-## E. Batched large-PDF worker
+## E. Long documents
 
-| Feature | Current location | Dependencies | Migration strategy | Verification | Status |
-|---|---|---|---|---|---|
-| Job list + config | `/large-pdf/jobs`, `/large-pdf/config` | SQLite | Reuse | live call | implemented |
-| Create / process | `/large-pdf/jobs`, `/process` | PyMuPDF + Gemini | Reuse | live create on demo data | implemented |
-| Batch retry / job retry / cancel | `/large-pdf/jobs/{id}/...` | none | Reuse | live call | implemented |
-| Per-batch inspect/plan/merge detail | `large_pdf/runner.py`, `/large-pdf/jobs/{id}` | none | Reuse (display only) | live call | implemented |
+The dedicated batched worker was removed. Every submission, however many pages
+it has, uses the standard single-pass pipeline and the normal job list, so there
+is no separate configuration, job view or retry surface to migrate.
 
 ## F. Automation
 

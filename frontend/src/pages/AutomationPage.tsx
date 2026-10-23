@@ -708,7 +708,7 @@ export default function AutomationPage() {
 
   return (
     <div className="stack">
-      <PageHeader title="Automatic Correction" icon="wand"
+      <PageHeader kicker="Correct · Automatic" title="Automatic Correction" icon="wand"
         sub="Student submits → detected → corrected → report attached → grade 1–9 → returned. No teacher interaction needed.">
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           <Button variant="secondary" icon="refresh" onClick={refreshStatus}
@@ -1199,18 +1199,10 @@ export default function AutomationPage() {
                 <div className="detail-kv"><span>Updated</span>
                   <span>{timeAgo(detail.updated_at)}</span></div>
               </div>
-              {/* §8: which pipeline is doing the work, plus the real timing.
-                  The duration is only shown once the job actually finished. */}
+              {/* Real workflow timing. The duration is only shown once the job
+                  actually finished. */}
               <div className="detail-block">
-                <h4>Pipeline &amp; timing</h4>
-                <div className="detail-kv"><span>Pipeline</span>
-                  <span>
-                    {detail.pipeline
-                      ? <Badge tone={detail.pipeline === "batched" ? "info" : "mute"}>
-                          {detail.pipeline_label ?? detail.pipeline}
-                        </Badge>
-                      : <span className="faint">not assigned yet</span>}
-                  </span></div>
+                <h4>Timing</h4>
                 <div className="detail-kv"><span>Stage</span>
                   <span>{detail.status_label}
                     {pipeline.length > 0 && (

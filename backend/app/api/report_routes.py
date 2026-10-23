@@ -26,6 +26,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from .. import db
+from ..downloads import attachment_header
 from ..classroom import submissions as cs
 from ..classroom.auth import account_email, auth_state
 from ..errors import AppError
@@ -1190,7 +1191,7 @@ def export_assignment_report(coursework_id: str, format: str = "pdf"):
     return StreamingResponse(
         buf, media_type="application/pdf",
         headers={"Content-Disposition":
-                 f'attachment; filename="assignment_{title or coursework_id}_{stamp}.pdf"'})
+                 attachment_header(f"assignment_{title or coursework_id}_{stamp}.pdf")})
 
 
 @router.get("/reports/class/{course_id}/export")
@@ -1208,7 +1209,7 @@ def export_class_report(course_id: str, format: str = "pdf"):
     return StreamingResponse(
         buf, media_type="application/pdf",
         headers={"Content-Disposition":
-                 f'attachment; filename="class_{title or course_id}_{stamp}.pdf"'})
+                 attachment_header(f"class_{title or course_id}_{stamp}.pdf")})
 
 
 # ---------------------------------------------------------------- class-report
@@ -1362,7 +1363,7 @@ def class_report_export(class_id: str, assignments: str = "all",
     return StreamingResponse(
         buf, media_type="application/pdf",
         headers={"Content-Disposition":
-                 f'attachment; filename="class_report_{cname or class_id}_{stamp}.pdf"'})
+                 attachment_header(f"class_report_{cname or class_id}_{stamp}.pdf")})
 
 
 # ------------------------------------------------------- unified workspace
@@ -1697,4 +1698,4 @@ def reports_build_export(report_type: str = "class", assignments: str = "all",
     return StreamingResponse(
         buf, media_type="application/pdf",
         headers={"Content-Disposition":
-                 f'attachment; filename="{rtype}_{slug}_{stamp}.pdf"'})
+                 attachment_header(f"{rtype}_{slug}_{stamp}.pdf")})

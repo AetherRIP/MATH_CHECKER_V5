@@ -5,9 +5,7 @@ Measures, for a STUDENT submission and a MARK SCHEME separately:
 * original and optimized size (bytes) and the reduction;
 * compression duration (cold = first run, warm = cached retry);
 * page count before/after, integrity result, pixels changed;
-* text-extraction and page-rendering time for the copy that would be used;
-* the Large PDF batch plan for the original vs the optimized copy (page count,
-  batch count, scheme questions) so question coverage can be compared.
+* text-extraction and page-rendering time for the copy that would be used.
 
 The documents are synthetic but representative: 300 dpi photo-like scans with
 faint short strokes, dots and tiny marks (handwriting/mark codes), and digitally
@@ -156,24 +154,6 @@ def _ink(path: str) -> int:
     return sum(1 for value in samples[::5] if value < 200)
 
 
-def _plan(student: str, scheme: str) -> dict:
-    """The deterministic Large PDF plan + the question evidence it used."""
-    from app.engine import pdf_inspect
-    from app.large_pdf import planner
-
-    prepared = planner.prepare(student, scheme)
-    inspection = pdf_inspect.inspect_student_pdf(student)
-    return {"pages": prepared.page_count,
-            "batches": prepared.batch_count,
-            "scheme_questions": len(prepared.scheme_questions),
-            "questions_detected": len(inspection.question_pages),
-            "question_pages": sum(len(v) for v in
-                                  inspection.question_pages.values()),
-            "batch_sizes": ([b.pages for b in prepared.plan.batches]
-                            if prepared.plan else []),
-            "blocked": prepared.blocked}
-
-
 def _measure(label: str, role: str, path: Path) -> dict:
     from app.engine import pdf_optimize as po
 
@@ -245,28 +225,9 @@ def main() -> int:
     for label, path in docs.items():
         role = "mark_scheme" if label.startswith("mark scheme") else "submission"
         row = _measure(label, role, path)
-        row["plan"] = _plan(str(path), str(docs["mark scheme digital (text)"]))
         rows.append(row)
         print(f"measured {label}: {row['original_bytes']} -> "
               f"{row['optimized_bytes']} ({row['used']})")
-
-    # Coverage: a 60-page paper (so the plan really batches) marked against a
-    # scheme with question ids — original plan vs optimized-copy plan.
-    from app.engine import pdf_optimize as po
-    long_student = _text_pdf(_WORK / "student_long.pdf", pages=60,
-                             scheme=False)
-    long_scheme = _text_pdf(_WORK / "scheme_long.pdf", pages=30, scheme=True)
-    student_copy = po.optimize_pdf(long_student, role="submission").path
-    scheme_copy = po.optimize_pdf(long_scheme, role="mark_scheme").path
-    coverage = {
-        "original": _plan(str(long_student), str(long_scheme)),
-        "optimized": _plan(student_copy, scheme_copy),
-        "bytes": {"original": long_student.stat().st_size,
-                  "optimized": Path(student_copy).stat().st_size,
-                  "scheme_original": long_scheme.stat().st_size,
-                  "scheme_optimized": Path(scheme_copy).stat().st_size},
-    }
-    coverage["identical"] = coverage["original"] == coverage["optimized"]
 
     print()
     header = ("| document | pages | original | optimized | saved | used | "
@@ -289,8 +250,6 @@ def main() -> int:
         print(f"{role}: {total_in / 1024:.0f} KiB -> {total_out / 1024:.0f} KiB "
               f"({100.0 * (total_in - total_out) / total_in:.1f}% saved, "
               f"{sum(r['cold_ms'] for r in group)} ms total cold)")
-    print(f"large-pdf plan identical on optimized copy: "
-          f"{coverage['identical']} ({coverage['optimized']})")
     print()
     print("| document | text layer | text ms (orig/opt) | render ms (orig/opt) "
           "| ink (orig/opt) |")
@@ -305,8 +264,7 @@ def main() -> int:
                  / max(1, row['ink_original']):+.1f}%) |")
 
     payload = {"measured_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-               "python": sys.version.split()[0], "rows": rows,
-               "coverage": coverage}
+               "python": sys.version.split()[0], "rows": rows}
     if args.out:
         target = Path(args.out)
         target.parent.mkdir(parents=True, exist_ok=True)

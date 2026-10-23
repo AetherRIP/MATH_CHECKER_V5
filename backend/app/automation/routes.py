@@ -22,40 +22,6 @@ def _scheduler():
     return AutomationSchedulerHolder.instance()
 
 
-def _batched_keys() -> tuple[set[tuple], set[str]]:
-    """Which submissions the LARGE-PDF pipeline actually handled (§8).
-
-    Read from the real ``large_pdf_jobs`` rows rather than inferred: a
-    submission that the router sent to the batched worker has a row there, and
-    nothing else does. Two keys are collected because a Classroom job and a
-    manual upload are identified differently.
-    """
-    rows = db.query(
-        "SELECT coursework_id, submission_id, result_id FROM large_pdf_jobs "
-        "WHERE status != 'CANCELLED'")
-    pairs = {(r["coursework_id"], r["submission_id"]) for r in rows
-             if r["coursework_id"] and r["submission_id"]}
-    results = {r["result_id"] for r in rows if r["result_id"]}
-    return pairs, results
-
-
-def _pipeline_of(job: dict, batched: tuple[set[tuple], set[str]]) -> str | None:
-    """The pipeline that handled this job: 'batched', 'standard' or unknown.
-
-    ``None`` means the job has not reached correction yet, so claiming either
-    pipeline would be a guess.
-    """
-    pairs, results = batched
-    if job.get("result_id") and job["result_id"] in results:
-        return "batched"
-    key = (job.get("coursework_id"), job.get("submission_id"))
-    if key[0] and key[1] and key in pairs:
-        return "batched"
-    if job.get("correction_job_id") or job.get("result_id"):
-        return "standard"
-    return None
-
-
 def _operation_public(op: dict) -> dict:
     """One operation as the page shows it: CURRENT state + error HISTORY.
 
@@ -89,12 +55,10 @@ def _operation_public(op: dict) -> dict:
     }
 
 
-def _job_public(job: dict, batched: tuple[set[tuple], set[str]] | None = None) -> dict:
+def _job_public(job: dict) -> dict:
     # One shared decision: a retry is possible exactly when the runner says so.
     resume = states.retry_step(job)
     resumable = resume is not None
-    if batched is None:
-        batched = _batched_keys()
     ops = [_operation_public(op) for op in operations.for_job(job["id"])]
     active_errors = [op for op in ops if op["active"]]
     # A DISMISSED error is acknowledged, so it is neither active nor offered
@@ -104,11 +68,6 @@ def _job_public(job: dict, batched: tuple[set[tuple], set[str]] | None = None) -
                        and not op["error_dismissed"]]
     return {
         **job,
-        #: Which REAL pipeline corrected (or is correcting) this submission.
-        "pipeline": _pipeline_of(job, batched),
-        "pipeline_label": {"batched": "Batched large-PDF pipeline",
-                           "standard": "Standard single-pass pipeline"
-                           }.get(_pipeline_of(job, batched), None),
         "status_label": states.label(job["status"]),
         "stage_index": states.stage_index(job["status"]),
         # The SAME rule the runner enforces, so the Retry button and the
@@ -361,8 +320,7 @@ def list_jobs(status: str | None = None, coursework_id: str | None = None,
     jobs = store.list_jobs(statuses=statuses, coursework_id=coursework_id,
                            limit=min(500, max(1, limit)))
     # ONE lookup for the whole page, not one query per row.
-    batched = _batched_keys()
-    return {"jobs": [_job_public(j, batched) for j in jobs]}
+    return {"jobs": [_job_public(j) for j in jobs]}
 
 
 @router.get("/jobs/clearable-count")

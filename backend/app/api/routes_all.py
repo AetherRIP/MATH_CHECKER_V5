@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 
 from .. import db
+from ..downloads import attachment_header
 from .. import student_identity as _identity
 from .. import testing_guard
 from ..classroom import sync as classroom_sync
@@ -407,8 +408,7 @@ def export_result(result_id: str, format: str = "md", detail: str = "standard"):
                   detail=detail)
         return Response(
             buf.getvalue(), media_type="application/pdf",
-            headers={"Content-Disposition":
-                     f'attachment; filename="{filename}"'})
+            headers={"Content-Disposition": attachment_header(filename)})
     inner = result["result_json"]
     totals = {
         "earned": result["earned"], "available": result["available"],
@@ -432,7 +432,7 @@ def export_result(result_id: str, format: str = "md", detail: str = "standard"):
         from fastapi.responses import Response
         return Response(buf.getvalue(), media_type="text/csv",
                         headers={"Content-Disposition":
-                                 f'attachment; filename="marks_{student}.csv"'})
+                                 attachment_header(f"marks_{student}.csv")})
     if fmt not in ("md", "markdown"):
         # Never silently return a different format than the one requested:
         # an "xlsx"/"json" download used to fall through to markdown, so the
@@ -444,7 +444,7 @@ def export_result(result_id: str, format: str = "md", detail: str = "standard"):
     from fastapi.responses import Response
     return Response(md, media_type="text/markdown",
                     headers={"Content-Disposition":
-                             f'attachment; filename="report_{student}.md"'})
+                             attachment_header(f"report_{student}.md")})
 
 
 # ============================================================
@@ -760,33 +760,17 @@ async def manual_correction(
 # Unified PDF correction (§3)
 # ============================================================
 
-#: One upload form, one engine choice. ``auto`` uses the SINGLE routing rule in
-#: ``app.engine.router`` (the student answer PDF's page count against the
-#: configured threshold); ``standard`` and ``large`` are the explicit overrides
-#: a teacher can pick under Advanced Options. No third pipeline exists — each
-#: choice lands on the SAME code the two separate pages used.
-_PIPELINES = ("auto", "standard", "large")
-
-
 @router.post("/corrections/unified")
 async def unified_correction(
     submission: UploadFile = File(...),
     mark_scheme: UploadFile = File(...),
     student_name: str = Form("Student"),
-    pipeline: str = Form("auto"),
 ):
-    """Correct one student PDF, choosing the pipeline from its REAL page count.
+    """Correct one student PDF through the standard correction pipeline.
 
-    The response always names the pipeline that ran and why, so the page can
-    show the teacher which processing path they are on instead of guessing.
+    Upload, persistence and queueing are unchanged; the response states the
+    document's real page count so the page can report what was accepted.
     """
-    from ..engine import router as engine_router
-
-    choice = (pipeline or "auto").strip().lower()
-    if choice not in _PIPELINES:
-        raise AppError(
-            "Processing method must be 'auto', 'standard' or 'large'.",
-            status=400, code="bad_pipeline")
     _require_usage_budget()
     ensure_dirs()
 
@@ -811,52 +795,8 @@ async def unified_correction(
         sizes[kind] = len(content)
         names[kind] = upload.filename or f"{kind}{suffix}"
 
-    # The page count comes from the STUDENT pdf only, and an unreadable file is
-    # refused rather than silently routed down the single-pass path.
-    try:
-        decision = engine_router.route_student_pdf(saved["submission"])
-    except engine_router.RoutingError as exc:
-        raise AppError(str(exc), status=400, code="unreadable_pdf")
-
-    use_large = decision.is_large if choice == "auto" else choice == "large"
-    if choice != "auto" and use_large != decision.is_large:
-        decision_reason = (
-            f"You chose the {'batched (large-PDF)' if use_large else 'standard'}"
-            f" method manually for a {decision.page_count}-page document "
-            f"(the automatic rule would have chosen "
-            f"{'batched' if decision.is_large else 'standard'}).")
-    else:
-        decision_reason = decision.reason
-
-    if use_large:
-        if not get_config().large_pdf.enabled:
-            raise AppError(
-                "This document needs the batched pipeline, but the Large PDF "
-                "Worker is switched off in Settings. Turn it on, or upload a "
-                "document inside the single-pass page limit.",
-                status=400, code="large_pdf_disabled")
-        from ..large_pdf.runner import LargePdfRunnerHolder
-        runner = LargePdfRunnerHolder.instance()
-        job = runner.enqueue_manual(
-            student_name=student_name or "Student",
-            student_pdf_path=saved["submission"],
-            mark_scheme_path=saved["mark_scheme"])
-        job = runner.prepare(job["id"])
-        log_event("corrections", "unified correction queued",
-                  pipeline="large", pages=decision.page_count,
-                  large_job_id=job["id"])
-        return {
-            "applied_pipeline": "large",
-            "large_pdf_job_id": job["id"],
-            "page_count": decision.page_count,
-            "page_limit": decision.threshold,
-            "reason": decision_reason,
-            "files": {"submission": {"name": names["submission"],
-                                      "bytes": sizes["submission"]},
-                      "mark_scheme": {"name": names["mark_scheme"],
-                                      "bytes": sizes["mark_scheme"]}},
-            "job": job,
-        }
+    from ..engine import pdf_inspect
+    page_count = int(pdf_inspect.page_count(saved["submission"]) or 0)
 
     job_id = uuid.uuid4().hex
     with db.transaction() as conn:
@@ -869,43 +809,20 @@ async def unified_correction(
         student_name=student_name or "Student")
     db.execute("UPDATE pending_manual_files SET job_id = ? WHERE job_id = ?",
                (job["id"], job_id))
-    log_event("corrections", "unified correction queued", pipeline="standard",
-              pages=decision.page_count, job_id=job["id"])
+    log_event("corrections", "unified correction queued",
+              pipeline="standard", pages=page_count, job_id=job["id"])
+    reason = (f"{page_count} pages — the standard single-pass correction "
+              "workflow will mark this paper." if page_count else
+              "The standard single-pass correction workflow will mark this paper.")
     return {
-        "applied_pipeline": "standard",
         "job_id": job["id"],
-        "page_count": decision.page_count,
-        "page_limit": decision.threshold,
-        "reason": decision_reason,
+        "page_count": page_count,
+        "reason": reason,
         "files": {"submission": {"name": names["submission"],
                                   "bytes": sizes["submission"]},
                   "mark_scheme": {"name": names["mark_scheme"],
                                   "bytes": sizes["mark_scheme"]}},
         "job": job,
-    }
-
-
-@router.get("/corrections/pipelines")
-def correction_pipelines():
-    """The real routing facts the unified page shows before any upload."""
-    cfg = get_config().large_pdf
-    from ..engine import router as engine_router
-    return {
-        "threshold_pages": engine_router.threshold_pages(),
-        "large_pdf_enabled": bool(cfg.enabled),
-        "options": [
-            {"value": "auto",
-             "label": "Automatic (recommended)",
-             "detail": (f"The student PDF's page count decides: up to "
-                        f"{cfg.threshold_pages} pages uses the standard "
-                        "pipeline, more is split into balanced batches.")},
-            {"value": "standard",
-             "label": "Standard single-pass",
-             "detail": "Force the single-pass pipeline."},
-            {"value": "large",
-             "label": "Batched large-PDF worker",
-             "detail": "Force inspect-plan-batch-validate-merge."},
-        ],
     }
 
 

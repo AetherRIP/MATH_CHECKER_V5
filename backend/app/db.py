@@ -271,12 +271,6 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if job_cols and "is_remark" not in job_cols:
         conn.execute(
             "ALTER TABLE correction_jobs ADD COLUMN is_remark INTEGER NOT NULL DEFAULT 0")
-    # Large-PDF targeted recovery rounds (bounded, restart-safe): the missing-
-    # question retry progress lives here, so a restart or repeated finalize
-    # never re-runs a round that already ran (idempotency for the AI budget).
-    lp_cols = {row[1] for row in conn.execute("PRAGMA table_info(large_pdf_jobs)")}
-    if lp_cols and "recovery_json" not in lp_cols:
-        conn.execute("ALTER TABLE large_pdf_jobs ADD COLUMN recovery_json TEXT")
     version_cols = {row[1] for row in conn.execute("PRAGMA table_info(result_versions)")}
     if version_cols and "pending" not in version_cols:
         conn.execute(

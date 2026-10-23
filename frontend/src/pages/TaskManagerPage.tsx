@@ -4,8 +4,6 @@
 //
 //   * /jobs                → single-pass correction jobs (with their SSE stage
 //                            events, so the list updates as work progresses)
-//   * /large-pdf/jobs      → batched long-document jobs (real batch + page
-//                            progress, per-job retry/stop)
 //   * /automation/jobs     → the Google Classroom correction workflow
 //   * /classroom/sync/progress → the live synchronization run
 //   * /workers             → the pool that is executing all of it
@@ -22,22 +20,19 @@ import { useCallback, useMemo, useState } from "react";
 import {
   ACTIVE_STATUSES, api, automationApprove, automationJobs, automationRetryJob,
   automationRetryReport, automationStatus, cancelJob, displayName, elapsed,
-  largePdfCancel, largePdfJobs, largePdfRetryJob, retryJob, syncClassroomProgress,
-  timeAgo,
-  type AutomationJob, type AutomationStatus, type Job, type LargePdfJob,
-  type LargePdfListing, type SyncSnapshot,
+  retryJob, syncClassroomProgress, timeAgo,
+  type AutomationJob, type AutomationStatus, type Job, type SyncSnapshot,
 } from "../api";
 import { Badge, Button, Empty, PageHeader, Progress, Stat, useToast } from "../components";
 import { useAdaptivePoll } from "../useAdaptivePoll";
 import { useJobQueue } from "./CorrectionsPage";
 import type { PoolState } from "../workers/panels";
 
-type Kind = "correction" | "large" | "automation" | "sync";
+type Kind = "correction" | "automation" | "sync";
 type Bucket = "running" | "queued" | "needsYou" | "completed" | "failed" | "cancelled";
 
 const KIND_LABEL: Record<Kind, string> = {
   correction: "Correction",
-  large: "Large PDF",
   automation: "Classroom",
   sync: "Sync",
 };
@@ -62,8 +57,8 @@ const NEEDS_YOU_STATES = new Set([
 /**
  * Which of the five real states a backend status string belongs to.
  *
- * Explicit sets first (the backend's own vocabulary: JobStatus, the large-PDF
- * states and the automation state machine), then a conservative pattern match.
+ * Explicit sets first (the backend's own vocabulary: JobStatus and the
+ * automation state machine), then a conservative pattern match.
  * An unknown status is never shown as completed — the worst case is "Queued".
  */
 function bucketOf(status: string | null | undefined): Bucket {
@@ -121,7 +116,7 @@ interface TaskRow {
   openHash?: string;
 }
 
-const POLL_FAST = 2500;   // workers + large batches, while work is in flight
+const POLL_FAST = 2500;   // workers, while work is in flight
 const POLL_MED = 5000;    // automation workflow, while it is moving
 const POLL_SYNC = 2000;   // classroom synchronization, while a sync runs
 // Every one of the three falls back to a slow idle cadence (and stops entirely
@@ -134,7 +129,6 @@ export default function TaskManagerPage({ onNavigate }: {
   // Correction jobs stream their stage updates over SSE; the poll inside the
   // shared hook keeps the list right when a proxy buffers the stream.
   const { jobs, load: reloadJobs } = useJobQueue();
-  const [large, setLarge] = useState<LargePdfListing | null>(null);
   const [automation, setAutomation] = useState<AutomationJob[]>([]);
   const [automationState, setAutomationState] = useState<AutomationStatus | null>(null);
   const [sync, setSync] = useState<SyncSnapshot | null>(null);
@@ -144,9 +138,6 @@ export default function TaskManagerPage({ onNavigate }: {
   const [bucketFilter, setBucketFilter] = useState<Bucket | "all">("all");
   const [query, setQuery] = useState("");
 
-  const loadLarge = useCallback(() => {
-    largePdfJobs().then(setLarge).catch(() => {});
-  }, []);
   const loadAutomation = useCallback(() => {
     automationJobs().then((r) => setAutomation(r.jobs)).catch(() => {});
     automationStatus().then(setAutomationState).catch(() => {});
@@ -161,8 +152,6 @@ export default function TaskManagerPage({ onNavigate }: {
   // One adaptive cadence per source instead of three fixed timers that ran
   // whether or not anything was happening. Correction jobs also stream their
   // own stage updates, so the poll is only there to keep the list truthful.
-  const largeBusy = Boolean(large && large.jobs.some((j) =>
-    !["COMPLETED", "FAILED", "CANCELLED", "ERROR"].includes(j.status)));
   const poolBusy = Boolean(pool && (pool.active > 0
     || pool.queue.queued > 0 || pool.queue.starting > 0
     || pool.queue.processing > 0 || pool.queue.waiting_for_api > 0
@@ -172,8 +161,8 @@ export default function TaskManagerPage({ onNavigate }: {
       || automationState.counts.waiting > 0))
     || automation.some((j) => !["COMPLETED", "FAILED", "CANCELLED"].includes(j.status)));
 
-  useAdaptivePoll(() => { loadLarge(); loadPool(); },
-    { active: largeBusy || poolBusy, fast: POLL_FAST, idle: 20_000 });
+  useAdaptivePoll(loadPool,
+    { active: poolBusy, fast: POLL_FAST, idle: 20_000 });
   useAdaptivePoll(loadAutomation,
     { active: automationBusy, fast: POLL_MED, idle: 30_000, immediate: false });
   useAdaptivePoll(loadSync,
@@ -184,7 +173,7 @@ export default function TaskManagerPage({ onNavigate }: {
     try {
       await action.run();
       toast("ok", `${action.label} — requested`);
-      reloadJobs(); loadLarge(); loadAutomation(); loadSync();
+      reloadJobs(); loadAutomation(); loadSync();
     } catch (e) {
       // The backend's refusal is the truth (e.g. "only failed jobs can be
       // retried"), so it is shown verbatim instead of a generic failure.
@@ -199,22 +188,12 @@ export default function TaskManagerPage({ onNavigate }: {
   const rows = useMemo<TaskRow[]>(() => {
     const out: TaskRow[] = [];
 
-    // ONE row per piece of work. Two different backends can describe the same
-    // job, and listing both would show the teacher the same correction twice:
-    //   * a Classroom workflow job owns the correction job it drives (they
-    //     share the submission), and
-    //   * a batched long-document job is mirrored in the correction table under
-    //     the SAME job id (the large-PDF record is the richer one, so it wins).
+    // ONE row per piece of work. A Classroom workflow job owns the correction
+    // job it drives (they share the submission), so the workflow row wins.
     const covered = new Set<string>();
-    const batchedIds = new Set<string>();
     for (const a of automation) if (a.submission_id) covered.add(a.submission_id);
-    for (const l of large?.jobs ?? []) {
-      batchedIds.add(l.id);
-      if (l.submission_id) covered.add(l.submission_id);
-    }
 
     for (const job of jobs as Job[]) {
-      if (batchedIds.has(job.id)) continue;
       if (job.submission_id && covered.has(job.submission_id)) continue;
       const bucket = bucketOf(job.status);
       const actions: TaskAction[] = [];
@@ -245,58 +224,6 @@ export default function TaskManagerPage({ onNavigate }: {
         ].filter(Boolean),
         actions,
         openHash: job.result_id ? `#/results/${job.result_id}` : undefined,
-      });
-    }
-
-    for (const job of (large?.jobs ?? []) as LargePdfJob[]) {        const bucket = bucketOf(job.status);
-      const progress = large?.progress?.[job.id];
-
-      const pct = progress && progress.page_count > 0
-        ? Math.min(100, Math.round(100 * progress.pages_done / progress.page_count))
-        : (job.status === "COMPLETED" ? 100 : null);
-      // Never print the same sentence twice: the large job's step detail is
-      // often just its status label ("Correction completed").
-      const rawStage = progress
-        ? [
-            progress.stage?.label,
-            progress.current_batch && progress.batch_total
-              ? `batch ${progress.current_batch}/${progress.batch_total}` : "",
-            progress.current_batch_pages
-              ? `pages ${progress.current_batch_pages.start}–${progress.current_batch_pages.end}` : "",
-          ].filter(Boolean).join(" · ")
-        : job.step_detail;
-      const stage = rawStage && rawStage !== (job.status_label || "") ? rawStage : null;
-      const actions: TaskAction[] = [];
-      if (job.retryable) {
-        actions.push({ label: "Retry", variant: "secondary", run: () => largePdfRetryJob(job.id) });
-      }
-      if (bucket === "running" || bucket === "queued") {
-        actions.push({ label: "Cancel", variant: "ghost", run: () => largePdfCancel(job.id) });
-      }
-      out.push({
-        key: `large:${job.id}`,
-        kind: "large",
-        title: "Large PDF correction (batched)",
-        student: displayName(job, "") || job.student_name || null,
-        assignment: null,
-        status: job.status,
-        statusLabel: job.status_label || human(job.status),
-        bucket,
-        stage,
-        progress: pct,
-        createdAt: job.created_at,
-        finishedAt: job.finished_at,
-        error: job.error,
-        attempts: job.attempts ? `${job.attempts}` : null,
-        detail: [
-          job.page_count ? `${job.page_count} pages` : "",
-          job.batch_count ? `${job.batch_count} batches` : "",
-          progress?.questions_total
-            ? `${progress.questions_marked}/${progress.questions_total} questions`
-            : "",
-        ].filter(Boolean),
-        actions,
-        openHash: job.result_id ? `#/results/${job.result_id}` : "#/largepdf",
       });
     }
 
@@ -335,7 +262,6 @@ export default function TaskManagerPage({ onNavigate }: {
         error: job.error,
         attempts: job.max_attempts ? `${job.attempts ?? 0}/${job.max_attempts}` : null,
         detail: [
-          job.pipeline_label,
           marks,
           job.grade ? `grade ${job.grade}` : "",
           job.attachment ? `report: ${job.attachment.status}` : "",
@@ -373,10 +299,10 @@ export default function TaskManagerPage({ onNavigate }: {
 
     // Newest first: the running work and the most recent history together.
     return out.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-  }, [jobs, large, automation, sync]);
+  }, [jobs, automation, sync]);
 
   const kindCounts = useMemo(() => {
-    const counts: Record<Kind, number> = { correction: 0, large: 0, automation: 0, sync: 0 };
+    const counts: Record<Kind, number> = { correction: 0, automation: 0, sync: 0 };
     for (const row of rows) counts[row.kind] += 1;
     return counts;
   }, [rows]);
@@ -404,8 +330,8 @@ export default function TaskManagerPage({ onNavigate }: {
 
   return (
     <>
-      <PageHeader title="Task Manager" icon="cpu"
-        sub="Every correction, batched document, Classroom workflow and sync the application is running — from the backend's own records.">
+      <PageHeader kicker="Correct · Tasks" title="Task Manager" icon="cpu"
+        sub="Every correction, Classroom workflow and sync the application is running — from the backend's own records.">
         <div className="row wrap" style={{ gap: 8 }}>
           <Badge tone={active > 0 ? "info" : "mute"}>{active} active</Badge>
           {bucketCounts.needsYou > 0 && <Badge tone="warn">{bucketCounts.needsYou} need you</Badge>}
@@ -419,8 +345,8 @@ export default function TaskManagerPage({ onNavigate }: {
           value={pool ? `${pool.active}/${pool.size}` : "—"} />
         <Stat label="Queue" value={q ? q.queued + q.starting : 0}
           tone={q && q.queued + q.starting > 0 ? "warn" : undefined} />
-        <Stat label="Batched docs in flight"
-          value={large ? large.counts.processing + large.counts.ready + large.counts.queued : 0} />
+        <Stat label="Waiting for API" value={q ? q.waiting_for_api : 0}
+          tone={q && q.waiting_for_api > 0 ? "warn" : undefined} />
         <Stat label={automationState && !automationState.enabled
             ? "Tiny Agent (disabled in Settings)" : "Tiny Agent"}
           value={automationState ? (automationState.enabled ? human(automationState.worker_state) : "Off") : "—"}
@@ -439,7 +365,7 @@ export default function TaskManagerPage({ onNavigate }: {
               aria-label="Search tasks"
               value={query} onChange={(e) => setQuery(e.target.value)} />
             <Button size="sm" variant="ghost" icon="refresh"
-              onClick={() => { reloadJobs(); loadLarge(); loadAutomation(); loadSync(); loadPool(); }}>
+              onClick={() => { reloadJobs(); loadAutomation(); loadSync(); loadPool(); }}>
               Refresh
             </Button>
           </div>
@@ -482,7 +408,7 @@ export default function TaskManagerPage({ onNavigate }: {
         {visible.length === 0 ? (
           <Empty icon="🗂" title={rows.length === 0 ? "No tasks yet" : "Nothing matches this filter"}
             hint={rows.length === 0
-              ? "Corrections, batched documents, Classroom workflows and syncs appear here as they run."
+              ? "Corrections, Classroom workflows and syncs appear here as they run."
               : "Clear the search or pick another state."} />
         ) : (
           <div style={{ maxHeight: "62vh", overflowY: "auto" }}>

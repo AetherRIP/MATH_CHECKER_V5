@@ -534,7 +534,7 @@ def attention():
     for r in review:
         reasons = db.loads(r["confidence_reasons"], []) or []
         detail = reasons[0] if reasons else f"Confidence {r['confidence'] or 'low'}"
-        # A large-PDF run can carry only a Classroom student id, and a 21-digit
+        # A stored result can carry only a Classroom student id, and a 21-digit
         # number is not something a teacher can act on. Say "a submission"
         # instead, and keep the id out of the visible title.
         who = student_identity.display_name(r["student_id"], r["student_name"])

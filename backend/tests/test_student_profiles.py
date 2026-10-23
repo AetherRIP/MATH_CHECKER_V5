@@ -47,10 +47,12 @@ def seed_classroom() -> None:
 
 
 def add_result(student_id: str, submission_id: str | None = None,
-               earned: int = 8, available: int = 10) -> None:
-    now = time.time()
+               earned: int = 8, available: int = 10,
+               created: float | None = None) -> None:
+    now = created if created is not None else time.time()
+    token = time.time_ns()
     with db.transaction() as conn:
-        job_id = f"job-{student_id}-{now}"
+        job_id = f"job-{student_id}-{token}"
         conn.execute(
             "INSERT INTO correction_jobs(id, submission_id, coursework_id, "
             "course_id, student_id, student_name, status, created_at, "
@@ -62,7 +64,7 @@ def add_result(student_id: str, submission_id: str | None = None,
             "student_id, student_name, earned, available, percentage, "
             "provisional_grade, result_json, verification_json, created_at) "
             "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (f"res-{student_id}-{now}", job_id, "w1", submission_id,
+            (f"res-{student_id}-{token}", job_id, "w1", submission_id,
              student_id, "Student", earned, available,
              earned / available * 100, "8", '{"questions": []}',
              '{"status": "VALID"}', now))
@@ -128,6 +130,32 @@ def test_local_correction_never_marks_student_submitted(client):
     assert profile["classroom"]["submitted_percentage"] == 0.0
     assert profile["corrections"]["total"] == 1
     assert profile["classroom"]["assignments"][0]["status"] == "CREATED"
+
+
+def test_assignment_rows_expose_the_same_submission_decisions(client):
+    """The desktop profile filters with the backend's flags, not its own rules."""
+    seed_classroom()
+    u1 = client.get("/api/students/u1").json()["classroom"]["assignments"][0]
+    assert u1["submitted"] is True and u1["outstanding"] is False
+    assert u1["returned"] is False
+
+    u2 = client.get("/api/students/u2").json()["classroom"]["assignments"][0]
+    assert u2["submitted"] is False and u2["outstanding"] is True
+
+
+def test_history_keeps_every_correction_while_recent_stays_ten(client):
+    """The desktop history must not silently stop at the tenth correction."""
+    now = time.time()
+    for i in range(12):
+        add_result("u9", earned=10 - i, available=12, created=now - i * 60)
+
+    corrections = client.get("/api/students/u9").json()["corrections"]
+    assert corrections["total"] == 12
+    assert len(corrections["recent"]) == 10
+    assert len(corrections["history"]) == 12
+    # Newest first, so the client can show history and a bounded trend.
+    assert corrections["history"][0]["created_at"] == pytest.approx(now)
+    assert corrections["history"][-1]["created_at"] == pytest.approx(now - 11 * 60)
 
 
 def test_profile_without_classroom_data_says_unavailable(client):
@@ -212,3 +240,59 @@ def test_report_unknown_student_404(client, fresh_state, monkeypatch):
     resp = client.get("/api/students/nope/report?format=pdf")
     assert resp.status_code == 404
 
+
+
+# ------------------------------------------------------- access control
+
+@pytest.fixture
+def gated_client(fresh_state, monkeypatch):
+    """The REAL app with login required.
+
+    The profile/report routes are the most personal surface in the product, so
+    their protection must be enforced by the backend — a hidden button in the
+    desktop client is not access control.
+    """
+    monkeypatch.setenv("MC5_LOGIN_REQUIRED", "1")
+    from app.config import get_config, save_config
+    cfg = get_config()
+    cfg.mock_mode = True
+    save_config(cfg)
+    from app.main import app
+    from fastapi.testclient import TestClient
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def test_student_routes_refuse_an_unauthenticated_request(gated_client):
+    seed_classroom()
+    add_result("u1", "s1")
+
+    for path in ("/api/students",
+                 "/api/students/classes",
+                 "/api/students/u1",
+                 "/api/students/u1/report?format=pdf",
+                 "/api/students/u1/report?format=csv",
+                 "/api/students/u1/assignments/w1/report?format=pdf"):
+        response = gated_client.get(path)
+        assert response.status_code == 401, path
+        assert response.json()["code"] == "auth_required", path
+
+
+def test_the_paper_viewer_is_protected_too(gated_client):
+    seed_classroom()
+    add_result("u1", "s1")
+
+    for path in ("/api/results/res-u1/pages",
+                 "/api/results/res-u1/pages/1.png"):
+        response = gated_client.get(path)
+        assert response.status_code == 401, path
+
+
+def test_a_profile_write_is_refused_without_a_session(gated_client):
+    seed_classroom()
+
+    response = gated_client.put("/api/students/u1/details",
+                                json={"nickname": "Nope", "class_name": "10A"})
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "auth_required"

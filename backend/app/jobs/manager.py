@@ -107,16 +107,6 @@ class CancelledError(RuntimeError):
     pass
 
 
-class HandedOff(RuntimeError):
-    """The handler delegated this job to another pipeline (the Large AI Worker).
-
-    The JobManager must NOT mark the job COMPLETED (that would publish a grade
-    that does not exist yet) and must NOT run terminal cleanup (the delegated
-    worker still needs the source files). The delegated worker owns the shared
-    job row from this point on and drives it to its own terminal state.
-    """
-
-
 class JobManager:
     """Queue + worker pool + persistence + recovery."""
 
@@ -308,15 +298,6 @@ class JobManager:
                     handler(job, cancel)
                     self._set_status(job_id, COMPLETED,
                                      stage_detail="Correction completed", finish=True)
-                    return
-
-                except HandedOff:
-                    # The job now belongs to the Large AI Worker. Leave the row
-                    # exactly as the delegated worker set it and skip cleanup —
-                    # a long document must never be marked COMPLETED here, and
-                    # its source files must survive for the large batches.
-                    log_event("jobs", "job handed off to Large AI Worker",
-                              job_id=job_id)
                     return
 
                 except WaitForApiRetry as exc:

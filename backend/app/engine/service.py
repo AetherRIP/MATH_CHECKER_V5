@@ -22,7 +22,7 @@ from pathlib import Path
 from .. import db
 from ..config import data_dir, get_config
 from ..gemini.key_manager import KeyManager, WaitForApiError
-from ..jobs.manager import HandedOff, WaitForApiRetry
+from ..jobs.manager import WaitForApiRetry
 from ..gemini.tester import KeyManagerHolder
 from ..logging_setup import log_event
 from . import legacy_marking as legacy
@@ -152,14 +152,6 @@ class CorrectionService:
 
             check_cancel()
 
-            # 1b. ONE central routing decision, taken BEFORE any AI upload.
-            # The STUDENT PDF's page count decides the pipeline; a long
-            # document is handed to the Large AI Worker here so it is never
-            # sent whole to the single-pass engine. Every entry point (manual
-            # upload, Classroom, bulk/assignment, automatic and API jobs)
-            # reaches the AI only through this handler, so none can bypass it.
-            self._route_or_continue(job, local_paths)
-
             # 2. Upload to Gemini (Files API). Local inputs are kept until the
             # job reaches a terminal state so retries can re-read them (§11:
             # cleanup happens in cleanup_job_files, called by the manager).
@@ -254,10 +246,6 @@ class CorrectionService:
             log_event("engine.service", "correction completed", job_id=job_id,
                       student=job["student_name"], earned=earned, available=available)
 
-        except HandedOff:
-            # The Large AI Worker now owns this job; propagate verbatim so the
-            # JobManager leaves the shared row and its source files untouched.
-            raise
         except WaitForApiRetry:
             raise
         except WaitForApiError as exc:
@@ -360,56 +348,6 @@ class CorrectionService:
             raise RuntimeError("No mark scheme uploaded for this correction.")
         # Local copy is kept until terminal cleanup so retries can re-upload.
         return client.upload_file(pending["path"])
-
-    # -- central routing (§long-document routing) ----------------------------
-
-    def _route_or_continue(self, job: dict, local_paths: list[str]) -> None:
-        """Route the submission, or return so the normal flow continues.
-
-        Uses the single shared router so no entry point can disagree about the
-        page-count threshold. A long document is delegated to the Large AI
-        Worker and this handler stops; a short document is untouched.
-        """
-        from .router import RoutingError, delegate_long_document
-
-        # Already delegated (a re-claim after a restart, or a repeated call):
-        # the Large AI Worker owns the job, so hand off again without touching
-        # the saved plan and without a second AI call.
-        from ..large_pdf import store as large_store
-        if large_store.get_job(job["id"]) is not None:
-            raise HandedOff()
-
-        try:
-            handed_off = delegate_long_document(
-                job, local_paths, self._local_mark_scheme_path(job))
-        except RoutingError as exc:
-            # Never assume an unreadable PDF is short.
-            raise RuntimeError(str(exc)) from exc
-        if handed_off:
-            raise HandedOff()
-
-    def _local_mark_scheme_path(self, job: dict) -> str | None:
-        """The job's mark scheme ON DISK, without uploading it to Gemini."""
-        coursework_id = job.get("coursework_id")
-        if coursework_id:
-            cached = _mark_scheme_dir() / f"{coursework_id}.pdf"
-            if cached.exists():
-                return str(cached)
-            row = db.query_one(
-                "SELECT path FROM pending_mark_schemes WHERE coursework_id = ?",
-                (coursework_id,),
-            )
-            if row and row["path"] and Path(row["path"]).exists():
-                return row["path"]
-            return None
-        row = db.query_one(
-            "SELECT path FROM pending_manual_files WHERE job_id = ? "
-            "AND kind = 'mark_scheme'",
-            (job["id"],),
-        )
-        if row and row["path"] and Path(row["path"]).exists():
-            return row["path"]
-        return None
 
     def cleanup_job_files(self, job_id: str) -> None:
         cleanup_job_files(job_id)

@@ -619,7 +619,7 @@ export default function ClassroomPage({
   if (health && !health.connected) {
     return (
       <>
-        <PageHeader title="Google Classroom"
+        <PageHeader kicker="Classes · Classroom" title="Google Classroom"
           sub="Connect once; courses and submissions are cached locally afterwards." />
         <div className="card" style={{ maxWidth: 560 }}>
           {health.client_configured ? (
@@ -659,7 +659,7 @@ export default function ClassroomPage({
 
   return (
     <>
-      <PageHeader title="Google Classroom"
+      <PageHeader kicker="Classes · Classroom" title="Google Classroom"
         sub="Full submission tracking — every state, every student, with sync quality you can trust.">
         {overview && overview.sync_errors > 0 && (
           <Badge tone="err">{overview.sync_errors} sync error{overview.sync_errors === 1 ? "" : "s"}</Badge>

@@ -34,7 +34,6 @@ from pathlib import Path
 # Subquery for every coursework id owned by the course being purged.
 _CW = "(SELECT id FROM coursework WHERE course_id = :co)"
 _JOBS = "(SELECT id FROM correction_jobs WHERE course_id = :co)"
-_LP = "(SELECT id FROM large_pdf_jobs WHERE course_id = :co)"
 
 
 def _plan() -> list[tuple[str, str]]:
@@ -45,8 +44,6 @@ def _plan() -> list[tuple[str, str]]:
         ("automation_log", f"course_id = :co OR coursework_id IN {_CW}"),
         ("automation_jobs", "course_id = :co"),
         ("automation_assignments", f"coursework_id IN {_CW}"),
-        ("large_pdf_batches", f"job_id IN {_LP}"),
-        ("large_pdf_jobs", "course_id = :co"),
         ("job_remote_files", f"job_id IN {_JOBS}"),
         ("job_bandwidth", f"job_id IN {_JOBS}"),
         ("retained_files", f"job_id IN {_JOBS}"),
@@ -85,7 +82,7 @@ def _sha256(path: Path) -> str:
 
 
 def _files_for(data_dir: Path, course_ids: list[str],
-               job_ids: list[str], large_ids: list[str]) -> list[Path]:
+               job_ids: list[str]) -> list[Path]:
     found: list[Path] = []
     ms_dir = data_dir / "mark_schemes"
     for cid in course_ids:
@@ -95,13 +92,6 @@ def _files_for(data_dir: Path, course_ids: list[str],
         if (ms_dir / "_previous").is_dir():
             found.extend(sorted(q for q in (ms_dir / "_previous").glob(f"{cid}-*.pdf")
                                 if q.is_file()))
-    for jid in large_ids:
-        p = data_dir / "tmp" / "router_merged" / f"{jid}_student.pdf"
-        if p.is_file():
-            found.append(p)
-        d = data_dir / "tmp" / "large_pdf" / jid
-        if d.is_dir():
-            found.extend(sorted(q for q in d.rglob("*") if q.is_file()))
     for jid in job_ids:
         d = data_dir / "tmp" / f"job-{jid}"
         if d.is_dir():
@@ -154,9 +144,7 @@ def main() -> int:
 
     job_ids = [r[0] for r in con.execute(
         "SELECT id FROM correction_jobs WHERE course_id = ?", (co,))]
-    large_ids = [r[0] for r in con.execute(
-        "SELECT id FROM large_pdf_jobs WHERE course_id = ?", (co,))]
-    files = _files_for(data_dir, cw_ids, job_ids, large_ids)
+    files = _files_for(data_dir, cw_ids, job_ids)
 
     print("== rows scheduled for deletion ==")
     for t, n in counts.items():

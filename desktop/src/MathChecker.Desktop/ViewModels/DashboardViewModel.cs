@@ -98,6 +98,14 @@ public sealed class DashboardViewModel : PageViewModel
 
     public bool HasAttention => AttentionItems.Count > 0;
 
+    public bool HasRecentJobs => RecentJobs.Count > 0;
+
+    public string TodayFigure => _dashboard?.CorrectionsToday.ToString() ?? "—";
+
+    public string TodayCaption => _dashboard is null
+        ? "Waiting for the backend"
+        : $"{_dashboard.Completed} completed · {_dashboard.Processing} in progress";
+
     public AsyncCommand OpenCorrectionCommand => new(() =>
     {
         Session.GoTo("correct");
@@ -187,6 +195,9 @@ public sealed class DashboardViewModel : PageViewModel
         OnPropertyChanged(nameof(VersionText));
         OnPropertyChanged(nameof(AttentionSummary));
         OnPropertyChanged(nameof(HasAttention));
+        OnPropertyChanged(nameof(HasRecentJobs));
+        OnPropertyChanged(nameof(TodayFigure));
+        OnPropertyChanged(nameof(TodayCaption));
         OnPropertyChanged(nameof(RoleText));
     }
 

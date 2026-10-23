@@ -13,13 +13,71 @@ public partial class MarkingDeskView : UserControl
 {
     private MarkingDeskViewModel? _viewModel;
     private PaperPaneViewModel? _paper;
+    private bool _compactLayout;
+    private bool _showQuestionsInCompact;
 
     public MarkingDeskView()
     {
         InitializeComponent();
-        Loaded += (_, _) => FocusDesk();
+        Loaded += (_, _) =>
+        {
+            ApplyResponsiveLayout();
+            FocusDesk();
+        };
         DataContextChanged += OnDataContextChanged;
         PreviewKeyDown += OnPreviewKeyDown;
+        SizeChanged += (_, _) => ApplyResponsiveLayout();
+    }
+
+    /// <summary>
+    /// Three panes need roughly 900 DIP. Below that the desk keeps two: the
+    /// paper and the marking panel by default, or the question list and the
+    /// marking panel when the teacher flips the toggle. The mark panel is never
+    /// pushed off-screen, and the keyboard flow is unchanged.
+    /// </summary>
+    private void ApplyResponsiveLayout()
+    {
+        if (!IsLoaded || QuestionPane is null)
+        {
+            return;
+        }
+
+        _compactLayout = ActualWidth < 900;
+        QuestionsToggle.Visibility = _compactLayout ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!_compactLayout)
+        {
+            _showQuestionsInCompact = false;
+        }
+
+        var showQuestions = !_compactLayout || _showQuestionsInCompact;
+        var showPaper = !_compactLayout || !_showQuestionsInCompact;
+
+        QuestionPane.Visibility = showQuestions ? Visibility.Visible : Visibility.Collapsed;
+        QuestionSplitter.Visibility = showQuestions ? Visibility.Visible : Visibility.Collapsed;
+        QuestionColumn.Width = showQuestions ? new GridLength(220) : new GridLength(0);
+        QuestionColumn.MinWidth = showQuestions ? 176 : 0;
+        QuestionSplitColumn.Width = showQuestions ? new GridLength(12) : new GridLength(0);
+
+        PaperPane.Visibility = showPaper ? Visibility.Visible : Visibility.Collapsed;
+        PaperSplitter.Visibility = showPaper ? Visibility.Visible : Visibility.Collapsed;
+        PaperColumn.Width = showPaper ? new GridLength(_compactLayout ? 1.2 : 1, GridUnitType.Star) : new GridLength(0);
+        PaperColumn.MinWidth = showPaper ? (_compactLayout ? 240 : 330) : 0;
+        PaperSplitColumn.Width = showPaper ? new GridLength(12) : new GridLength(0);
+
+        // The marking panel shares the row in the compact layout instead of
+        // claiming a fixed 360 DIP it cannot have.
+        MarkingColumn.Width = _compactLayout ? new GridLength(1, GridUnitType.Star) : new GridLength(360);
+        MarkingColumn.MinWidth = _compactLayout ? 240 : 320;
+        MarkingColumn.MaxWidth = _compactLayout ? 420 : 480;
+
+        QuestionsToggle.Content = _compactLayout && _showQuestionsInCompact ? "Paper" : "Questions";
+    }
+
+    private void OnToggleQuestions(object sender, RoutedEventArgs e)
+    {
+        _showQuestionsInCompact = !_showQuestionsInCompact;
+        ApplyResponsiveLayout();
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)

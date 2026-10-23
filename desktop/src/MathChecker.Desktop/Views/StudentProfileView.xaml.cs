@@ -2,9 +2,9 @@ using System.Windows.Controls;
 
 namespace MathChecker.Desktop.Views;
 
-public partial class LargePdfView : UserControl
+public partial class StudentProfileView : UserControl
 {
-    public LargePdfView()
+    public StudentProfileView()
     {
         InitializeComponent();
     }

@@ -1,52 +1,112 @@
 <UserControl x:Class="MathChecker.Desktop.Views.StudentsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI"
+             xmlns:views="clr-namespace:MathChecker.Desktop.Views">
+    <ui:PageFrame Eyebrow="{Binding HeaderEyebrow}" Title="{Binding HeaderTitle}"
+                  Description="{Binding HeaderDescription}"
+                  StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
+                  BodyPadding="0,14,0,0">
+        <ui:PageFrame.Actions>
+            <Grid>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Top"
+                            Visibility="{Binding IsProfileClosed, Converter={StaticResource BoolToVis}}">
+                    <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                    <Button Content="Open profile" Style="{StaticResource PrimaryButton}"
+                            Command="{Binding OpenProfileCommand}" />
+                    <Button Content="Results" Command="{Binding OpenResultsCommand}" Margin="0" />
+                </StackPanel>
 
-        <TextBlock Grid.Row="0" Text="{Binding Title}" Style="{StaticResource PageTitle}" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Top"
+                            Visibility="{Binding IsProfileOpen, Converter={StaticResource BoolToVis}}">
+                    <Button Content="Back to students" Command="{Binding CloseProfileCommand}" />
+                    <Button Content="Refresh" Command="{Binding Profile.RefreshCommand}" />
+                    <Button Content="Export report" Command="{Binding Profile.ReportCommand}" />
+                    <Button Content="Results" Command="{Binding OpenResultsCommand}" Margin="0" />
+                </StackPanel>
+            </Grid>
+        </ui:PageFrame.Actions>
 
-        <DockPanel Grid.Row="1" Margin="0,4,0,4">
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                <TextBlock Text="Search" Style="{StaticResource FieldLabel}" />
-                <TextBox Width="220" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Text="Class" Style="{StaticResource FieldLabel}" />
-                <ComboBox Width="220" ItemsSource="{Binding ClassFilters}" SelectedItem="{Binding ClassFilter}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
-                <Button Content="Refresh" Command="{Binding RefreshCommand}" />
-                <Button Content="Edit details" Command="{Binding EditDetailsCommand}" />
-                <Button Content="Open report" Command="{Binding OpenReportCommand}" />
-                <Button Content="Results" Command="{Binding OpenResultsCommand}" />
-            </StackPanel>
-        </DockPanel>
+        <Grid>
+            <!-- ============================================================
+                 ROSTER
+                 ============================================================ -->
+            <Grid Visibility="{Binding IsProfileClosed, Converter={StaticResource BoolToVis}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-        <DataGrid Grid.Row="2" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="200" />
-                <DataGridTextColumn Header="Class" Binding="{Binding ClassLabel}" Width="220" />
-                <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="*" />
-                <DataGridTextColumn Header="Submitted" Binding="{Binding Submitted}" Width="90" />
-                <DataGridTextColumn Header="Corrections" Binding="{Binding Corrections}" Width="100" />
-                <DataGridTextColumn Header="Total" Binding="{Binding TotalText}" Width="150" />
-                <DataGridTextColumn Header="Pending" Binding="{Binding Pending}" Width="80" />
-            </DataGrid.Columns>
-        </DataGrid>
+                <Border Grid.Row="0" Style="{StaticResource FilterBar}">
+                    <WrapPanel>
+                        <TextBlock Text="Search" Style="{StaticResource FieldLabel}" />
+                        <TextBox Width="220" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Search students" />
+                        <TextBlock Text="Class" Style="{StaticResource FieldLabel}" Margin="10,0,6,0" />
+                        <ComboBox Width="220" ItemsSource="{Binding ClassFilters}"
+                                  SelectedItem="{Binding ClassFilter}" />
+                        <Border Style="{StaticResource Chip}" Padding="9,3" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Items.Count, StringFormat={}{0} students}"
+                                       FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                        </Border>
+                        <TextBlock Text="Select a student to open their profile."
+                                   FontSize="10.5" VerticalAlignment="Center" Margin="12,0,0,0"
+                                   Foreground="{StaticResource TextMutedBrush}" />
+                    </WrapPanel>
+                </Border>
 
-        <!-- The profile payload only earns space once a student is chosen. -->
-        <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0"
-                Visibility="{Binding Selected, Converter={StaticResource NullToVisibility}}">
-            <DockPanel>
-                <TextBlock DockPanel.Dock="Top" Text="{Binding Summary}" Style="{StaticResource Muted}"
-                           Margin="0,0,0,4" />
-                <TextBox Style="{StaticResource JsonBox}" Text="{Binding ProfileText, Mode=OneWay}"
-                         MinHeight="120" MaxHeight="220" />
-            </DockPanel>
-        </Border>
-    </Grid>
+                <Border Grid.Row="1" Style="{StaticResource TableCard}">
+                    <Grid>
+                        <DataGrid Style="{StaticResource DataTable}" ui:TableLayout.FillColumn="2"
+                                  ItemsSource="{Binding Items}"
+                                  SelectedItem="{Binding Selected}"
+                                  AutomationProperties.Name="Students">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="180" />
+                                <DataGridTextColumn Header="Class" Binding="{Binding ClassLabel}" Width="236"
+                                                    ui:TableLayout.Priority="1" />
+                                <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="*" MinWidth="190" />
+                                <DataGridTextColumn Header="Submitted" Binding="{Binding Submitted}" Width="94"
+                                                    ui:TableLayout.Priority="2" />
+                                <DataGridTextColumn Header="Corrections" Binding="{Binding Corrections}" Width="100"
+                                                    ui:TableLayout.Priority="2" />
+                                <DataGridTextColumn Header="Total" Binding="{Binding TotalText}" Width="140"
+                                                    ui:TableLayout.Priority="3" />
+                                <DataGridTextColumn Header="Pending" Binding="{Binding Pending}" Width="84"
+                                                    ui:TableLayout.Priority="2" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <Border Style="{StaticResource EmptyState}" MaxWidth="360"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="{Binding Items.Count, Converter={StaticResource ZeroToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="No students match" Style="{StaticResource EmptyTitle}" />
+                                <TextBlock Text="Clear the search or pick another class. If the roster is empty, sync a class in Classroom first."
+                                           Style="{StaticResource EmptyText}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- ============================================================
+                 PROFILE
+                 ============================================================ -->
+            <!-- The profile's DataContext is the profile view model, so its
+                 visibility must come from the PAGE, not from that DataContext
+                 (a null DataContext would otherwise leave it visible). -->
+            <views:StudentProfileView DataContext="{Binding Profile}"
+                                      Visibility="{Binding DataContext.IsProfileOpen,
+                                          RelativeSource={RelativeSource AncestorType={x:Type UserControl}},
+                                          Converter={StaticResource BoolToVis}}" />
+
+            <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,6,0,0"
+                    Style="{StaticResource Chip}" Padding="12,5"
+                    Visibility="{Binding IsProfileLoading, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Loading student profile…" FontSize="11"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+            </Border>
+        </Grid>
+    </ui:PageFrame>
 </UserControl>

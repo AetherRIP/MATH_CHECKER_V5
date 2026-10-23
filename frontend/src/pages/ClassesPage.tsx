@@ -22,7 +22,7 @@ export default function ClassesPage({ onNavigate }: { onNavigate: (hash: string)
 
   return (
     <>
-      <PageHeader title="Classes" icon="class"
+      <PageHeader kicker="Classes · Classes" title="Classes" icon="class"
         sub="Your Google Classroom classes and local assignments, with real submission counts.">
         <input className="input" style={{ maxWidth: 240 }} placeholder="Search classes…"
           value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search classes" />

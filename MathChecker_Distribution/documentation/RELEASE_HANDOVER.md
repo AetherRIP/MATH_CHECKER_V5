@@ -29,7 +29,7 @@ Multi-School is Work in Progress; its implementation/data are preserved.
 
 - Assignments: upload the matching original mark scheme; correct eligible
   submissions. Correct a PDF supports local manual work. Task Manager shows the
-  standard and batched pipeline states; Results shows the correction.
+  correction states; Results shows the correction.
 - A mathematical disagreement is a recommendation, not proof merely because a
   model reports high confidence. Conflicting awards and ambiguous cases go to
   Review Queue. Mark-Scheme Review documents evidence and human decisions.

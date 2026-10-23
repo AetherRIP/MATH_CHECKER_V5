@@ -148,6 +148,7 @@ public sealed class JobsViewModel : PageViewModel
 
         Selected = previousId is null ? null : Items.FirstOrDefault(j => j.Id == previousId);
         OnPropertyChanged(nameof(SelectedDetail));
+        OnPropertyChanged(nameof(IsEmpty));
 
         if (_showWorkers)
         {
@@ -206,7 +207,11 @@ public sealed class JobsViewModel : PageViewModel
             Selected = Items.FirstOrDefault(i => i.Id == selectedId);
             OnPropertyChanged(nameof(SelectedDetail));
         }
+
+        OnPropertyChanged(nameof(IsEmpty));
     }
+
+    public bool IsEmpty => Items.Count == 0;
 
     private void StartStream()
     {

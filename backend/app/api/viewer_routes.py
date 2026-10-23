@@ -11,8 +11,10 @@ Where the original lives (all under the app data dir):
    job already finished; the file sits in ``data/retained/<job_id>/``.
 2. ``pending_manual_files`` — the job is still active (or between retry rounds);
    the staged upload has not been cleaned up yet.
-3. ``large_pdf_jobs``    — the batched pipeline keeps its own job row with the
-   student PDF path until its cleanup runs.
+3. ``tmp/job-<id>``      — a job that never reached terminal cleanup still owns
+   the staged file it was marked from (crash, kill, an interrupted retry). It
+   is read purely as a last resort, so a paper that still exists is shown
+   instead of being reported missing.
 
 A result whose original is gone (the default retention mode deletes the file
 when the job finishes) answers ``available: false`` with a human reason — the
@@ -33,6 +35,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from ..config import data_dir, get_config
+from ..downloads import inline_header
 from .. import db
 from ..errors import AppError
 
@@ -113,14 +116,31 @@ def locate_submission(result_row: dict) -> tuple[Path, str, str] | None:
     if found:
         return found
 
-    rows = []
-    for r in db.query(
-            "SELECT student_pdf_path FROM large_pdf_jobs WHERE result_id = ?",
-            (result_row.get("id"),)):
-        raw = r["student_pdf_path"]
-        if raw:
-            rows.append({"path": raw, "filename": Path(raw).name,
-                         "source": "large_pdf_job"})
+    # Last resort: a job that never reached terminal cleanup still has the
+    # file it was marked from. Nothing is invented — this only serves a file
+    # that is physically present in the app's own staging folder.
+    return _staged_job_submission(job_id)
+
+
+def _staged_job_submission(job_id: str) -> tuple[Path, str, str] | None:
+    """``(path, filename, source)`` of a surviving per-job staged paper.
+
+    ``data/tmp/job-<id>/submission_*`` is normally deleted the moment a job
+    reaches a terminal state, so finding one means cleanup did not run (a
+    crash, a kill, an interrupted retry). The viewer is read-only, so showing
+    the file that is still on disk is honest — and it is the same file the
+    retention step would have kept.
+    """
+    folder = data_dir() / "tmp" / f"job-{job_id}"
+    try:
+        if not folder.is_dir():
+            return None
+        candidates = sorted(p for p in folder.glob("submission_*")
+                            if p.is_file())
+    except OSError:
+        return None
+    rows = [{"path": str(p), "filename": p.name, "source": "job_staging"}
+            for p in candidates]
     return _first_existing(rows, job_id=job_id)
 
 
@@ -128,7 +148,6 @@ def locate_submission(result_row: dict) -> tuple[Path, str, str] | None:
 _ACTIVE_JOB_STATES = {
     "QUEUED", "STARTING", "PREPARING", "DOWNLOADING", "UPLOADING", "MARKING",
     "VERIFYING", "SAVING", "WAITING_FOR_API", "RETRYING", "PROCESSING",
-    "READY", "PLANNING",
 }
 
 
@@ -144,17 +163,37 @@ def _retention_state() -> dict:
 
 
 def _job_state(result_row: dict) -> str:
-    """The job's status, from whichever pipeline owns it."""
+    """The job's status, from its correction-job row."""
     job_id = result_row.get("job_id") or ""
     if not job_id:
         return ""
     row = db.query_one("SELECT status FROM correction_jobs WHERE id = ?",
                        (job_id,))
-    if row and row["status"]:
-        return str(row["status"])
-    row = db.query_one("SELECT status FROM large_pdf_jobs WHERE id = ?",
-                       (job_id,))
     return str(row["status"] or "") if row else ""
+
+
+def _job_finished_at(result_row: dict) -> float | None:
+    """When the job that produced this result reached a terminal state.
+
+    Used only to tell an EXPIRED retention window apart from a paper that was
+    never stored: a copy kept for N days can only be gone because of the window
+    once the job finished more than N days ago. Unknown stays ``None`` — the
+    viewer then reports the generic "no stored copy" case instead of guessing.
+    """
+    job_id = result_row.get("job_id") or ""
+    if not job_id:
+        return None
+    try:
+        row = db.query_one(
+            "SELECT finished_at FROM correction_jobs WHERE id = ?", (job_id,))
+    except Exception:  # noqa: BLE001 — a schema/driver hiccup is "unknown"
+        return None
+    if row and row["finished_at"]:
+        try:
+            return float(row["finished_at"])
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 def _missing_payload(result_id: str, result_row: dict) -> dict:
@@ -178,15 +217,32 @@ def _missing_payload(result_id: str, result_row: dict) -> dict:
                    "there is no file this device could have kept.")
         retryable = False
     elif retention["keeps"]:
-        reason = "file_missing"
-        message = ("Submission retention is ON ("
-                   + ("keep for %d days" % retention["keep_days"]
-                      if retention["keep_submissions"] == "days"
-                      else "always keep")
-                   + "), but no stored copy exists for this result. It was "
-                   "probably marked before retention was enabled, or the "
-                   "stored copy was removed outside the app.")
-        retryable = True
+        finished = _job_finished_at(result_row)
+        window = int(retention["keep_days"] or 0)
+        expired = (retention["keep_submissions"] == "days"
+                   and finished is not None
+                   and time.time() - finished > window * 86400)
+        if expired:
+            # A kept copy can only be gone because its window ran out. Saying
+            # that is more useful than "before retention was enabled".
+            reason = "retention_expired"
+            message = ("This correction finished on %s, more than the %d-day "
+                       "retention window, so the stored original was removed "
+                       "when the window ended. Raise Settings → Privacy & Data "
+                       "→ keep submissions if you want papers kept longer."
+                       % (time.strftime("%d %b %Y", time.localtime(finished)),
+                          window))
+            retryable = False
+        else:
+            reason = "file_missing"
+            message = ("Submission retention is ON ("
+                       + ("keep for %d days" % window
+                          if retention["keep_submissions"] == "days"
+                          else "always keep")
+                       + "), but no stored copy exists for this result. It was "
+                       "marked before retention was enabled, or the stored copy "
+                       "was removed outside the app.")
+            retryable = True
     else:
         reason = "retention_disabled"
         message = ("Submission retention is OFF, so the original is deleted "
@@ -314,7 +370,7 @@ def result_page_image(result_id: str, page: int, request: Request,
         return Response(
             content=content, media_type=_IMAGE_MEDIA.get(suffix, "image/png"),
             headers={"Cache-Control": "private, max-age=86400",
-                     "Content-Disposition": f'inline; filename="{filename}"'})
+                     "Content-Disposition": inline_header(filename)})
 
     dpi = max(72, min(int(dpi or _PAGE_DPI_DEFAULT), _PAGE_DPI_MAX))
     try:

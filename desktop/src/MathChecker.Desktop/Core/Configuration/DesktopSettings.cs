@@ -48,6 +48,9 @@ public sealed class DesktopSettings
     public double WindowHeight { get; set; } = 820;
     public bool WindowMaximized { get; set; }
 
+    /// <summary>True when the navigation rail is the 72 DIP icon rail.</summary>
+    public bool RailCollapsed { get; set; }
+
     public static string DefaultDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "MathCheckerDesktop");

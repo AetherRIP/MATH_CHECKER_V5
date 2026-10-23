@@ -1,22 +1,20 @@
 import { useState } from "react";
 import { PageHeader, Tabs } from "../components";
-import { LargeWorkerPanel, NormalWorkerPanel } from "../workers/panels";
+import { NormalWorkerPanel } from "../workers/panels";
 import KeysPage from "./KeysPage";
 import NetworkPanel from "./NetworkPanel";
 
-type Tab = "api" | "normal" | "large" | "network";
+type Tab = "api" | "normal" | "network";
 
 /**
- * AI — the AI system, its two PDF workers, and the network.
+ * AI — the AI system, its PDF worker, and the network.
  *
- * Exactly four things live here, and nothing else:
+ * Exactly three things live here, and nothing else:
  *
  *   * API & providers  — the Gemini providers, their keys, rotation, health
  *                        and the connectivity test (KeysPage).
  *   * Normal PDF worker — the single-pass worker pool: status, worker count,
  *                        throughput, queue (configured, not simulated).
- *   * Large PDF worker  — the batched long-document worker: config, batches,
- *                        per-job progress and recovery.
  *   * Network           — the backend this window talks to, and the separate
  *                        Public Address switch.
  *
@@ -33,21 +31,17 @@ export default function AiPage({ onNavigate }: {
 
   return (
     <>
-      <PageHeader title="AI" icon="ai"
-        sub="Providers and keys, the two PDF correction workers, and the network this installation uses." />
+      <PageHeader kicker="System · AI & keys" title="AI" icon="ai"
+        sub="Providers and keys, the PDF correction worker, and the network this installation uses." />
 
       <Tabs value={tab} onChange={setTab} ariaLabel="AI sections" options={[
         { value: "api", label: "API & providers", icon: "key" },
         { value: "normal", label: "Normal PDF worker", icon: "cpu" },
-        { value: "large", label: "Large PDF worker", icon: "grid" },
         { value: "network", label: "Network", icon: "wifi" },
       ]} />
 
       {tab === "api" && <KeysPage embedded />}
       {tab === "normal" && <NormalWorkerPanel onNavigate={onNavigate} />}
-      {tab === "large" && (
-        <LargeWorkerPanel onOpen={() => onNavigate("#/largepdf")} />
-      )}
       {tab === "network" && <NetworkPanel onNavigate={onNavigate} />}
     </>
   );

@@ -188,7 +188,7 @@ export default function PromptsPage() {
     // Still a real page: a heading, what is wrong, and the way back.
     return (
       <>
-        <PageHeader title="Gemini Prompts" icon="ai"
+        <PageHeader kicker="System · Prompts" title="Gemini Prompts" icon="ai"
           sub="Developer only — the exact texts every correction sends to Gemini" />
         <div className="notice err" role="alert">
           <span>
@@ -202,7 +202,7 @@ export default function PromptsPage() {
   if (!data) {
     return (
       <>
-        <PageHeader title="Gemini Prompts" icon="ai"
+        <PageHeader kicker="System · Prompts" title="Gemini Prompts" icon="ai"
           sub="Developer only — the exact texts every correction sends to Gemini" />
         <Loading label="Loading prompts…" />
       </>

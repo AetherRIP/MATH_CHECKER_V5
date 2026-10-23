@@ -451,9 +451,8 @@ def mark_once(app: LiveApp, session: tuple[str, str], student: Path,
                      f"HTTP {status}: {raw[:200]!r}")
         return None, {}
     job = json.loads(raw)
-    job_id = job.get("job_id") or job.get("large_pdf_job_id")
+    job_id = job.get("job_id")
     report.check("the app accepts a real PDF and mark scheme", True,
-                 f"pipeline={job.get('applied_pipeline')} "
                  f"pages={job.get('page_count')} job={job_id}")
 
     detail: dict = {}

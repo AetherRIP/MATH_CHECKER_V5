@@ -38,9 +38,9 @@ public class BackendHostTests : IDisposable
     };
 
     private BackendHost Host(DesktopSettings settings, FakeProcessStarter starter, FakeHealth health,
-        MemoryLog? log = null) =>
+        MemoryLog? log = null, IBackendEnvironmentProbe? environment = null) =>
         new(settings, log ?? new MemoryLog(), starter, health, _backendDirectory,
-            TimeSpan.FromHours(1));
+            TimeSpan.FromHours(1), environment ?? new FakeEnvironment(null));
 
     [Fact]
     public async Task Attaches_to_a_running_backend_instead_of_starting_a_second_one()
@@ -178,6 +178,125 @@ public class BackendHostTests : IDisposable
 
         Assert.Contains(BackendState.Starting, states);
         Assert.Contains(BackendState.Ready, states);
+    }
+
+    [Fact]
+    public async Task A_demo_backend_is_flagged_even_though_it_answers()
+    {
+        // The dangerous case: a perfectly healthy backend on the expected port
+        // that is serving synthetic demo data. The window must say so.
+        var environment = new FakeEnvironment(
+            new BackendEnvironment("C:\\mc5\\demo", Demo: true, MockMode: true));
+        var starter = new FakeProcessStarter();
+        var health = new FakeHealth(new HealthResult(HealthKind.Ours, null));
+        var settings = Settings();
+        await using var host = Host(settings, starter, health, environment: environment);
+
+        var status = await host.StartAsync();
+
+        Assert.Equal(BackendState.Attached, status.State);
+        Assert.True(status.IsUsable);
+        Assert.True(status.Demo);
+        Assert.True(status.HasWarning);
+        Assert.Contains("DEMO", status.Warning);
+        Assert.Contains("synthetic", status.Warning);
+    }
+
+    [Fact]
+    public async Task Demo_setting_against_a_real_backend_is_flagged()
+    {
+        var environment = new FakeEnvironment(new BackendEnvironment("C:\\mc5\\data", false, false));
+        var starter = new FakeProcessStarter();
+        var health = new FakeHealth(new HealthResult(HealthKind.Ours, null));
+        var settings = Settings();
+        settings.EnvironmentVariables["MC5_DEMO"] = "1";
+        await using var host = Host(settings, starter, health, environment: environment);
+
+        var status = await host.StartAsync();
+
+        Assert.True(status.HasWarning);
+        Assert.Contains("real data", status.Warning);
+    }
+
+    [Fact]
+    public async Task A_matching_backend_has_no_warning()
+    {
+        var folder = Path.Combine(_backendDirectory, "data");
+        var environment = new FakeEnvironment(new BackendEnvironment(folder, false, false));
+        var starter = new FakeProcessStarter();
+        var health = new FakeHealth(new HealthResult(HealthKind.Ours, null));
+        var settings = Settings();
+        settings.DataDirectory = folder;
+        await using var host = Host(settings, starter, health, environment: environment);
+
+        var status = await host.StartAsync();
+
+        Assert.False(status.HasWarning);
+        Assert.Equal(folder, status.DataDirectory);
+        Assert.False(status.Demo);
+    }
+
+    [Fact]
+    public async Task A_different_data_folder_is_flagged()
+    {
+        var environment = new FakeEnvironment(
+            new BackendEnvironment(Path.Combine(_backendDirectory, "other"), false, false));
+        var starter = new FakeProcessStarter();
+        var health = new FakeHealth(new HealthResult(HealthKind.Ours, null));
+        var settings = Settings();
+        settings.DataDirectory = Path.Combine(_backendDirectory, "data");
+        await using var host = Host(settings, starter, health, environment: environment);
+
+        var status = await host.StartAsync();
+
+        Assert.True(status.HasWarning);
+        Assert.Contains("different data folder", status.Warning);
+    }
+
+    [Fact]
+    public async Task A_redacted_user_profile_prefix_is_not_a_mismatch()
+    {
+        // The backend redacts the home folder as %USERPROFILE%; that must not
+        // read as "a different folder" for the real folder it stands for.
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var real = Path.Combine(home, "mc5-desktop-test-data");
+        var environment = new FakeEnvironment(
+            new BackendEnvironment("%USERPROFILE%\\mc5-desktop-test-data", false, false));
+        var starter = new FakeProcessStarter();
+        var health = new FakeHealth(new HealthResult(HealthKind.Ours, null));
+        var settings = Settings();
+        settings.DataDirectory = real;
+        await using var host = Host(settings, starter, health, environment: environment);
+
+        var status = await host.StartAsync();
+
+        Assert.False(status.HasWarning);
+    }
+
+    [Fact]
+    public async Task An_unavailable_environment_probe_is_not_guessed()
+    {
+        var starter = new FakeProcessStarter();
+        var health = new FakeHealth(new HealthResult(HealthKind.Ours, null));
+        var settings = Settings();
+        await using var host = Host(settings, starter, health,
+            environment: new FakeEnvironment(null));
+
+        var status = await host.StartAsync();
+
+        Assert.Null(status.Demo);
+        Assert.Null(status.DataDirectory);
+        Assert.False(status.HasWarning);
+    }
+
+    private sealed class FakeEnvironment : IBackendEnvironmentProbe
+    {
+        private readonly BackendEnvironment? _environment;
+
+        public FakeEnvironment(BackendEnvironment? environment) => _environment = environment;
+
+        public Task<BackendEnvironment?> ReadAsync(int port, CancellationToken cancellationToken) =>
+            Task.FromResult(_environment);
     }
 
     private sealed class FakeHealth : IHealthProbe

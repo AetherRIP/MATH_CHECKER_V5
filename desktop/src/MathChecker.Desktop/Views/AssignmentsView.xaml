@@ -1,66 +1,96 @@
 <UserControl x:Class="MathChecker.Desktop.Views.AssignmentsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="2*" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <TextBlock Grid.Row="0" Text="{Binding Title}" Style="{StaticResource PageTitle}" />
-
-        <DockPanel Grid.Row="1" Margin="0,4,0,4">
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                <TextBlock Text="Search" Style="{StaticResource FieldLabel}" />
-                <TextBox Width="200" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Text="Kind" Style="{StaticResource FieldLabel}" />
-                <ComboBox Width="120" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" />
-                <TextBlock Text="{Binding Summary}" Style="{StaticResource Muted}" VerticalAlignment="Center"
-                           Margin="10,0,0,0" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
+    <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}" Description="{Binding Summary}"
+                  StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
+                  BodyPadding="0,18,0,0">
+        <ui:PageFrame.Actions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
                 <Button Content="Recheck mark scheme" Command="{Binding RecheckMarkSchemeCommand}" />
-                <Button Content="Open first page image" Command="{Binding OpenMarkSchemePageCommand}" />
+                <Button Content="Open first page image" Command="{Binding OpenMarkSchemePageCommand}" Margin="0" />
             </StackPanel>
-        </DockPanel>
+        </ui:PageFrame.Actions>
 
-        <DataGrid Grid.Row="2" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Assignment" Binding="{Binding DisplayTitle}" Width="*" />
-                <DataGridTextColumn Header="Class" Binding="{Binding CourseLabel}" Width="200" />
-                <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="80" />
-                <DataGridTextColumn Header="Students" Binding="{Binding StudentsTotal}" Width="80" />
-                <DataGridTextColumn Header="Checked" Binding="{Binding Checked}" Width="80" />
-                <DataGridTextColumn Header="Review" Binding="{Binding NeedsReview}" Width="70" />
-                <DataGridTextColumn Header="Average" Binding="{Binding AverageText}" Width="80" />
-                <DataGridTextColumn Header="Scheme" Binding="{Binding MarkSchemeText}" Width="70" />
-                <DataGridTextColumn Header="Due" Binding="{Binding DueDate}" Width="140" />
-            </DataGrid.Columns>
-        </DataGrid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+        <StackPanel>
 
-        <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="New local assignment" Style="{StaticResource FieldLabel}" />
-                <TextBlock Text="Title" Style="{StaticResource FieldLabel}" Margin="10,0,4,0" />
-                <TextBox Width="240" Text="{Binding NewTitle, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Text="Max points" Style="{StaticResource FieldLabel}" />
-                <TextBox Width="70" Text="{Binding NewPoints, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Text="Due" Style="{StaticResource FieldLabel}" />
-                <TextBox Width="130" Text="{Binding NewDueDate, UpdateSourceTrigger=PropertyChanged}" />
-                <Button Content="Create" Command="{Binding CreateLocalCommand}" />
-            </StackPanel>
-        </Border>
+            <Border Style="{StaticResource FilterBar}">
+                <WrapPanel>
+                    <TextBlock Text="Search" Style="{StaticResource FieldLabel}" />
+                    <TextBox Width="200" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="Search assignments" />
+                    <TextBlock Text="Kind" Style="{StaticResource FieldLabel}" Margin="10,0,6,0" />
+                    <ComboBox Width="120" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" />
+                    <Border Style="{StaticResource Chip}" Padding="9,3" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Items.Count, StringFormat={}{0} assignments}"
+                                   FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                    </Border>
+                </WrapPanel>
+            </Border>
 
-        <Border Grid.Row="4" Style="{StaticResource Card}" Margin="0,0,0,0">
-            <DockPanel>
-                <TextBlock DockPanel.Dock="Top" Text="Mark scheme" Style="{StaticResource SectionTitle}"
-                           Margin="0,0,0,2" />
-                <TextBox Style="{StaticResource JsonBox}" Text="{Binding MarkSchemeText, Mode=OneWay}" />
-            </DockPanel>
-        </Border>
-    </Grid>
+            <Border Style="{StaticResource TableCard}" Height="300">
+                <Grid>
+                    <DataGrid Style="{StaticResource DataTable}" ui:TableLayout.FillColumn="0" ItemsSource="{Binding Items}"
+                              SelectedItem="{Binding Selected}" AutomationProperties.Name="Assignments">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Assignment" Binding="{Binding DisplayTitle}" Width="*" MinWidth="160" />
+                            <DataGridTextColumn Header="Class" Binding="{Binding CourseLabel}" Width="180"
+                                                ui:TableLayout.Priority="1" />
+                            <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="78"
+                                                ui:TableLayout.Priority="2" />
+                            <DataGridTextColumn Header="Students" Binding="{Binding StudentsTotal}" Width="84"
+                                                ui:TableLayout.Priority="2" />
+                            <DataGridTextColumn Header="Checked" Binding="{Binding Checked}" Width="80"
+                                                ui:TableLayout.Priority="2" />
+                            <DataGridTextColumn Header="Review" Binding="{Binding NeedsReview}" Width="74"
+                                                ui:TableLayout.Priority="3" />
+                            <DataGridTextColumn Header="Average" Binding="{Binding AverageText}" Width="84"
+                                                ui:TableLayout.Priority="1" />
+                            <DataGridTextColumn Header="Scheme" Binding="{Binding MarkSchemeText}" Width="76"
+                                                ui:TableLayout.Priority="3" />
+                            <DataGridTextColumn Header="Due" Binding="{Binding DueDate}" Width="124"
+                                                ui:TableLayout.Priority="3" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border Style="{StaticResource EmptyState}" MaxWidth="340"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Visibility="{Binding Items.Count, Converter={StaticResource ZeroToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="No assignments match" Style="{StaticResource EmptyTitle}" />
+                            <TextBlock Text="Change the search or kind, or create a local assignment below."
+                                       Style="{StaticResource EmptyText}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource Card}" Margin="0,12,0,0" Padding="14">
+                <WrapPanel>
+                    <TextBlock Text="New local assignment" Style="{StaticResource SectionLabel}"
+                               VerticalAlignment="Center" Margin="0,0,14,0" />
+                    <TextBlock Text="Title" Style="{StaticResource FieldLabel}" />
+                    <TextBox Width="220" Text="{Binding NewTitle, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock Text="Max points" Style="{StaticResource FieldLabel}" />
+                    <TextBox Width="70" Text="{Binding NewPoints, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock Text="Due" Style="{StaticResource FieldLabel}" />
+                    <TextBox Width="130" Text="{Binding NewDueDate, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Content="Create" Style="{StaticResource PrimaryButton}"
+                            Command="{Binding CreateLocalCommand}" Height="38" Padding="16,6" Margin="0" />
+                </WrapPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}" Margin="0,12,0,0" Height="190" Padding="12">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="MARK SCHEME" Style="{StaticResource SectionLabel}"
+                               Margin="2,0,0,6" />
+                    <TextBox Style="{StaticResource JsonBox}" Text="{Binding MarkSchemeText, Mode=OneWay}"
+                             Margin="0" />
+                </DockPanel>
+            </Border>
+        </StackPanel>
+        </ScrollViewer>
+    </ui:PageFrame>
 </UserControl>

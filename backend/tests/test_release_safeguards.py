@@ -84,25 +84,6 @@ def test_changed_marks_after_staging_require_new_review(fresh_state):
     assert db.query_one("SELECT earned FROM results WHERE id='r2'")['earned'] == 1
 
 
-def test_large_pdf_preserves_teacher_override_and_records_discrepancy(fresh_state):
-    from app.large_pdf.runner import LargePdfRunner
-    proposal = stage()
-    row = db.query_one("SELECT result_json FROM results WHERE id='r1'")
-    payload = json.loads(row['result_json'])
-    job = {'id': 'large-release', 'coursework_id': 'cw1', 'course_id': 'c1',
-           'submission_id': 's1', 'student_id': 's1', 'student_name': 'Synthetic',
-           'batch_count': 1, 'created_at': 1}
-    db.execute("UPDATE results SET manual_override=1 WHERE id='r1'")
-    result_id = LargePdfRunner()._persist_result(job, payload, {}, 3, 3, 100, review=0)
-    assert result_id == 'r1'
-    assert db.query_one("SELECT earned FROM results WHERE id='r1'")['earned'] == 0
-    assert db.query_one("SELECT pending FROM result_versions WHERE result_id='r1'")['pending'] == 1
-    db.execute("UPDATE results SET manual_override=0 WHERE id='r1'")
-    LargePdfRunner()._persist_result(job, payload, {}, 3, 3, 100, review=0)
-    assert sa.list_discrepancies()
-    assert db.query_one("SELECT earned FROM result_versions WHERE result_id='r1' AND is_current=1")['earned'] == 3
-
-
 def test_assigned_grade_alone_does_not_prove_return(fresh_state, monkeypatch):
     from app.automation.runner import WorkflowRunner, StepFailure
     runner = WorkflowRunner()

@@ -513,7 +513,7 @@ export default function DistributedPage() {
 
   return (
     <>
-      <PageHeader title="Multi-School" icon="classroom"
+      <PageHeader kicker="System · Multi-school" title="Multi-School" icon="classroom"
         sub={`Signed in as ${session.display_name} (${session.username}) · ${session.role.replace("_", "-")} · ${scopeLine} · app v${session.app_version}`}>
         <Button size="sm" variant="ghost" icon="user"
           onClick={() => setChangingPassword(true)}>Change password</Button>

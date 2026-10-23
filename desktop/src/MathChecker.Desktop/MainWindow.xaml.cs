@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Input;
+using System.Windows.Threading;
 using MathChecker.Desktop.Core;
 using MathChecker.Desktop.Core.UI;
 using MathChecker.Desktop.ViewModels;
@@ -20,6 +22,7 @@ public partial class MainWindow : Window
         _session = session;
         _viewModel = new MainViewModel(session);
         DataContext = _viewModel;
+        _viewModel.ExitRequested += Close;
 
         var settings = session.Settings;
         var workArea = SystemParameters.WorkArea;
@@ -33,8 +36,60 @@ public partial class MainWindow : Window
             WindowState = WindowState.Maximized;
         }
 
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         Loaded += async (_, _) => await _viewModel.InitializeAsync();
         Closing += OnClosing;
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(MainViewModel.IsPaletteOpen) || !_viewModel.IsPaletteOpen)
+        {
+            return;
+        }
+
+        // The overlay is only in the tree while open; wait for the visibility
+        // change to settle before taking focus.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            PaletteInput.Focus();
+            PaletteInput.SelectAll();
+        }), DispatcherPriority.Input);
+    }
+
+    private void OnPaletteKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Escape:
+                _viewModel.ClosePalette();
+                e.Handled = true;
+                break;
+            case Key.Enter:
+                _viewModel.CommitPalette();
+                e.Handled = true;
+                break;
+            case Key.Down:
+                _viewModel.MovePaletteSelection(1);
+                e.Handled = true;
+                break;
+            case Key.Up:
+                _viewModel.MovePaletteSelection(-1);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void OnPaletteScrimClick(object sender, MouseButtonEventArgs e)
+    {
+        _viewModel.ClosePalette();
+        e.Handled = true;
+    }
+
+    private void OnPaletteCardClick(object sender, MouseButtonEventArgs e)
+    {
+        // Clicks inside the palette must not reach the scrim's dismiss handler.
+        e.Handled = true;
     }
 
     private async void OnClosing(object? sender, CancelEventArgs e)

@@ -56,6 +56,32 @@ def test_valid_config_is_still_read(tmp_path):
     assert cfg._read_toml(good)["network"]["port"] == 9100
 
 
+def test_obsolete_large_pdf_settings_are_ignored_without_rewriting(tmp_path,
+                                                                  monkeypatch):
+    """An existing install may still have a ``[large_pdf]`` table.
+
+    Loading must succeed, the other settings must still apply, and merely
+    opening the app must not rewrite the user's file.
+    """
+    from app import config as cfg
+
+    legacy = tmp_path / "config.toml"
+    text = ('[network]\naccess_mode = "lan"\nport = 9123\n\n'
+            '[large_pdf]\nenabled = true\nthreshold_pages = 1\n'
+            'target_min = 2\ntarget_max = 4\n')
+    legacy.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(cfg, "CONFIG_PATH", legacy)
+    monkeypatch.setattr(cfg, "_config", None)
+
+    loaded = cfg.get_config(reload=True)
+
+    assert loaded.network.access_mode == "lan"
+    assert loaded.network.port == 9123
+    assert not hasattr(loaded, "large_pdf")
+    assert legacy.read_text(encoding="utf-8") == text
+
+
+
 def test_data_dir_is_resolved_on_every_call(fresh_state, monkeypatch, tmp_path):
     """One live accessor: no caller may freeze the data root at import time.
 

@@ -67,15 +67,6 @@ for cid in CW:
         print("   *", dict(r))
 
 print("=" * 72)
-print("LARGE PDF JOBS")
-for r in conn.execute(
-    "select id,submission_id,coursework_id,student_name,page_count,batch_count,"
-    "status,step_detail,error,error_code,student_pdf_path,mark_scheme_path,created_at "
-    "from large_pdf_jobs"
-):
-    print("  ", dict(r))
-
-print("=" * 72)
 print("CORRECTION JOBS")
 for r in conn.execute(
     "select id,submission_id,coursework_id,status,stage_detail,progress,error,created_at "

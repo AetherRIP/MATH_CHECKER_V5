@@ -28,8 +28,18 @@ dotnet run --project tools\MathChecker.Desktop.E2E      # real backend, demo mod
 powershell -ExecutionPolicy Bypass -File build_release.ps1
 ```
 
-Produces `artifacts\MathChecker_Desktop_Portable.zip` (client + backend +
-bundled Python) and, when Inno Setup 6 is installed, the installer.
+Produces, in `desktop\artifacts`:
+
+* `MATH_CHECKER_V5\` — client + backend + bundled Python runtime (no install,
+  no .NET/Python needed); double-click `desktop\MATH_CHECKER_V5.exe`;
+* `MATH_CHECKER_V5_Portable.zip` — the same folder zipped;
+* `MATH_CHECKER_V5_Setup.exe` — per-user installer (no admin rights), built when
+  Inno Setup 6 is installed;
+* `release_manifest.json` — what the build contains.
+
+`test_release.ps1` runs the staged build the way a user does: window, bundled
+backend, a real correction, PDF export, single instance, and shutdown with no
+leftover process or port. `-KeepTemp` keeps its logs and PDFs.
 
 ## Documentation
 

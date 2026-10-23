@@ -758,11 +758,10 @@ def grade_with_model(
     ``sampling`` (V5 adaptation 6) overrides the generation sampling config;
     None keeps DETERMINISTIC_SAMPLING exactly as the legacy app runs it.
 
-    ``system_prompt`` / ``user_prompt`` let a caller supply a DEDICATED prompt
-    (the Large PDF Worker's batch prompt, see ``app/large_pdf/prompt.py``)
-    without touching the prompts every other caller uses. Both default to None,
-    which sends exactly the legacy texts — so manual corrections, the worker
-    child, automation and the audit pass are byte-for-byte unchanged.
+    ``system_prompt`` / ``user_prompt`` let a caller supply a dedicated prompt
+    without touching the prompts every other caller uses. Both default to
+    None, which sends exactly the legacy texts — so manual corrections, the
+    worker child, automation and the audit pass are byte-for-byte unchanged.
     """
     if user_prompt is not None:
         prompt = user_prompt

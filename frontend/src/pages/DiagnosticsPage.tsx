@@ -179,7 +179,7 @@ export default function DiagnosticsPage() {
   if (error) {
     return (
       <>
-        <PageHeader title="Diagnostics" sub="Developer-only technical view." />
+        <PageHeader kicker="System · Diagnostics" title="Diagnostics" sub="Developer-only technical view." />
         <div className="notice err">{error}</div>
         <p className="page-sub" style={{ marginTop: "var(--s4)" }}>
           Request logs, worker timings and model health appear here once this
@@ -191,7 +191,7 @@ export default function DiagnosticsPage() {
   if (!data) {
     return (
       <>
-        <PageHeader title="Diagnostics" sub="Developer-only technical view." />
+        <PageHeader kicker="System · Diagnostics" title="Diagnostics" sub="Developer-only technical view." />
         <Loading label="Loading diagnostics…" />
       </>
     );
@@ -199,7 +199,7 @@ export default function DiagnosticsPage() {
 
   return (
     <>
-      <PageHeader title="Diagnostics" sub="System, Gemini, Classroom, jobs, storage and logs.">
+      <PageHeader kicker="System · Diagnostics" title="Diagnostics" sub="System, Gemini, Classroom, jobs, storage and logs.">
         <Badge tone={data.system.mock_mode ? "warn" : "ok"}>
           {data.system.mock_mode ? "Mock mode" : "Live"}
         </Badge>
