@@ -83,8 +83,8 @@ for registration/heartbeat/discovery.
 
 `GET /api/agent/discovery` (session-authenticated, beside `/api/agent/state`)
 feeds a new **"accounts this computer has discovered"** list in the existing
-Background Agent card ([SettingsPage.tsx](../frontend/src/pages/SettingsPage.tsx),
-[api.ts](../frontend/src/api.ts)).
+Background Agent card ([SettingsPage.tsx](../../frontend/src/pages/SettingsPage.tsx),
+[api.ts](../../frontend/src/api.ts)).
 
 ## 3. Security posture (each point covered by a test)
 
@@ -141,7 +141,7 @@ now passes **45/45** and the full suite is green.
    artifact will still fail mark-scheme extraction.
 2. **A production backend must be deployed** on an always-on machine — the
    architecture and all endpoints exist; the deployment itself
-   ([DISTRIBUTED_DEPLOYMENT.md](../DISTRIBUTED_DEPLOYMENT.md)) is an operational
+   ([DISTRIBUTED_DEPLOYMENT.md](../../DISTRIBUTED_DEPLOYMENT.md)) is an operational
    step, not code.
 3. **No live multi-machine proof in this session** — this workspace has one
    machine. The registration/discovery/sync path was verified against the real

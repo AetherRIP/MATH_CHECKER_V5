@@ -79,8 +79,8 @@ O Level Math class.
   deletion: an attached report is a live reference and the app's own rules
   refuse to delete it.
   * `1UkGsZZX4epG89XXMg5d2VmFCiWwGfS5F` (Student / Chapter 1 Lesson 7 — status FAILED)
-  * `1iX5rPjrLs17gVhJwoApwayobt_w-na3Z` (Shino Asada / CA1 LO7 — RETAINED)
-  * `1BQKz4y2JbrJm10TXo68gryZjR-4w8qzE` (Yassin Elgarhy / CA1 LO7 — RETAINED)
+  * `1iX5rPjrLs17gVhJwoApwayobt_w-na3Z` (Student W / CA1 LO7 — RETAINED)
+  * `1BQKz4y2JbrJm10TXo68gryZjR-4w8qzE` (Student X / CA1 LO7 — RETAINED)
 * **Shared / global resources** — the `students` table, `net_usage`,
   `gemini_keys`/`key_stats`, `gemini_remote_files`, and shared mark-scheme
   blueprints.

@@ -1,6 +1,6 @@
 # Two-Environment End-to-End Integration Test — Evidence Report
 
-Date: 2026-10-11 · Harness: [scripts/two_env_e2e.py](../scripts/two_env_e2e.py) ·
+Date: 2026-10-11 · Harness: [scripts/two_env_e2e.py](../../scripts/two_env_e2e.py) ·
 Raw results: [two_env_e2e_results.json](../results/two_env_e2e_results.json)
 
 ## 0. Environment reality (read this first)
@@ -76,19 +76,19 @@ a **Windows** installation. Root cause was twofold:
    platform gate was a **no-op** even had the column existed.
 
 **Fix (cause, not symptom):**
-* [schema.py](MATH%20V5/backend/app/distributed/schema.py): additive
+* [schema.py](../../backend/app/distributed/schema.py): additive
   `devices.platform`, `devices.arch` columns (existing rows stay NULL = unknown,
   preserving today's behaviour until a device reports).
-* [agents.py](MATH%20V5/backend/app/distributed/agents.py): `register_device`
+* [agents.py](../../backend/app/distributed/agents.py): `register_device`
   records platform/arch (`COALESCE` so a partial report never erases them) and
   `normalize_platform()` canonicalises `win32`/`macOS`/etc.
-* [updates.py](MATH%20V5/backend/app/distributed/updates.py):
+* [updates.py](../../backend/app/distributed/updates.py):
   `requests_for_device()` now derives **both** version and platform from the
   device's last report.
-* [tiny_agent.py](MATH%20V5/backend/app/distributed/tiny_agent.py): the agent
+* [tiny_agent.py](../../backend/app/distributed/tiny_agent.py): the agent
   reports `host_platform()`/`host_arch()` on register and heartbeat.
-* [routes.py](MATH%20V5/backend/app/distributed/routes.py),
-  [discovery.py](MATH%20V5/backend/app/distributed/discovery.py): accept platform/arch.
+* [routes.py](../../backend/app/distributed/routes.py),
+  [discovery.py](../../backend/app/distributed/discovery.py): accept platform/arch.
 
 **Retest:** T24 now PASSES for the correct reason (a real 5.2.0 Linux release is
 published and then **not** offered to the Windows installation). A regression test

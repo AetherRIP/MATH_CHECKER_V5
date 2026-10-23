@@ -8,8 +8,8 @@
 
 | Symptom | Cause found in the code |
 |---|---|
-| "Every page is inside the AI page" | [`frontend/src/pages/AiPage.tsx`](../frontend/src/pages/AiPage.tsx) was an 8-tab hub: **Correct, Classroom, Automation, Results, Review, Models & Keys, Workers, Usage** — each tab rendering the component its own page used to render. |
-| Missing Assignment page | [`frontend/src/pages/AssignmentsPage.tsx`](../frontend/src/pages/AssignmentsPage.tsx) still existed and still rendered, but `NAV_GROUPS` in [`frontend/src/App.tsx`](../frontend/src/App.tsx) listed only **AI, Settings, Storage**, so it had no navigation entry and no default route. |
+| "Every page is inside the AI page" | [`frontend/src/pages/AiPage.tsx`](../../frontend/src/pages/AiPage.tsx) was an 8-tab hub: **Correct, Classroom, Automation, Results, Review, Models & Keys, Workers, Usage** — each tab rendering the component its own page used to render. |
+| Missing Assignment page | [`frontend/src/pages/AssignmentsPage.tsx`](../../frontend/src/pages/AssignmentsPage.tsx) still existed and still rendered, but `NAV_GROUPS` in [`frontend/src/App.tsx`](../../frontend/src/App.tsx) listed only **AI, Settings, Storage**, so it had no navigation entry and no default route. |
 | No Task Manager | No such page existed anywhere: `WorkersPage` showed worker *configuration*, the Corrections page showed a job log, and nothing unified correction / batched / Classroom / sync work. |
 | Confusing "AI keys", "Workers", "Usage" links | `#/keys`, `#/workers` and `#/usage` were aliases that all redirected into the AI hub. |
 
@@ -52,7 +52,7 @@ more; they are their own pages again.
 
 ### The Task Manager — real work, one row per task
 
-[`frontend/src/pages/TaskManagerPage.tsx`](../frontend/src/pages/TaskManagerPage.tsx)
+[`frontend/src/pages/TaskManagerPage.tsx`](../../frontend/src/pages/TaskManagerPage.tsx)
 unifies, from the backend's own records:
 
 * `/api/jobs` + the `/api/jobs/stream` SSE events → single-pass corrections, with the
@@ -169,7 +169,7 @@ are invisible on a wide screen and obvious on a small one.
 
 ### 6.1 Tooltips were clipped, and caused phantom horizontal overflow on every page
 
-**Measured cause.** `[data-tooltip]::after` in [`frontend/src/styles.css`](../frontend/src/styles.css)
+**Measured cause.** `[data-tooltip]::after` in [`frontend/src/styles.css`](../../frontend/src/styles.css)
 rendered the hint as an absolutely positioned pseudo-element inside the page.
 `.main-scroll` carries `overflow-x: hidden`, so at 800 px wide the Settings page
 reported `main-scroll.scrollWidth = 1025` against `clientWidth = 790`: **235 px of
@@ -177,8 +177,8 @@ content the user could not reach, while the Sync Classroom tooltip itself was
 being cut off by exactly that rule** (`button.btn.secondary::after`, 626 px wide,
 `white-space: nowrap`, no wrapping and no viewport awareness).
 
-**Fix** — [`frontend/src/TooltipLayer.tsx`](../frontend/src/TooltipLayer.tsx), one delegated
-layer mounted once in [`frontend/src/App.tsx`](../frontend/src/App.tsx):
+**Fix** — [`frontend/src/TooltipLayer.tsx`](../../frontend/src/TooltipLayer.tsx), one delegated
+layer mounted once in [`frontend/src/App.tsx`](../../frontend/src/App.tsx):
 portalled to `<body>`, positioned `fixed` (so it is outside every scrolling or
 clipping ancestor), wrapped with `max-width: min(340px, 100vw - 20px)`, flipped to
 whichever side has room (honouring `data-tooltip-side="right"` for the collapsed
@@ -207,7 +207,7 @@ inputs, 15 selects and 4 textareas exist across 22 files, so in the dark theme t
 rendered as light native widgets, which is both an overflow risk and an
 inconsistency against every styled field next to them.
 
-**Fix** — the input block in [`frontend/src/styles.css`](../frontend/src/styles.css) now
+**Fix** — the input block in [`frontend/src/styles.css`](../../frontend/src/styles.css) now
 also matches `input/select/textarea:not([class])` (excluding checkbox, radio,
 range, file, color, hidden and the button types), so the shared look and the
 `width: 100%; min-width: 0` shrink rule apply to a field that forgot the class,
@@ -229,7 +229,7 @@ adapted to the work: `/api/jobs?limit=50` every 4 s, `/api/large-pdf/jobs` and
 every 2 s — roughly **90 requests per 45 s on a completely idle page**, on the same
 machine that is doing the correcting.
 
-**Fix** — [`frontend/src/useAdaptivePoll.ts`](../frontend/src/useAdaptivePoll.ts): one
+**Fix** — [`frontend/src/useAdaptivePoll.ts`](../../frontend/src/useAdaptivePoll.ts): one
 cadence rule (fast while work is in flight, slow when idle, silent while the window
 is hidden, with the next timeout chosen after each run), applied to the worker
 panels (AI page), the Large PDF page, the correction page's queue summary, the

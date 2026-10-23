@@ -9,7 +9,7 @@ data preserved; nothing touched in Google Classroom or Google Drive.
 
 | | |
 |---|---|
-| Class (Course) | `877926720424` — *WBIS - O Level Mathematics - Mr. Abanoub Akram* |
+| Class (Course) | `877926720424` — *WBIS - O Level Mathematics - Mr. Teacher (redacted)* |
 | Assignment (CourseWork) | `889601795010` — *Ch1L13 - Sets* (the user's "C1L13 Set") |
 
 Identification was by **class + title**, not title alone. A homonym exists:
@@ -72,7 +72,7 @@ under automated polling, so no worker/scheduler can recreate work for it.
 * Audit artifacts exclusive to C1L13: `audit_findings.json`,
   `audit_inventory.json`, `audit_consistency.json`, `audit_findings_notes.json`,
   `repair_safety_snapshot.json`, and the whole `audit_runs/` (8 files).
-* Two C1L13 files inside the mixed `audit_downloads/` cache (Adam Sobky's
+* Two C1L13 files inside the mixed `audit_downloads/` cache (Student A's
   submission scan `1ZnMNQRoCN…` and report `1qIi-8qWNl…`).
 
 **77 files** total.
@@ -104,7 +104,7 @@ under automated polling, so no worker/scheduler can recreate work for it.
 * **Mixed audit caches:** remaining `audit_downloads/` (12 files: Ch1L9/Ch1L10),
   `audit_results/`, `audit_reports/`, and `audit_applied.json` — these belong to
   other assignments or are not uniquely attributable; left per the
-  "ambiguous → leave and report" rule. (`Ali AlHakeem__1Roaia1r2R__…` is a
+  "ambiguous → leave and report" rule. (`Student J__1Roaia1r2R__…` is a
   non-C1L13 attachment and was correctly kept.)
 * **Google Drive report PDFs** — 7 generated reports plus 1 previous version,
   **kept deliberately**. Drive file ids:
@@ -118,8 +118,8 @@ under automated polling, so no worker/scheduler can recreate work for it.
   A read-only Drive/Classroom check (2026-10-11) proved each file is **untrashed
   and still attached** to the student's Classroom submission (state RETURNED),
   and that each is **owned by the student's own Google account**
-  (e.g. `aboody.ah.2012@gmail.com`, `malak.mohamed.for.school@gmail.com`), not
-  the connected teacher account `rudroritisha12@gmail.com`. Deleting an
+  (e.g. `<redacted-email>`, `<redacted-email>`), not
+  the connected teacher account `<redacted-email>`. Deleting an
   attached report is exactly the bug `report_cleanup.py` exists to prevent; the
   testing-only guard and the app's cleanup rules both refuse it, and a forced
   delete would likely return 403 (not our file) and, if it succeeded, would

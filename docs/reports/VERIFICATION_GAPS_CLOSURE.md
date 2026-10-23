@@ -24,7 +24,7 @@ tested says so plainly — nothing here is inferred from a passing build.
 ## 1. Live Google Classroom integration (read-only)
 
 **The checkout did have a usable credential**: the installation reports
-`connected: True` for `rudroritisha12@gmail.com` (`client_configured: True`),
+`connected: True` for `<redacted-email>` (`client_configured: True`),
 so live reads were verified rather than assumed. No credential value was
 searched for, printed, or invented; `docs/CLASSROOM_SIGNIN.md` records the
 procedure (client JSON location, Desktop-app client type, consent-screen test

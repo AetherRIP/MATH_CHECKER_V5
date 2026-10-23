@@ -57,6 +57,8 @@ MathChecker_Distribution/previous_builds/
 desktop/**/bin/
 desktop/**/obj/
 desktop/artifacts/
+desktop/**/TestResults/
+*.trx
 .vs/
 *.user
 *.suo
@@ -72,15 +74,18 @@ Thumbs.db
 dev_local/
 .live_verify/
 frontend/tsconfig.tsbuildinfo
+frontend/coverage/
+frontend/.vite/
 
 # Design-review screenshots were captured against the teacher's live data set and
 # therefore show student names; they stay on the machine that captured them.
 docs/ui-ux-redesign/screenshots/
 
-# Kept verification evidence stays visible even though dev logs are ignored above.
-!docs/logs/*.log
-!docs/logs/*.txt
-!MathChecker_Distribution/logs/*.log
+# Verification and packaging transcripts are local evidence, not source. The app's
+# own logs live in data/logs/ (also ignored). Share a transcript deliberately after
+# checking it for student data; never rely on it being in a clean checkout.
+docs/logs/
+MathChecker_Distribution/logs/
 
 # Loose credential files (moved into data/secrets/)
 *.env

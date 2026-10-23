@@ -24,7 +24,7 @@ re-run the harness — it will not report CERTIFIED until you do.
 | [ ] | 3 | 3 | **3** | nested-subquestion, fully-correct | 3 of 3: (a) B1 for 10, (b) M1 for 3n - 2 = 40, A1 for n = 14. |
 | [ ] | 4 | 2 | **0** | missing-answer | 0 of 2: no attempt. Neither clause can be credited, and this must be reported as 0 rather than silently omitted. |
 | [ ] | 5 | 2 | **2** | alternative-method, fully-correct | 2 of 2: the grid evidences all four terms (M1) and the simplified answer matches (A1). The method is not the scheme's prose, but the clause says 'or a complete correct grid', so it earns the mark. |
-| [ ] | 6 | 3 | **3** | equivalent-expression, fully-correct | 3 of 2: all three clauses evidenced. The final answer is written 3b^2a^3 rather than 3a^3b^2 — the scheme explicitly accepts an equivalent ordering, so A1 stands. |
+| [ ] | 6 | 3 | **3** | equivalent-expression, fully-correct | 3 of 3: all three clauses evidenced. The final answer is written 3b^2a^3 rather than 3a^3b^2 — the scheme explicitly accepts an equivalent ordering, so A1 stands. |
 | [ ] | 7 | 2 | **0** | incorrect | 0 of 2: the signs are wrong. (x - 3)(x - 4) expands to x^2 - 7x + 12, so neither the factorisation clause nor the answer clause is met. A mark would be an over-mark. |
 | [ ] | 8 | 3 | **3** | fully-correct, method-and-accuracy | 3 of 3: 3x = 12 (M1), x = 4 (M1), y = 3 (A1). |
 | [ ] | 9 | 2 | **1** | partial-credit, method-and-accuracy | 1 of 2: the correct formula with correct substitution earns M1. The arithmetic and the answer are wrong, so A1 (54 cm^2) is not earned. |

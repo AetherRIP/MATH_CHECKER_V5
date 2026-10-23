@@ -10,7 +10,7 @@ Build `20261012` (app 5.2.1) · prepared 2026-10-12 · master project `E:\MATH V
 
 ## 1. Deliverable
 
-Everything is in [`MathChecker_Distribution/release/`](../MathChecker_Distribution/release):
+Everything is in [`MathChecker_Distribution/release/`](../../MathChecker_Distribution/release):
 
 | Artifact | Size | SHA-256 |
 |---|---|---|
@@ -24,10 +24,10 @@ The ZIP contains the **runnable package**, not source: `MathChecker.bat` (launch
 `Data/README.txt` and `Data/config.toml.example`), and a bundled CPython
 runtime in `runtime/` — 3,822 files, 15 runtime dependencies, nothing else
 needed on the target machine. Recipient instructions:
-[README.txt](../MathChecker_Distribution/documentation/README_PORTABLE.txt) (shipped at the root of the extract).
+[README.txt](../../MathChecker_Distribution/documentation/README_PORTABLE.txt) (shipped at the root of the extract).
 
 Build identity is recorded in
-[backend/app/version.py](../backend/app/version.py) (`5.2.1`, build `20261012`,
+[backend/app/version.py](../../backend/app/version.py) (`5.2.1`, build `20261012`,
 2026-10-12) and in `release_manifest.json`
 (`build_timestamp 2026-10-12T02:45:13Z`, `self_contained: true`).
 
@@ -49,8 +49,8 @@ launch directory**. In the package the child therefore could not import `app`,
 died before reading its job, and every correction came back as a crash. A
 development checkout never showed it because a system Python has no `._pth`.
 
-**Fix** ([backend/app/workers/adapter.py](../backend/app/workers/adapter.py#L197),
-[backend/app/workers/child.py](../backend/app/workers/child.py#L1-L26)):
+**Fix** ([backend/app/workers/adapter.py](../../backend/app/workers/adapter.py#L197),
+[backend/app/workers/child.py](../../backend/app/workers/child.py#L1-L26)):
 
 * the child is launched **by script path** (`python <backend>/app/workers/child.py`)
   — `sys.executable`, no `-m`, no dependence on `PYTHONPATH`;
@@ -60,7 +60,7 @@ development checkout never showed it because a system Python has no `._pth`.
   diagnosable from the log rather than silent;
 * the class docstring that still described the old `-m` launch was corrected.
 
-Regression test: [backend/tests/test_worker_child_launch.py](../backend/tests/test_worker_child_launch.py)
+Regression test: [backend/tests/test_worker_child_launch.py](../../backend/tests/test_worker_child_launch.py)
 pins both the behaviour (a child launched the way the adapter launches it
 completes a job) and the adapter's launch contract.
 
@@ -69,7 +69,7 @@ completes a job) and the adapter's launch contract.
 ## 3. What the packaged application does when a teacher double-clicks it
 
 `MathChecker.bat` and `Stop.bat` are distribution-owned files
-([installer/launcher.bat](../MathChecker_Distribution/installer/launcher.bat), `installer/Stop.bat`):
+([installer/launcher.bat](../../MathChecker_Distribution/installer/launcher.bat), `installer/Stop.bat`):
 
 * **Data location** — `portable.flag` present → `Data\` beside the app; else an
   existing `Data\config.toml`; else `%LOCALAPPDATA%\MathChecker`. Decided before

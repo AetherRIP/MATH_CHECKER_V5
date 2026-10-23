@@ -93,7 +93,7 @@ blocking scan `scan_release.py`):
 | Generated UI | `frontend/dist/` | Rebuild from source; git-ignored and required to run this checkout |
 | Release artifacts | `MathChecker_Distribution/build/`, `release_staging/`, `portable/`, `release/` | Generated/replaced by the release pipeline; current contents are ignored by source allowlisting and must be audited before sharing. Only `release/` (the hand-off ZIP/installer) and `build/` (the bundled runtime the pipeline consumes) are kept in git; `release_staging/` and `portable/` are git-ignored working copies |
 | Release history | `MathChecker_Distribution/previous_builds/` | Rollback material and the baseline `backend/scripts/release_update_check.py` compares against. Keep at most the newest package; the folder is git-ignored so future packages stay out of history (`docs/size_optimization/README.md`). The one package tracked at `HEAD` is unaffected by that rule until it is deleted |
-| Dev scratch/evidence | `dev_local/`, `docs/logs/`, `docs/results/`, `docs/evidence/`, `docs/archive/` | Keep separate from active source; review privacy before sharing or deleting |
+| Dev scratch/evidence | `dev_local/`, `docs/logs/` (ignored), `docs/results/`, `docs/evidence/` | Keep separate from active source; review privacy before sharing or deleting. `docs/results/` contains redacted verification output; `docs/logs/` is local-only |
 | Caches | `__pycache__/`, `.pytest_cache/`, `frontend/tsconfig.tsbuildinfo` | Regenerable and ignored; safe to remove when tools are not using them |
 
 
@@ -124,8 +124,9 @@ blocking scan `scan_release.py`):
   implementation. Nothing in the running app ever read it: the correction engine
   was already preserved verbatim in `backend/app/engine/legacy_marking.py`, and
   `LEGACY_APP_DIR` in `backend/app/config.py` was dead code. The only consumer was
-  the dev-only `backend/scripts/compare_original_vs_v5.py`. The release scanner
-  still deny-lists the name, so a restored copy could never be shipped.
+  a dev-only comparison script that has since been removed along with the
+  one-off audit tooling. The release scanner still deny-lists the name, so a
+  restored copy could never be shipped.
 
 ## dev_local/ — development scratch and preserved audit material
 
@@ -136,7 +137,7 @@ delete the whole tree; inspect individual contents first. See
 [dev_local/README.md](../dev_local/README.md) where available.
 
 ```
-dev_local/reports/        PDF/PNG renders from backend/scripts/preview_*.py
+dev_local/reports/        PDF/PNG renders from backend/scripts/pdf_preview.py
 dev_local/runs/           scratch data dirs of local e2e harnesses
 dev_local/archive/        superseded dev data (probe dumps, throwaway test DBs)
 ```
@@ -162,10 +163,13 @@ local artifacts need to be retained and the script's backup/retention behavior.
    `MathChecker_Distribution/previous_builds/<date>/`; keep at most the two most
    recent, delete older ones deliberately (they are multi-hundred-MB folders).
 3. **Runtime state → never tidy:** `data/`, `autostart/`, the venvs.
-4. **Uncertain → archive and document,** never delete. Archived items are listed
-   in [docs/README.md](README.md) with the reason they were kept.
-5. **Logs** go to `docs/logs/` (development) or `MathChecker_Distribution/logs/`
-   (packaging). The running app's own logs stay in `data/logs/`.
+4. **Uncertain → keep and document,** never delete. Historical material that is
+   still useful is listed in [docs/README.md](README.md) with the reason it was
+   kept.
+5. **Logs** go to the git-ignored `docs/logs/` (development) or
+   `MathChecker_Distribution/logs/` (packaging). The running app's own logs stay
+   in `data/logs/`. Verification transcripts must be checked for student data
+   before they are shared or copied anywhere else.
 
 ## What the 2026-10-12 reorganisation changed
 
@@ -188,6 +192,6 @@ local artifacts need to be retained and the script's backup/retention behavior.
   `dev_local/` and `.live_verify/`.
 
 This historical note records that the 2026-10-12 reorganisation removed only
-regenerable caches and the empty `backend/bin` directory. Full `mv` receipt:
-[docs/_moves.log](_moves.log). Later changes are documented in version control;
-review the current diff before reverting or repeating cleanup.
+regenerable caches and the empty `backend/bin` directory. The full `mv` receipt
+was a local log; version control is the authority for later changes. Review the
+current diff before reverting or repeating cleanup.

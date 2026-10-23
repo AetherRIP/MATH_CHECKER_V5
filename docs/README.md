@@ -1,4 +1,4 @@
-# docs/ — developer guides, reports, evidence, logs and archived notes
+# docs/ — developer guides, reports, evidence and logs
 
 Start with [ARCHITECTURE.md](ARCHITECTURE.md) for the current component map,
 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for the repository inventory,
@@ -8,7 +8,10 @@ desktop, the browser dev server and a test snapshot use,
 subquestions are detected and mapped, and [SERVER_LIFECYCLE.md](SERVER_LIFECYCLE.md)
 for startup/supervision details.
 Historical reports and evidence below are retained for context; they are not a
-substitute for the current README and architecture guide.
+substitute for the current README and architecture guide. Student and account
+identifiers in those reports have been replaced with stable labels such as
+`Student A`; do not add real names, email addresses or raw student reports to
+this folder.
 
 Everything else in this folder is **documentation produced while building the app**.
 Nothing here is imported, served or packaged: the release allowlist
@@ -32,6 +35,14 @@ policy.
 | [PURGE_REPORT_C1L13.md](reports/PURGE_REPORT_C1L13.md) | Targeted data purge of one assignment |
 | [PURGE_REPORT_TESTING_CLASS.md](reports/PURGE_REPORT_TESTING_CLASS.md) | Targeted data purge of the TESTING class |
 | [REPORT_GENERATION_AUDIT.md](reports/REPORT_GENERATION_AUDIT.md) | Report generation/attachment audit: log forensics, root causes, fixes |
+| [FINAL_RELEASE_CHECKLIST.md](reports/FINAL_RELEASE_CHECKLIST.md) | Release checklist and final gate results |
+| [FINAL_RELEASE_HANDOVER.md](reports/FINAL_RELEASE_HANDOVER.md) | Release handover notes and validation evidence |
+| [LIVE_CLASSROOM_TESTING_REPORT.md](reports/LIVE_CLASSROOM_TESTING_REPORT.md) | Live Classroom integration testing report |
+| [MARKING_DETERMINISM_INVESTIGATION.md](reports/MARKING_DETERMINISM_INVESTIGATION.md) | Marking determinism investigation and reproduction |
+| [OPTIMIZATION_REPORT_2026-10-18.md](reports/OPTIMIZATION_REPORT_2026-10-18.md) | Performance/size optimization report |
+| [SYSTEM_AUDIT_REPORT.md](reports/SYSTEM_AUDIT_REPORT.md) | Full system safety and correctness audit |
+| [VERIFICATION_GAPS_CLOSURE.md](reports/VERIFICATION_GAPS_CLOSURE.md) | Verification gaps found and how each was closed |
+| [live-classroom-readonly-audit-2026-10-22.md](reports/live-classroom-readonly-audit-2026-10-22.md) | Read-only live Classroom audit |
 | [RETRY_APPROVE_FIX_REPORT.md](reports/RETRY_APPROVE_FIX_REPORT.md) | Retry / Approve reliability fix on the Automatic Correction page |
 | [SIMPLIFICATION_REPORT.md](reports/SIMPLIFICATION_REPORT.md) | Simplification, data portability and UI integration pass |
 | [SYNC_AGENT_REPORT.md](reports/SYNC_AGENT_REPORT.md) | Background sync agent + role-based report distribution |
@@ -41,45 +52,45 @@ policy.
 
 ## results/ — machine-readable run results
 
-* [LIVE_ACCESS_SWITCHES_RESULTS.json](results/LIVE_ACCESS_SWITCHES_RESULTS.json) —
-  57 live checks from `backend/scripts/live_verify_access_switches.py` (the script writes here).
-* [two_env_e2e_results.json](results/two_env_e2e_results.json) — raw results from
-  `scripts/two_env_e2e.py` (the script writes here).
+Verification output written by the scripts in `backend/scripts/`. Some files
+cover live Classroom runs; account names, course titles and student identifiers
+are redacted or pseudonymised, and the raw student reports are deliberately not
+kept in the repository. Regenerate a result with its script rather than editing
+it by hand.
 
-Both files are outputs: delete them and re-run the script to regenerate.
+* `LIVE_CLASSROOM_CERTIFICATION.json` — live marking + write-refusal checks
+  (`backend/scripts/verify_classroom_readonly.py` and the live harness).
+* `CLASSROOM_READONLY_CERTIFICATION.json` — read-only Classroom surface checks.
+* `LIVE_ACCESS_SWITCHES_RESULTS.json` — access-switch checks
+  (`backend/scripts/live_verify_access_switches.py`).
+* `MARKING_REFERENCE_RESULTS.json` and `MARKING_REFERENCE_PAPER_B.json` — the
+  reference-marking harness (`backend/scripts/verify_marking_reference.py`).
+* `UI_WORKFLOW_CHECKS.json` and `final_ui_checks.json` — browser workflow/layout
+  checks (`backend/scripts/verify_ui_workflows.py`, `release_ui_check.py`).
+* `two_env_e2e_results.json` — two-installation end-to-end harness output.
+* `audit/` — re-runnable investigation helpers (`guard_proof.py`, `q9_repro.py`)
+  and their recorded outputs.
+* `reference_paper_b/` — expected results and harness transcript for paper B.
 
-## logs/ — development and verification logs
+## logs/ — local development logs (not version-controlled)
 
-Console/log output captured while running the app, the suites and the packaging
-pipeline (`server.log`, `backend_run.log`, `backend_preview.log`,
-`e2e_backend.log`, `full_suite_after_branding_fix.log`,
-`PORTABLE_TEST_SUITE_20261012.log`, `PORTABLE_VERIFY_REPORT_20261012.txt`).
+`docs/logs/` is git-ignored. Runtime logs of the live app live next to the data
+they describe, in `data/logs/`; packaging logs live in
+`MathChecker_Distribution/logs/`. Console transcripts captured during a
+verification run stay on the machine that produced them and should only be
+shared after checking them for student data.
 
-Runtime logs of the **live** app are not here — they live next to the data they
-describe, in `data/logs/`.
+## Evidence that was removed
 
-## evidence/report_audit/ — artefacts behind REPORT_GENERATION_AUDIT.md
-
-The packaged-runtime report check (`packaged_report_check.py`), its launch log,
-and the PDF/CSV/Markdown a packaged install actually produced for the job that
-failed in production.
-
-## archive/probe/ — retained scratch (kept, not deleted)
-
-Old scratch from a `tracking_routes.py` refactor: `new_tracking.py`,
-`refactor_tracking.py`, `tracking_routes.bak.py` (a **backup of a source file**),
-plus captured API responses (`asg.json`, `courses.json`), a probe mark scheme
-(`ms.pdf`) and raw response dumps (`pubfull.*`, `r1.txt`, `r2.txt`, `loc.txt`).
-
-Nothing references these files and no test or build uses them, but
-`tracking_routes.bak.py` is the only copy of a pre-refactor source file, so they
-were **archived rather than deleted**. Delete the folder if you are sure you no
-longer need that comparison.
+One-off packaged-runtime evidence for the report audit (`docs/evidence/report_audit/`)
+contained a real student's report and is intentionally no longer tracked. The
+findings remain in [reports/REPORT_GENERATION_AUDIT.md](reports/REPORT_GENERATION_AUDIT.md).
+The obsolete `docs/archive/probe/` refactor scratch was also removed; it was not
+referenced by any test, build or runtime path, and version control still holds
+its history.
 
 ## Also here
 
-* `_moves.log` — the exact `mv` output of the 2026-10-12 workspace
-  reorganisation (a receipt of what moved where; safe to delete).
 * `ARCHITECTURE.md` — current source/runtime boundaries and subsystem dependencies.
 * `MARK_SCHEME_SUBQUESTIONS.md` — how a mark scheme's subquestions are detected,
   how answers and marking criteria are mapped to their identifier, and what is

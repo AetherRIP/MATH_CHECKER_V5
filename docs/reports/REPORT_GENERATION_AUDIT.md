@@ -13,8 +13,8 @@ the four parked jobs and the log file are untouched.
 
 | Log | Location | Size / range | What it holds |
 |---|---|---|---|
-| Application runtime log (JSON lines) | [data/logs/app.log](../data/logs/app.log) | 16.3 MB, 70 878 records, 2026-10-05 → 2026-10-12 | every component: `automation`, `app`, `classroom.*`, `gemini.*`, `security`, `testing_guard`, `pypdf.*` |
-| Automation job log (per job) | `automation_log` table in [data/app.db](../data/app.db) | 23 automation jobs, 30 results | state transitions, per-step failures, retry decisions |
+| Application runtime log (JSON lines) | [data/logs/app.log](../../data/logs/app.log) | 16.3 MB, 70 878 records, 2026-10-05 → 2026-10-12 | every component: `automation`, `app`, `classroom.*`, `gemini.*`, `security`, `testing_guard`, `pypdf.*` |
+| Automation job log (per job) | `automation_log` table in [data/app.db](../../data/app.db) | 23 automation jobs, 30 results | state transitions, per-step failures, retry decisions |
 | Report attachment state | `report_attachments` table | per result | honest per-stage status (`VERIFIED`, `UPLOAD_FAILED`, …) |
 | Release build logs | [MathChecker_Distribution/build_release_rebuild.log](../../MathChecker_Distribution/logs/build_release_rebuild.log), `build_release_final.log` | portable/installer build | release-time validation |
 
@@ -39,31 +39,31 @@ Aggregated by event and level, the report-relevant failures were:
 
 * **Impact:** the correction succeeded, the marks were correct, but the report
   was never generated, validated or delivered. Four jobs were parked
-  (`89f100a0` Yahia, `6111b206` Hamza, `71566a94` Youssef Tamer, `d4dc86eb`
-  Adam), and 1 246 log lines were produced.
+  (`89f100a0` Student E, `6111b206` Student G, `71566a94` Student D, `d4dc86eb`
+  Student A), and 1 246 log lines were produced.
 * **Root cause (reproduced):** the automation worker rendered the **raw** result
   row while every other surface renders the **decorated** identity.
-  `engine.service.get_result()` returns `student_name = 'Yehia Nour'`; the API
+  `engine.service.get_result()` returns `student_name = 'Student F'`; the API
   export path calls `student_identity.decorate()` first, so the teacher's copy
-  printed `'Yahia Mohamed Noureldin'`. The automated PDF therefore **disagreed
+  printed `'Student E'`. The automated PDF therefore **disagreed
   with the downloaded PDF about which student the report was about**, and the
   pre-upload validation compared it against the Classroom roster name on the
   job → mismatch → `StepFailure(transient=False, REPORT_FAILED)`.
-  Reproduced byte-for-byte: raw render printed `Yehia Nour` → validation
-  `False`; decorated render printed `Yahia Mohamed Noureldin` → validation
+  Reproduced byte-for-byte: raw render printed `Student F` → validation
+  `False`; decorated render printed `Student E` → validation
   `True`.
 * **Fix:**
-  * [runner.py](../backend/app/automation/runner.py) — new `_decorate()` /
+  * [runner.py](../../backend/app/automation/runner.py) — new `_decorate()` /
     `_report_result()`; the report render, the report validation, the attachment
     and the report-only retry now all use the canonical identity
     (`display_name`, `classroom_name`, `nickname`, `class_name`), the same row
     the results page, the exports and the Drive filename use.
-  * [pdf_validation.py](../backend/app/automation/pdf_validation.py) — validation
+  * [pdf_validation.py](../../backend/app/automation/pdf_validation.py) — validation
     now takes `expected_any` (any one of a student's names is enough, instead of
     demanding one specific spelling) and compares **whitespace-normalised**
     text, so a name that wrapped onto two lines in the PDF is no longer
     reported as missing.
-  * [runner.py](../backend/app/automation/runner.py) `_expected_text()` — returns
+  * [runner.py](../../backend/app/automation/runner.py) `_expected_text()` — returns
     `(must_contain, any_of)`: the assignment title the renderer actually prints
     (read from the same coursework row) must appear, and any of the student's
     names must appear.
@@ -83,17 +83,17 @@ Aggregated by event and level, the report-relevant failures were:
   the runner mapped that to a **transient** `REPORT_UPLOAD_FAILED`; the API's
   global handler had no case for it and fell through to 500.
 * **Fix:**
-  * [report_attachment.py](../backend/app/classroom/report_attachment.py) — new
+  * [report_attachment.py](../../backend/app/classroom/report_attachment.py) — new
     honest status `STATUS_TESTING_BLOCKED` (+ `ERROR_TESTING_ONLY`), checked
     **before** any write and also caught if the flag races; the message says
     nothing left the machine and points at the setting. Deliberately *not* in
     `FAILED_STATUSES`, so it cannot be mistaken for a Drive failure.
-  * [runner.py](../backend/app/automation/runner.py) → `ATTENTION_REQUIRED /
+  * [runner.py](../../backend/app/automation/runner.py) → `ATTENTION_REQUIRED /
     testing_only_blocked`, `transient=False` (no wasted retries), parked for a
     human, and retryable at the report stage once the flag is off.
-  * [main.py](../backend/app/main.py) — dedicated `PublicationBlocked` handler →
+  * [main.py](../../backend/app/main.py) — dedicated `PublicationBlocked` handler →
     **403 `testing_only_blocked`**; the generic handler also recognises it.
-  * [routes_all.py](../backend/app/api/routes_all.py) — the report upload action
+  * [routes_all.py](../../backend/app/api/routes_all.py) — the report upload action
     and `_classroom_error()` map the guard to 403 + `TESTING_ONLY_BLOCKED`
     instead of 502 "could not reach Google".
 * **Verification:** end-to-end in a sandbox (real attach path, guard ON): final
@@ -127,9 +127,9 @@ Aggregated by event and level, the report-relevant failures were:
   `attach-report`) was inspected and is fed by a `SELECT *`/explicit column
   list that includes `status`.
 * **Fix (diagnosability, not suppression):**
-  [main.py](../backend/app/main.py) now records `method`, `path`, `exc_type` and a
+  [main.py](../../backend/app/main.py) now records `method`, `path`, `exc_type` and a
   **traceback** with every unhandled error, and
-  [errors.py](../backend/app/errors.py) `brief_traceback()` formats from the
+  [errors.py](../../backend/app/errors.py) `brief_traceback()` formats from the
   exception's own chain so it still works outside an `except` block. The next
   occurrence is therefore traceable; nothing was hidden or swallowed.
 
@@ -151,12 +151,12 @@ Aggregated by event and level, the report-relevant failures were:
 
 | File | Change |
 |---|---|
-| [backend/app/automation/runner.py](../backend/app/automation/runner.py) | render/validate/attach now use the canonical student identity; `_expected_text()` returns must-contain + any-of; `STATUS_TESTING_BLOCKED` → non-retryable `ATTENTION_REQUIRED/testing_only_blocked` |
-| [backend/app/automation/pdf_validation.py](../backend/app/automation/pdf_validation.py) | `expected_any` (alias) support; whitespace/case-normalised comparison; `missing` reported in the result |
-| [backend/app/classroom/report_attachment.py](../backend/app/classroom/report_attachment.py) | `STATUS_TESTING_BLOCKED` / `ERROR_TESTING_ONLY`; guard checked before the first write and caught if it races |
-| [backend/app/api/routes_all.py](../backend/app/api/routes_all.py) | testing-only gate → 403 `TESTING_ONLY_BLOCKED` (upload action + `_classroom_error`) |
-| [backend/app/main.py](../backend/app/main.py) | `PublicationBlocked` handler → 403; unhandled errors log method/path/type/traceback |
-| [backend/app/errors.py](../backend/app/errors.py) | `brief_traceback()` works from the exception's own chain |
+| [backend/app/automation/runner.py](../../backend/app/automation/runner.py) | render/validate/attach now use the canonical student identity; `_expected_text()` returns must-contain + any-of; `STATUS_TESTING_BLOCKED` → non-retryable `ATTENTION_REQUIRED/testing_only_blocked` |
+| [backend/app/automation/pdf_validation.py](../../backend/app/automation/pdf_validation.py) | `expected_any` (alias) support; whitespace/case-normalised comparison; `missing` reported in the result |
+| [backend/app/classroom/report_attachment.py](../../backend/app/classroom/report_attachment.py) | `STATUS_TESTING_BLOCKED` / `ERROR_TESTING_ONLY`; guard checked before the first write and caught if it races |
+| [backend/app/api/routes_all.py](../../backend/app/api/routes_all.py) | testing-only gate → 403 `TESTING_ONLY_BLOCKED` (upload action + `_classroom_error`) |
+| [backend/app/main.py](../../backend/app/main.py) | `PublicationBlocked` handler → 403; unhandled errors log method/path/type/traceback |
+| [backend/app/errors.py](../../backend/app/errors.py) | `brief_traceback()` works from the exception's own chain |
 
 No exception was silenced, no grading rule was touched, no report was
 regenerated into fake success, and no log line was deleted.
@@ -165,9 +165,9 @@ regenerated into fake success, and no log line was deleted.
 
 | Test | Guards |
 |---|---|
-| [test_report_delivery_fixes.py](../backend/tests/test_report_delivery_fixes.py) (9 tests) | wrapped-name matching, any-of aliases, full must-contain, case/spacing; the runner renders the canonical identity; the automated report and the teacher download agree; testing-only is its own non-retryable state; a testing-only hold is retryable at the report stage; a permanent failure stays parked and survives boot recovery |
-| [test_report_attachment.py](../backend/tests/test_report_attachment.py) | `test_testing_only_refuses_before_any_google_write` — no upload/attach call, honest status/message/state |
-| [test_classroom_error_reporting.py](../backend/tests/test_classroom_error_reporting.py) | the guard is registered as its own 403 gate; the handler answers 403 not 500; an unhandled error records route + type + traceback |
+| [test_report_delivery_fixes.py](../../backend/tests/test_report_delivery_fixes.py) (9 tests) | wrapped-name matching, any-of aliases, full must-contain, case/spacing; the runner renders the canonical identity; the automated report and the teacher download agree; testing-only is its own non-retryable state; a testing-only hold is retryable at the report stage; a permanent failure stays parked and survives boot recovery |
+| [test_report_attachment.py](../../backend/tests/test_report_attachment.py) | `test_testing_only_refuses_before_any_google_write` — no upload/attach call, honest status/message/state |
+| [test_classroom_error_reporting.py](../../backend/tests/test_classroom_error_reporting.py) | the guard is registered as its own 403 gate; the handler answers 403 not 500; an unhandled error records route + type + traceback |
 
 Two of the identity tests fail with the fix reverted (verified by temporarily
 restoring the old render call), i.e. they reproduce the production defect.
@@ -192,9 +192,10 @@ of every edited file.
 | Google Classroom attachment | **BLOCKED (no credentials)** | no Google account in this environment; the local no-write path is verified end-to-end (guard ON → 0 upload/attach/share calls, honest state). Uploads cannot be confirmed remotely, so this is not claimed as a pass |
 | Portable distribution | **PASS** | rebuilt `RELEASE READY` (3 819 files); the packaged copies of all six fixed files are byte-identical to source; the packaged app launched from `E:\MC Report Verify Ünit (fix)\Math Checker (v5.2.1)` rendered a valid report for the previously failing job with its own bundled runtime + dependencies |
 
-Evidence kept in [report_audit_evidence/](../evidence/report_audit)
-(`packaged_report_Yahia.pdf/.csv/.md`, `packaged_report_check.py`,
-`packaged_launch.log`).
+The packaged-runtime evidence (a real student's PDF/CSV/Markdown report and the
+one-off launch check) has been removed from the repository because it contained
+student data. The findings and measurements above remain; re-run the report
+workflow in a throwaway data directory if the evidence needs to be reproduced.
 
 ## 6. What is still open
 

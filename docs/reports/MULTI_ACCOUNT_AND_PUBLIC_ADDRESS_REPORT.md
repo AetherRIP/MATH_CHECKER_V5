@@ -94,35 +94,35 @@ the separately configured shared-backend address (Multi-School page).
 
 | File | Purpose |
 |---|---|
-| [app/multi_account.py](../backend/app/multi_account.py) *(new)* | The flag (`[accounts] multi_account` + `MULTI_ACCOUNT_ENABLED`), the explicit rule table of disabled operations, the `403 multi_account_disabled` middleware, and the public `capabilities()` payload. |
-| [app/public_access.py](../backend/app/public_access.py) *(new)* | The app-managed tunnel: start/verify/publish/monitor/stop, the five states, honest failure reporting, restart autostart, shutdown. Never publishes an unverified address. |
-| [app/api/access_routes.py](../backend/app/api/access_routes.py) *(new)* | `GET /api/access/state`, `POST /api/access/public-address`, `POST /api/access/public-address/recheck`, `POST /api/access/multi-account` — owner-only. |
-| [app/main.py](../backend/app/main.py) | Registers the access routes; installs `MultiAccountGuard` inside the public auth gate; brings the endpoint back at boot when the switch is ON and stops it on exit; serves the SPA shell `no-store` so an in-place upgrade cannot keep serving an old bundle. |
-| [app/distributed/routes.py](../backend/app/distributed/routes.py) | Public `GET /api/distributed/capabilities` (no token) so the UI adapts before sign-in. |
-| [app/remote_access.py](../backend/app/remote_access.py) | The status file/`public_url()` path now reflects the switch, and the "stale verification" reason points at the Settings switch as well as `start_public.bat`. |
-| [app/config.py](../backend/app/config.py) | `[accounts] multi_account` and `[security] last_public_url` (the remembered, inactive address). |
-| [agent/agent.py](../agent/agent.py) | Backend-address validation/warnings for the shipped agent, so a device keeps connecting correctly in single-account mode. |
+| [app/multi_account.py](../../backend/app/multi_account.py) *(new)* | The flag (`[accounts] multi_account` + `MULTI_ACCOUNT_ENABLED`), the explicit rule table of disabled operations, the `403 multi_account_disabled` middleware, and the public `capabilities()` payload. |
+| [app/public_access.py](../../backend/app/public_access.py) *(new)* | The app-managed tunnel: start/verify/publish/monitor/stop, the five states, honest failure reporting, restart autostart, shutdown. Never publishes an unverified address. |
+| [app/api/access_routes.py](../../backend/app/api/access_routes.py) *(new)* | `GET /api/access/state`, `POST /api/access/public-address`, `POST /api/access/public-address/recheck`, `POST /api/access/multi-account` — owner-only. |
+| [app/main.py](../../backend/app/main.py) | Registers the access routes; installs `MultiAccountGuard` inside the public auth gate; brings the endpoint back at boot when the switch is ON and stops it on exit; serves the SPA shell `no-store` so an in-place upgrade cannot keep serving an old bundle. |
+| [app/distributed/routes.py](../../backend/app/distributed/routes.py) | Public `GET /api/distributed/capabilities` (no token) so the UI adapts before sign-in. |
+| [app/remote_access.py](../../backend/app/remote_access.py) | The status file/`public_url()` path now reflects the switch, and the "stale verification" reason points at the Settings switch as well as `start_public.bat`. |
+| [app/config.py](../../backend/app/config.py) | `[accounts] multi_account` and `[security] last_public_url` (the remembered, inactive address). |
+| [agent/agent.py](../../agent/agent.py) | Backend-address validation/warnings for the shipped agent, so a device keeps connecting correctly in single-account mode. |
 
 **Frontend**
 
 | File | Purpose |
 |---|---|
-| [src/api.ts](../frontend/src/api.ts) | Typed client for the access endpoints (`accessState`, `setPublicAddress`, `recheckPublicAddress`, `setMultiAccount`). |
-| [src/pages/SettingsPage.tsx](../frontend/src/pages/SettingsPage.tsx) | The **Public Address** card (ON/OFF, state badge, address only when verified, Open/Copy/Re-check, honest busy + failure messages) and the **Multi-Account Mode** card (state, explanation, owner-gated switch). Account discovery is no longer requested while the layer is off. |
-| [src/distributed/api.ts](../frontend/src/distributed/api.ts) | `distributedCapabilities()` — the client's source of truth for the mode. |
-| [src/distributed/DistributedPage.tsx](../frontend/src/distributed/DistributedPage.tsx) | Hides the Accounts and Assistant-teams panels while the mode is off and shows why, with everything else (sync monitor, schools/classes, workers, results, updates, errors, audit) untouched. |
+| [src/api.ts](../../frontend/src/api.ts) | Typed client for the access endpoints (`accessState`, `setPublicAddress`, `recheckPublicAddress`, `setMultiAccount`). |
+| [src/pages/SettingsPage.tsx](../../frontend/src/pages/SettingsPage.tsx) | The **Public Address** card (ON/OFF, state badge, address only when verified, Open/Copy/Re-check, honest busy + failure messages) and the **Multi-Account Mode** card (state, explanation, owner-gated switch). Account discovery is no longer requested while the layer is off. |
+| [src/distributed/api.ts](../../frontend/src/distributed/api.ts) | `distributedCapabilities()` — the client's source of truth for the mode. |
+| [src/distributed/DistributedPage.tsx](../../frontend/src/distributed/DistributedPage.tsx) | Hides the Accounts and Assistant-teams panels while the mode is off and shows why, with everything else (sync monitor, schools/classes, workers, results, updates, errors, audit) untouched. |
 
 **Tests, tools, docs**
 
 | File | Purpose |
 |---|---|
-| [tests/test_multi_account_mode.py](../backend/tests/test_multi_account_mode.py) *(new)* | Default OFF; every blocked operation refused with the right code; the essential operations allowed; data preserved across OFF→ON; middleware cannot be bypassed. |
-| [tests/test_public_access_toggle.py](../backend/tests/test_public_access_toggle.py) *(new)* | Switch semantics, state machine, owner-only enforcement, failure honesty, no double tunnel, restart persistence (with a fake tunnel process — clearly marked as mocked). |
-| [tests/test_public_access_hardening.py](../backend/tests/test_public_access_hardening.py) | Added: the SPA shell must never be cached (found in a real browser). |
-| [tests/test_remote_access.py](../backend/tests/test_remote_access.py), [tests/conftest.py](../backend/tests/conftest.py) | Status-file/`public_url` behaviour with the switch; the pre-existing suites keep their multi-account default. |
-| [scripts/live_verify_access_switches.py](../backend/scripts/live_verify_access_switches.py) *(new)* | The live, mock-free end-to-end verification (real app, real tunnel, real HTTP). |
-| [DISTRIBUTED_DEPLOYMENT.md](../DISTRIBUTED_DEPLOYMENT.md) | New §3.1 (both switches, prerequisites, states, re-enabling), checklist entries and two new known limitations. |
-| [documentation/README_RECIPIENT.md](../MathChecker_Distribution/documentation/README_RECIPIENT.md) | Teacher-facing explanation of both switches and the `cloudflared` prerequisite. |
+| [tests/test_multi_account_mode.py](../../backend/tests/test_multi_account_mode.py) *(new)* | Default OFF; every blocked operation refused with the right code; the essential operations allowed; data preserved across OFF→ON; middleware cannot be bypassed. |
+| [tests/test_public_access_toggle.py](../../backend/tests/test_public_access_toggle.py) *(new)* | Switch semantics, state machine, owner-only enforcement, failure honesty, no double tunnel, restart persistence (with a fake tunnel process — clearly marked as mocked). |
+| [tests/test_public_access_hardening.py](../../backend/tests/test_public_access_hardening.py) | Added: the SPA shell must never be cached (found in a real browser). |
+| [tests/test_remote_access.py](../../backend/tests/test_remote_access.py), [tests/conftest.py](../../backend/tests/conftest.py) | Status-file/`public_url` behaviour with the switch; the pre-existing suites keep their multi-account default. |
+| [scripts/live_verify_access_switches.py](../../backend/scripts/live_verify_access_switches.py) *(new)* | The live, mock-free end-to-end verification (real app, real tunnel, real HTTP). |
+| [DISTRIBUTED_DEPLOYMENT.md](../../DISTRIBUTED_DEPLOYMENT.md) | New §3.1 (both switches, prerequisites, states, re-enabling), checklist entries and two new known limitations. |
+| [documentation/README_RECIPIENT.md](../../MathChecker_Distribution/documentation/README_RECIPIENT.md) | Teacher-facing explanation of both switches and the `cloudflared` prerequisite. |
 
 ## 6. Additional infrastructure required
 

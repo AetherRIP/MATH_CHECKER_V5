@@ -19,13 +19,13 @@ Additional structural gaps found:
 
 1. **Historical ≥95% results never got any recheck.** The double-check feature
    landed after the Oct-6/7 class batches ran; every 95–100% result before that
-   (`Hala Marzouk 99.04%`, `Eyad Sharaf 95.21%`, `Ali AlHakeem 97.13%`, five
+   (`Student H 99.04%`, `Student I 95.21%`, `Student J 97.13%`, five
    100% results in the Ch1L10/Ch1L9 batches) has
    `double_check_triggered = 0` in the database.
 2. **Blank / unreadable / wrong-assignment submissions were trusted as scores.**
-   `Sama Ahmad 0/150` was stored with confidence HIGH — a near-blank or
+   `Student K 0/150` was stored with confidence HIGH — a near-blank or
    wrong-assignment scan marked "honestly" produces a 0 that looks like a
-   verified failure, and `Adam Sobky 266/266` was accepted with HIGH
+   verified failure, and `Student A 266/266` was accepted with HIGH
    confidence purely because the numbers were self-consistent.
 3. **No submission-quality gate existed** (spec §9): nothing deterministically
    flagged a submission whose answers mostly don't match the mark scheme.
@@ -72,7 +72,7 @@ fully-automatic workflow, which remains available via the config flag).
 
 ---
 
-## PART 4 — REAL-STUDENT AUDIT (5 submissions, FAHED excluded)
+## PART 4 — REAL-STUDENT AUDIT (5 submissions, Student V excluded)
 
 Method: originals re-downloaded read-only from Classroom Drive, official
 mark-scheme PDFs used, mark-scheme blueprint validated, **fresh independent
@@ -82,21 +82,21 @@ results were then applied deterministically (engine totals + boundary-table
 grade), stored with append-only history, and changed results flagged for teacher
 review. Original scans verified byte-stable.
 
-### STUDENT 1 — Hala Marzouk (Ch1L9 – Ratio, 209 marks)
+### STUDENT 1 — Student H (Ch1L9 – Ratio, 209 marks)
 - Automatic: **207/209** (99.04%, grade 9)
 - Audited: **207/209** (99.04%, grade 9) — **CONFIRMED**
 - Question differences: none
 - Report replaced: N/A (no report was attached; not needed)
 - Classroom: no grade posted (nothing to correct)
 
-### STUDENT 2 — Eyad Sharaf (Ch1L9 – Ratio, 209 marks, 3 files)
+### STUDENT 2 — Student I (Ch1L9 – Ratio, 209 marks, 3 files)
 - Automatic: **199/209** (95.22%, grade 9)
 - Audited: **199/209** (95.22%, grade 9) — total CONFIRMED
 - Question differences: **Q34: 2 → 3/4, Q45: 5 → 4/5** (offsetting; same total,
   different distribution — recorded in the audit trail for the teacher)
 - Report replaced: N/A · Classroom: no grade posted
 
-### STUDENT 3 — Ali AlHakeem (Ch1L9 – Ratio, 209 marks)
+### STUDENT 3 — Student J (Ch1L9 – Ratio, 209 marks)
 - Automatic: **203/209** (97.13%, grade 9)
 - Audited: **207/209** (99.04%, grade 9) — **UNDER-AWARD FOUND: Q54 0 → 4/4**
   (the automatic checker awarded 0 where the audited correction found full
@@ -105,7 +105,7 @@ review. Original scans verified byte-stable.
   generated + validated (11,157 bytes, 1 report, no duplicates)
 - Classroom: no grade posted (nothing to correct); original scan untouched
 
-### STUDENT 4 — Adam Sobky (Ch1L13 – Sets, 266 marks) — was 100%
+### STUDENT 4 — Student A (Ch1L13 – Sets, 266 marks) — was 100%
 - Automatic: **266/266** (100%, grade 9)
 - Audited: **266/266** (100%, grade 9) — **CONFIRMED GENUINE 100%**
 - Every audited question mark matched; the Classroom grade 9 already returned
@@ -113,7 +113,7 @@ review. Original scans verified byte-stable.
 - Report replaced: NO (existing attached report is correct) · Classroom grade
   updated: NO (already correct)
 
-### STUDENT 5 — Asser Tamer (Ch1L10 – Map Scale, 46 marks) — was 100%
+### STUDENT 5 — Student L (Ch1L10 – Map Scale, 46 marks) — was 100%
 - Automatic: **46/46** (100%, grade 9)
 - Audited: **39/46** (84.78%, grade **8**) — **FALSE 100% FOUND**
 - Question differences: **Q5: 6 → 3/6, Q7: 4 → 2/4, Q9: 2 → 0/2** (−7 marks,
@@ -125,13 +125,13 @@ review. Original scans verified byte-stable.
   student; original scan untouched
 
 ### AUDIT TOTALS
-- Automatic 100% results audited: **2/5** (Adam Sobky, Asser Tamer)
-- 100% results found incorrect: **1** (Asser Tamer)
-- Total marks corrected: **−7 (Asser Tamer), +4 (Ali AlHakeem) = 11 marks**
-- Grades changed: **1** (Asser Tamer 9 → 8)
+- Automatic 100% results audited: **2/5** (Student A, Student L)
+- 100% results found incorrect: **1** (Student L)
+- Total marks corrected: **−7 (Student L), +4 (Student J) = 11 marks**
+- Grades changed: **1** (Student L 9 → 8)
 - Reports replaced: **2** (new validated PDFs; no Classroom attachment existed to replace)
 - Classroom results updated: **0 needed** (4 of 5 had no posted grade; the one
-  posted grade — Adam Sobky — was audited correct)
+  posted grade — Student A — was audited correct)
 
 ### Is the suspected problem real?
 **Yes — partially.** Findings:
@@ -177,7 +177,7 @@ original corrections in `results` are byte-for-byte untouched.
 
 ### Assignment identified
 
-* Classroom: **WBIS - O Level Mathematics - Mr. Abanoub Akram** (course
+* Classroom: **WBIS - O Level Mathematics - Mr. Teacher (redacted)** (course
   `877926720424`) — the "O Level Math" class. (A same-named `Ch1L13 - Sets`
   exists in the separate `TESTING` course `886515702341`; it was NOT touched.)
 * Assignment: **Ch1L13 - Sets**, coursework `889601795010`.
@@ -189,24 +189,24 @@ original corrections in `results` are byte-for-byte untouched.
 
 78 enrolled · 15 submitted/returned · 10 already corrected · 5 submitted but
 never corrected · 63 never submitted · 13 accessible · **2 explicitly
-inaccessible** (Ruqaya AbdelAzim — link-only attachment; lara — `.zip` archive,
+inaccessible** (Student T — link-only attachment; Student U — `.zip` archive,
 invalid submission type).
 
 ### Root causes found in the stored corrections
 
-1. **Unmarked questions divided into the total (Alia Darwish).** Batch 2 of 2 of
+1. **Unmarked questions divided into the total (Student P).** Batch 2 of 2 of
    her 49-page submission returned 8 rows / 9 marks; the 32 questions (Q38–Q69,
    128 marks) it never answered were charged to her as 0: stored **124/266 =
    46.62%, grade 4**. Real: **238/266 = 89.47%**.
-2. **Incorrect per-question maxima / denominator (Abdulrahman Ahmed).** Q15/28/34
+2. **Incorrect per-question maxima / denominator (Student Q).** Q15/28/34
    were worth 2/2/4 in the cached scheme extraction of his run instead of the
    official 3/3/6, giving a 262-mark denominator and a stored **262/262 =
    100%**. (The scheme structure was later teacher-corrected, but his stored
    result was never re-accounted.)
 3. **Over-awarding on perfect scores.** All three stored 266/266 results
-   (Adam Sobky, Khadija Hytham Elbadry, Yassin Amr) failed independent
+   (Student A, Student B, Student C) failed independent
    re-marking: −4, −14 and −90 marks respectively.
-4. **A silent zero.** Yahia Mohamed's Q1 was stored as a 0 with no recorded
+4. **A silent zero.** Student E's Q1 was stored as a 0 with no recorded
    evidence the answer was read.
 5. **Recovery 403 — the systemic repair blocker.** Every chunked-recovery
    request for an affected submission died with `403 PERMISSION_DENIED — You do
@@ -235,21 +235,21 @@ invalid submission type).
 
 | Student | Status | Original | Repaired | Detail |
 |---|---|---|---|---|
-| Alia Darwish | NEEDS_REVIEW | 124/266 (46.62%) | **238/266 (89.47%)** | +32 added, 11 changed, 0 unresolved |
-| Abdulrahman Ahmed | UNRESOLVED | 262/262 (wrong denominator) | 119/161 marked-only | 27 unresolved (recovery 403) |
-| Adam Sobky | NEEDS_REVIEW | 266/266 | 262/266 | 3 changed |
-| Daniel Maher | NEEDS_REVIEW | 259/266 | 243/266 | 13 changed |
-| Khadija Hytham Elbadry | NEEDS_REVIEW | 266/266 | 252/266 | 10 changed |
-| Yousef Tamer | NEEDS_REVIEW | 232/266 | 232/266 | 29 changed (same total) |
-| Yahia Mohamed | UNRESOLVED | 261/266 | 239/246 marked-only | 6 unresolved (recovery 403) |
-| Yassin Amr | UNRESOLVED | 266/266 | 176/252 marked-only | 37 changed, 4 unresolved |
-| Lojien Sherif | UNRESOLVED | 265/266 | 132/134 marked-only | 34 unresolved (recovery 403) |
-| Malak Mohamed | UNRESOLVED | 263/266 | 17/17 marked-only | 64 unresolved (recovery 403) |
-| Omar Mohamed | REPAIRED (new) | — | 220/266 | 69 added, 0 unresolved |
-| ali Bahgat | REPAIRED (new) | — | 236/266 | 49-file scan merged, 69 added |
-| Yehia Nour | UNRESOLVED (new) | — | 234/263 | 68 added, 1 unresolved |
-| Ruqaya AbdelAzim | BLOCKED | — | — | link-only attachment |
-| lara | BLOCKED | — | — | `.zip` archive |
+| Student P | NEEDS_REVIEW | 124/266 (46.62%) | **238/266 (89.47%)** | +32 added, 11 changed, 0 unresolved |
+| Student Q | UNRESOLVED | 262/262 (wrong denominator) | 119/161 marked-only | 27 unresolved (recovery 403) |
+| Student A | NEEDS_REVIEW | 266/266 | 262/266 | 3 changed |
+| Student R | NEEDS_REVIEW | 259/266 | 243/266 | 13 changed |
+| Student B | NEEDS_REVIEW | 266/266 | 252/266 | 10 changed |
+| Student D | NEEDS_REVIEW | 232/266 | 232/266 | 29 changed (same total) |
+| Student E | UNRESOLVED | 261/266 | 239/246 marked-only | 6 unresolved (recovery 403) |
+| Student C | UNRESOLVED | 266/266 | 176/252 marked-only | 37 changed, 4 unresolved |
+| Student O | UNRESOLVED | 265/266 | 132/134 marked-only | 34 unresolved (recovery 403) |
+| Student M | UNRESOLVED | 263/266 | 17/17 marked-only | 64 unresolved (recovery 403) |
+| Student N | REPAIRED (new) | — | 220/266 | 69 added, 0 unresolved |
+| Student S | REPAIRED (new) | — | 236/266 | 49-file scan merged, 69 added |
+| Student F | UNRESOLVED (new) | — | 234/263 | 68 added, 1 unresolved |
+| Student T | BLOCKED | — | — | link-only attachment |
+| Student U | BLOCKED | — | — | `.zip` archive |
 
 Nothing was fabricated: unmarked questions stayed UNRESOLVED with explicit
 reasons, and every disagreement preserves BOTH versions for the teacher.
@@ -314,7 +314,7 @@ work or the mark scheme (which is sent whole and unsplit to every batch).
 
 ### Limitations
 
-- Alia's live result was **not** re-marked by this change; her stored result
+- Student P's live result was **not** re-marked by this change; her stored result
   is unchanged and still held in review. Running the 6 recovery chunks against
   her live job would spend real API quota and is left for the teacher to
   trigger. How many of the 32 questions she would actually earn is unverified.

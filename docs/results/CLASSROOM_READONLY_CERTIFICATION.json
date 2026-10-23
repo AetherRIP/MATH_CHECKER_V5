@@ -109,7 +109,7 @@
       "description": "the connected account resolves to a real identity",
       "status": "PASS",
       "expected": "an account email",
-      "actual": "rudroritisha12@gmail.com",
+      "actual": "<redacted-email>",
       "note": "the email is shown in the app's own UI; no token is recorded"
     },
     {
@@ -118,7 +118,7 @@
       "description": "courses are listed",
       "status": "PASS",
       "expected": ">=1 active course",
-      "actual": "2 courses: 886515702341 'TESTING', 877926720424 'WBIS - O Level Mathematics - Mr. Abanoub Akram'",
+      "actual": "2 courses: 000000000000 'TESTING', 000000000000 'Course (redacted)'",
       "note": ""
     },
     {
@@ -136,7 +136,7 @@
       "description": "the busiest course is chosen so the checks exercise real work",
       "status": "PASS",
       "expected": "the course with the most students",
-      "actual": "'WBIS - O Level Mathematics - Mr. Abanoub Akram', 78 students",
+      "actual": "'Course (redacted)', 78 students",
       "note": "override with --course-id to inspect a specific class"
     },
     {
@@ -145,7 +145,7 @@
       "description": "assignments are retrieved for the course",
       "status": "PASS",
       "expected": "a list of assignments",
-      "actual": "18 assignments in course 877926720424",
+      "actual": "18 assignments in course 000000000000",
       "note": ""
     },
     {
@@ -163,7 +163,7 @@
       "description": "the class roster is retrieved",
       "status": "PASS",
       "expected": ">=1 student",
-      "actual": "78 students in course 877926720424",
+      "actual": "78 students in course 000000000000",
       "note": ""
     },
     {
@@ -181,7 +181,7 @@
       "description": "turned-in submissions are retrieved for an assignment",
       "status": "PASS",
       "expected": ">=1 submission",
-      "actual": "24 turned-in on coursework 891651209745",
+      "actual": "24 turned-in on coursework 000000000000",
       "note": ""
     },
     {
@@ -245,7 +245,7 @@
       "status": "PASS",
       "expected": "78 roster members resolvable",
       "actual": "5 resolved, 0 errors",
-      "note": "emails: NOT granted by this token (rosters.readonly only) \u2014 expected, and a privacy win; "
+      "note": "emails: NOT granted by this token (rosters.readonly only) — expected, and a privacy win; "
     },
     {
       "id": "E5",
@@ -334,14 +334,14 @@
       "description": "the evidence document was written",
       "status": "PASS",
       "expected": "an evidence file",
-      "actual": "C:\\Users\\RUDRAN~1\\AppData\\Local\\Temp\\mc5-readonly-2vb8eji4\\child_live.json",
+      "actual": "C:\\Users\\<user>\\AppData\\Local\\Temp\\mc5-readonly-2vb8eji4\\child_live.json",
       "note": ""
     }
   ],
   "live_evidence": {
     "mode": "read-only live Classroom verification",
     "generated_at": "2026-10-16T22:09:09",
-    "account": "rudroritisha12@gmail.com",
+    "account": "<redacted-email>",
     "granted_scopes": [
       "email",
       "https://www.googleapis.com/auth/classroom.courses.readonly",
@@ -362,8 +362,8 @@
       "openid"
     ],
     "course": {
-      "id": "877926720424",
-      "name": "WBIS - O Level Mathematics - Mr. Abanoub Akram"
+      "id": "000000000000",
+      "name": "Course (redacted)"
     },
     "counts": {
       "courses": 2,
@@ -379,31 +379,31 @@
     },
     "sample_students": [
       {
-        "student": "S-4ccca6eb",
+        "student": "S-0001",
         "name_resolved": true,
         "has_email": false,
         "verified_teacher": null
       },
       {
-        "student": "S-a9a0d608",
+        "student": "S-0002",
         "name_resolved": true,
         "has_email": false,
         "verified_teacher": null
       },
       {
-        "student": "S-ea630f05",
+        "student": "S-0003",
         "name_resolved": true,
         "has_email": false,
         "verified_teacher": null
       },
       {
-        "student": "S-0322a5e3",
+        "student": "S-0004",
         "name_resolved": true,
         "has_email": false,
         "verified_teacher": null
       },
       {
-        "student": "S-1cab0314",
+        "student": "S-0005",
         "name_resolved": true,
         "has_email": false,
         "verified_teacher": null

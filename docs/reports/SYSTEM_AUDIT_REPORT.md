@@ -430,9 +430,12 @@ python MathChecker_Distribution/scripts/verify_portable.py
 | `docs/results/audit/final_suite.log` | full suite after all fixes (1894 passed, exit 0) |
 | `docs/results/audit/guard_proof.py` | the runtime publication-guard proof (re-runnable) |
 | `docs/results/audit/guard_proof_result.json` | its output: 6/6 blocked, 0 egress |
-| `docs/results/audit/e2e_launch.log` | real launch: relay, boot recovery, SPA, route calls |
+| `docs/results/audit/e2e_launch.log` | real launch: relay, boot recovery, SPA, route calls (local-only transcript; `*.log` is ignored) |
 | `docs/results/audit/data_hashes_before.txt` | production-data hashes for the before/after check |
-| `docs/results/audit/checkpoint.txt` | the recoverable pre-audit snapshot commit id |
+
+Suite transcripts (`baseline_suite.log`, `final_suite.log`, `e2e_launch.log`) are
+local evidence only and are not present in a clean checkout; the re-runnable
+scripts and JSON/txt evidence above are tracked.
 
 ### Files changed by this audit
 
