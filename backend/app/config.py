@@ -142,24 +142,75 @@ def resolve_oauth_client_path() -> Path:
     return OAUTH_CLIENT_PATH
 
 
+#: The model chain Google currently serves for correction, most capable first.
+#: Verified against https://ai.google.dev/gemini-api/docs/deprecations and
+#: .../docs/pricing on 2026-10-24: Gemini 3.8 Flash is the current Flash model,
+#: 3.6 Flash is the previous generation, and 3.5 Flash-Lite is the cheap
+#: fallback. None of the three has a shutdown date announced.
+#:
+#: These are DEFAULTS only: ``[gemini] primary_models`` in data/config.toml
+#: overrides them, and that file is what a deployment should edit. No model ID
+#: is hardcoded anywhere else (the engine, worker pool, double-check pass and
+#: diagnostics all read this chain), so switching models never needs a code
+#: change.
+DEFAULT_PRIMARY_MODELS = (
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+)
+
+#: Second-opinion chain for the (off-by-default) audit pass.
+DEFAULT_AUDIT_MODELS = (
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+)
+
+#: Models Google still ACCEPTS but no longer serves itself: a request to these
+#: IDs is automatically routed to the replacement. Leaving one in a fallback
+#: chain is actively harmful — after the replacement model failed, the next
+#: entry re-sends the whole request to the SAME model (wasting quota and
+#: latency), and a result marked through the alias is labelled with a model
+#: that never ran. ``normalize_model_chain`` collapses them.
+#:
+#: Kept as data (not a hardcoded replacement) so a future deprecation is a
+#: one-line change here. Unknown IDs are passed through untouched: a teacher
+#: may deliberately configure a preview model.
+DEPRECATED_MODEL_ROUTES = {
+    "gemini-3.5-flash": "gemini-3.6-flash",
+    "gemini-3.7-flash": "gemini-3.8-flash",
+}
+
+
+def normalize_model_chain(models) -> list[str]:
+    """Clean a configured fallback chain: trim, resolve aliases, de-duplicate.
+
+    Order is preserved (it is the fallback priority). Two entries that resolve
+    to the same served model collapse into one, so a deprecated alias can
+    never cause a second full request to a model that just failed.
+    """
+    out: list[str] = []
+    for raw in models or []:
+        name = str(raw).strip()
+        if not name:
+            continue
+        name = DEPRECATED_MODEL_ROUTES.get(name, name)
+        if name not in out:
+            out.append(name)
+    return out
+
+
 @dataclass
 class GeminiConfig:
     # Ordered fallback chain from the friend's app (app5_1_automated.py,
-    # PRIMARY_MODELS) — preserved verbatim so marking behavior is identical.
-    primary_models: list[str] = field(default_factory=lambda: [
-        "gemini-3.8-flash",
-        "gemini-3.7-flash",
-        "gemini-3.6-flash",
-        "gemini-3.5-flash",
-        "gemini-3.5-flash-lite",
-    ])
+    # PRIMARY_MODELS), with the two auto-routed model IDs replaced by the
+    # models Google actually serves for them (see DEPRECATED_MODEL_ROUTES).
+    primary_models: list[str] = field(
+        default_factory=lambda: list(DEFAULT_PRIMARY_MODELS))
     # Audit second pass is not run by default in V5 (deterministic
     # verification replaces it); kept for parity with the legacy app.
-    audit_models: list[str] = field(default_factory=lambda: [
-        "gemini-3.7-flash",
-        "gemini-3.6-flash",
-        "gemini-3.5-flash-lite",
-    ])
+    audit_models: list[str] = field(
+        default_factory=lambda: list(DEFAULT_AUDIT_MODELS))
     request_timeout_ms: int = 180_000
     # Developer prompt editor (prompt-inspection page): optional overrides
     # stored in config.toml so EVERY process (parent, worker child, automation
@@ -745,10 +796,17 @@ def get_config(reload: bool = False) -> AppConfig:
             cfg = AppConfig()
             gemini = data.get("gemini", {})
             if isinstance(gemini, dict):
+                # Normalised on READ as well as in the defaults: an existing
+                # install's data/config.toml may still carry a model ID that
+                # Google now routes to a replacement, and merely opening the
+                # app must not keep retrying that alias. The file itself is
+                # not rewritten here.
                 if "primary_models" in gemini and isinstance(gemini["primary_models"], list):
-                    cfg.gemini.primary_models = [str(m) for m in gemini["primary_models"]]
+                    cfg.gemini.primary_models = normalize_model_chain(
+                        gemini["primary_models"])
                 if "audit_models" in gemini and isinstance(gemini["audit_models"], list):
-                    cfg.gemini.audit_models = [str(m) for m in gemini["audit_models"]]
+                    cfg.gemini.audit_models = normalize_model_chain(
+                        gemini["audit_models"])
                 if "request_timeout_ms" in gemini:
                     try:
                         cfg.gemini.request_timeout_ms = int(gemini["request_timeout_ms"])
@@ -1023,8 +1081,10 @@ def save_config(cfg: AppConfig) -> None:
             "document_label": cfg.reports.document_label,
         },
         "gemini": {
-            "primary_models": cfg.gemini.primary_models,
-            "audit_models": cfg.gemini.audit_models,
+            # Saved normalised, so a config file written by an older build is
+            # cleaned up the first time settings are saved.
+            "primary_models": normalize_model_chain(cfg.gemini.primary_models),
+            "audit_models": normalize_model_chain(cfg.gemini.audit_models),
             "request_timeout_ms": cfg.gemini.request_timeout_ms,
             # Prompt overrides (Developer prompt page). Omitted entirely when
             # unset: _write_toml would stringify None, and the engine must

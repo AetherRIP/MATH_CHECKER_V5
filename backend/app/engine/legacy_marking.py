@@ -52,7 +52,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from ..config import get_config
+from ..config import get_config, normalize_model_chain
 from ..gemini.client_proxy import KeyAwareClient
 
 StatusCallback = Callable[[str], None]
@@ -785,7 +785,12 @@ def grade_with_model(
 
     errors = []
 
-    all_models = list(model_names)
+    # Resolve auto-routed aliases (and duplicate entries) BEFORE the chain is
+    # walked. A deprecated ID such as gemini-3.5-flash is served by 3.6, so
+    # trying it after 3.6 failed would re-send the whole request to the same
+    # model. This is a pure normalisation of the caller's list; the fallback
+    # ORDER is untouched.
+    all_models = normalize_model_chain(model_names)
     model_names = MODEL_HEALTH.usable_models(all_models)
     skipped = [m for m in all_models if m not in model_names]
     if skipped and status_callback:
@@ -864,7 +869,8 @@ def audit_result(
     contents = student_files + [mark_scheme_file, audit_prompt(result)]
     errors = []
 
-    model_names = MODEL_HEALTH.usable_models(list(model_names))
+    model_names = normalize_model_chain(model_names)
+    model_names = MODEL_HEALTH.usable_models(model_names)
 
     for model_name in model_names:
         for attempt in range(attempts_per_model):

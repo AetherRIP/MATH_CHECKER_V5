@@ -88,9 +88,16 @@ document_label = "TEACHER COPY"
 [gemini]
 # The provider chain the corrector tries, in order. These are MODEL NAMES —
 # the API keys that go with them are stored in Data\secrets.toml, never here.
-primary_models = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
+#
+# Verified 2026-10-24 against ai.google.dev/gemini-api/docs/deprecations:
+#   gemini-3.5-flash and gemini-3.7-flash are DEPRECATED aliases — Google
+#   accepts them but serves gemini-3.6-flash / gemini-3.8-flash, so they are
+#   deliberately absent here (an alias would retry a model that just failed).
+#   On load, any deprecated ID is replaced by the model that actually serves
+#   it and duplicates are removed.
+primary_models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
 # The second-opinion model used by the double-check pass.
-audit_models = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
+audit_models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
 # Per-request timeout in milliseconds (180000 = 3 minutes).
 request_timeout_ms = 180000
 

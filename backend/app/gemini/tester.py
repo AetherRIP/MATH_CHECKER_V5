@@ -23,7 +23,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 
-from ..config import get_config
+from ..config import DEFAULT_PRIMARY_MODELS, get_config
 from ..errors import classify_gemini_error
 from ..logging_setup import log_event
 from ..net_usage import GENERATION_REQUEST_OVERHEAD_BYTES, record
@@ -116,7 +116,10 @@ def test_key(index: int, key: str, fp: str) -> KeyTestState:
     # Stage 2: one minimal, deterministic generation on the last model of the
     # configured fallback chain (cheapest; the legacy chain is the authority
     # on which models are live). The response content is verified.
-    probe_model = (get_config().gemini.primary_models[-1] or "gemini-3.5-flash-lite")
+    # Last (cheapest) entry of the configured chain. The fallback is the
+    # config module's default chain, never a second hardcoded model ID.
+    chain = get_config().gemini.primary_models or list(DEFAULT_PRIMARY_MODELS)
+    probe_model = chain[-1]
     _stage_event(state, "generate", f"Running minimal health probe ({probe_model})…")
     started = time.time()
     try:
