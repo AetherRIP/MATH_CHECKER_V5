@@ -448,3 +448,234 @@ class TestPipelineIntegration:
         assert Path(rows[0]["path"]).read_bytes() == original_bytes
         # The job's compressed submission copy was released with the job.
         assert not Path(optimized.path).exists()
+
+
+class TestMeasuredSavingsAndReporting:
+    """The numbers the UI shows must describe the file that is uploaded."""
+
+    def test_reduction_percentage_is_never_invented(self):
+        report = po.OptimizationReport(
+            role="submission", source_name="x.pdf", original_bytes=2_000_000,
+            optimized_bytes=500_000, used="optimized")
+        assert report.reduction_percent == 75.0
+
+        # The original was kept: there is no saving to report, even though a
+        # larger candidate may have been measured.
+        kept = po.OptimizationReport(
+            role="submission", source_name="x.pdf", original_bytes=2_000_000,
+            optimized_bytes=1_500_000, used="original")
+        assert kept.reduction_percent is None
+
+        # A zero-byte source cannot produce a meaningful percentage.
+        empty = po.OptimizationReport(
+            role="submission", source_name="x.pdf", original_bytes=0,
+            optimized_bytes=0, used="optimized")
+        assert empty.reduction_percent is None
+
+    def test_a_document_over_the_safety_cap_is_left_untouched(
+            self, tmp_path, monkeypatch):
+        src = _scan_pdf(tmp_path / "student.pdf")
+        monkeypatch.setattr(po, "MAX_BYTES_FOR_LOSSLESS", 10)
+
+        result = po.optimize_pdf(src, role="submission")
+
+        assert result.path == str(src)
+        assert result.used_optimized is False
+        assert result.report.skipped == "larger than the safe optimization limit"
+
+    def test_an_interrupted_candidate_is_swept_after_an_hour(self, tmp_path):
+        import os
+
+        folder = po.cache_root() / "ab"
+        folder.mkdir(parents=True, exist_ok=True)
+        stale = folder / "abandoned.partial"
+        fresh = folder / "in-progress.partial"
+        stale.write_bytes(b"x")
+        fresh.write_bytes(b"x")
+        old = time.time() - po.PARTIAL_MAX_AGE_SECONDS - 60
+        os.utime(stale, (old, old))
+
+        po.sweep_cache(max_age_seconds=10 ** 9)
+
+        assert not stale.exists()
+        assert fresh.exists()
+
+
+class TestCompressionProgress:
+    def _stage(self, tmp_path, job_id: str):
+        from app.workers.pool import WorkerPool
+
+        student = _scan_pdf(tmp_path / f"{job_id}-student.pdf")
+        scheme = _scan_pdf(tmp_path / f"{job_id}-scheme.pdf")
+        with db.transaction() as conn:
+            conn.execute(
+                "INSERT INTO pending_manual_files(job_id, kind, path, filename) "
+                "VALUES(?,?,?,?)",
+                (job_id, "submission", str(student), student.name))
+            conn.execute(
+                "INSERT INTO pending_manual_files(job_id, kind, path, filename) "
+                "VALUES(?,?,?,?)",
+                (job_id, "mark_scheme", str(scheme), scheme.name))
+        pool = WorkerPool.__new__(WorkerPool)
+        job = {"id": job_id, "student_name": "Ada", "submission_id": None}
+        return pool, job
+
+    def test_progress_names_the_measured_reduction(self, tmp_path, monkeypatch):
+        from app.workers.pool import WorkerPool
+        from app.workers import pool as pool_module
+
+        pool, job = self._stage(tmp_path, "opt-progress")
+        stages: list[str] = []
+        monkeypatch.setattr(
+            pool_module, "_safe_progress",
+            lambda job_id, **kw: stages.append(kw.get("stage") or ""))
+
+        paths = pool._stage_inputs(job)
+
+        assert Path(paths["submission"][0]).is_file()
+        joined = " | ".join(stages)
+        assert "Preparing the student's PDF" in joined
+        assert "Student PDF compressed" in joined
+        assert "Mark scheme compressed" in joined
+        assert "% smaller" in joined
+        assert "Compressed PDFs ready" in joined
+
+    def test_a_broken_progress_feed_never_skips_compression(
+            self, tmp_path, monkeypatch):
+        """Reporting is not load-bearing: the smaller file is still staged."""
+        from app.workers.pool import WorkerPool
+
+        from app.jobs import manager as manager_module
+
+        pool, job = self._stage(tmp_path, "opt-broken-ui")
+
+        class _BrokenReporter:
+            def report_progress(self, *args, **kwargs):
+                raise RuntimeError("progress bus unavailable")
+
+        # The live reporter fails; the row-update fallback inside
+        # _safe_progress still runs and the correction still gets its file.
+        monkeypatch.setattr(manager_module.JobManagerHolder, "instance",
+                            classmethod(lambda cls: _BrokenReporter()))
+
+        paths = pool._stage_inputs(job)
+
+        assert str(po.cache_root()) in paths["submission"][0]
+        assert str(po.cache_root()) in paths["mark_scheme"]
+
+
+def _native_scan_pdf(path: Path, pages: int = 2) -> Path:
+    """A phone-scanner page: photo pixels placed 1:1 on a page in points.
+
+    This is the shape real CamScanner-style submissions have (page rect equals
+    the pixel dimensions, so placement DPI is 72). Downsampling would throw
+    away real detail, but the JPEG stream itself can be re-encoded safely.
+    """
+    import pymupdf
+    from PIL import Image, ImageDraw
+
+    px_w, px_h = 2000, 2800
+    doc = pymupdf.open()
+    for page_no in range(pages):
+        image = Image.new("L", (px_w, px_h), 246)
+        draw = ImageDraw.Draw(image)
+        # Enough fine strokes that the stream is realistically large
+        # (> RECOMPRESS_MIN_IMAGE_BYTES), like a photographed answer page.
+        for i in range(900):
+            x = 70 + (i * 41) % (px_w - 240)
+            y = 90 + (i * 57) % (px_h - 260)
+            draw.line((x, y, x + 52, y + 8), fill=38, width=2)
+            draw.ellipse((x + 70, y + 22, x + 73, y + 25), fill=70)
+        draw.text((90, 70), f"Q{page_no + 1}: 2x + 7 = 31, x = 12",
+                  fill=25)
+        buf = io.BytesIO()
+        image.convert("RGB").save(buf, "JPEG", quality=96)
+        page = doc.new_page(width=px_w, height=px_h)
+        page.insert_image(page.rect, stream=buf.getvalue())
+    data = doc.tobytes(garbage=1)
+    doc.close()
+    path.write_bytes(data)
+    return path
+
+
+class TestNativeResolutionRecompression:
+    def test_a_phone_scan_shrinks_without_losing_a_single_pixel(self, tmp_path):
+        import pymupdf
+
+        src = _native_scan_pdf(tmp_path / "phone-scan.pdf")
+        before = src.stat().st_size
+
+        result = po.optimize_pdf(src, role="submission")
+
+        assert result.used_optimized, result.report.as_dict()
+        assert result.report.detail.get("images_recompressed", 0) >= 1
+        assert result.report.lossy is True
+        assert result.report.integrity_ok is True
+        assert result.report.reduction_percent >= 20
+
+        original = pymupdf.open(str(src))
+        optimized = pymupdf.open(result.path)
+        try:
+            # Same pages, same page boxes, and the embedded image still has
+            # exactly the original pixel width/height.
+            assert optimized.page_count == original.page_count
+            assert [p.rect for p in optimized] == [p.rect for p in original]
+            for a, b in zip(original, optimized):
+                assert a.get_images(full=True)[0][2:4] == \
+                    b.get_images(full=True)[0][2:4]
+        finally:
+            original.close()
+            optimized.close()
+
+    def test_it_is_not_repeated_on_the_next_job(self, tmp_path, monkeypatch):
+        src = _native_scan_pdf(tmp_path / "phone-scan.pdf")
+        first = po.optimize_pdf(src, role="submission")
+        assert first.used_optimized
+
+        def _explode(*args, **kwargs):
+            raise AssertionError("recompressed a cached document again")
+
+        monkeypatch.setattr(po, "_recompress_jpeg_images", _explode)
+        second = po.optimize_pdf(src, role="submission")
+
+        assert second.report.used == "cached"
+        assert second.path == first.path
+
+
+class TestSettings:
+    def test_lossy_can_be_disabled_without_disabling_cleanup(self, tmp_path):
+        src = _native_scan_pdf(tmp_path / "phone-scan.pdf")
+
+        result = po.optimize_pdf(src, role="submission", allow_lossy=False)
+
+        assert result.report.lossy is False
+        assert "images_recompressed" not in result.report.detail
+        assert Path(result.path).stat().st_size <= src.stat().st_size
+
+    def test_turning_compression_off_uploads_the_staged_original(
+            self, tmp_path, monkeypatch):
+        from app.config import get_config
+        from app.workers.pool import WorkerPool
+
+        student = _native_scan_pdf(tmp_path / "student.pdf")
+        scheme = _native_scan_pdf(tmp_path / "scheme.pdf")
+        job_id = "opt-off"
+        with db.transaction() as conn:
+            conn.execute(
+                "INSERT INTO pending_manual_files(job_id, kind, path, filename) "
+                "VALUES(?,?,?,?)",
+                (job_id, "submission", str(student), student.name))
+            conn.execute(
+                "INSERT INTO pending_manual_files(job_id, kind, path, filename) "
+                "VALUES(?,?,?,?)",
+                (job_id, "mark_scheme", str(scheme), scheme.name))
+        monkeypatch.setattr(get_config().pdf_compression, "enabled", False)
+
+        pool = WorkerPool.__new__(WorkerPool)
+        paths = pool._stage_inputs(
+            {"id": job_id, "student_name": "Ada", "submission_id": None})
+
+        assert str(po.cache_root()) not in paths["submission"][0]
+        assert str(po.cache_root()) not in paths["mark_scheme"]
+        # The staged copy is byte-identical to the original.
+        assert Path(paths["submission"][0]).read_bytes() == student.read_bytes()

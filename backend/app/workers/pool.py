@@ -56,6 +56,82 @@ def _fmt_pct(pct: float | None) -> str:
         return "?"
 
 
+def _fmt_bytes(size: int | float | None) -> str:
+    """A file size a teacher can read (never a raw byte count)."""
+    try:
+        value = max(0.0, float(size or 0))
+    except (TypeError, ValueError):
+        return "?"
+    if value < 1024:
+        return f"{int(value)} B"
+    if value < 1024 * 1024:
+        return f"{value / 1024:.0f} KB"
+    return f"{value / (1024 * 1024):.1f} MB"
+
+
+def _optimised_stage(reports: list, label: str) -> str:
+    """One honest line about what will actually be uploaded.
+
+    Aggregates multiple attachments so the percentage describes the whole
+    upload, not one file. A document that kept its original is reported as
+    such — the stage never implies a saving that did not happen.
+    """
+    originals = sum(int(getattr(r, "original_bytes", 0) or 0) for r in reports)
+    uploads = sum(
+        int(getattr(r, "optimized_bytes", 0) or 0)
+        if getattr(r, "used", "original") in ("optimized", "cached")
+        else int(getattr(r, "original_bytes", 0) or 0)
+        for r in reports
+    )
+    used = [r for r in reports
+            if getattr(r, "used", "original") in ("optimized", "cached")]
+    if used and originals > uploads > 0:
+        pct = (originals - uploads) / originals * 100
+        return (f"{label} compressed — {_fmt_bytes(originals)} → "
+                f"{_fmt_bytes(uploads)} ({pct:.0f}% smaller)")
+    if originals:
+        return f"{label} ready — {_fmt_bytes(uploads)} (already optimised)"
+    return f"{label} ready"
+
+
+def _safe_progress(job_id: str, *, stage: str | None = None,
+                   progress: float | None = None,
+                   status: str | None = None) -> None:
+    """Publish a preparation stage without depending on the live layer.
+
+    Compression must never be skipped because a progress event could not be
+    delivered. The job manager is used when it exposes the reporter; a direct
+    row update is the fallback, and both failing is still harmless.
+    """
+    try:
+        from ..jobs.manager import JobManagerHolder
+        reporter = getattr(JobManagerHolder.instance(), "report_progress", None)
+        if reporter is not None:
+            reporter(job_id, stage=stage, progress=progress, status=status)
+            return
+    except Exception:  # noqa: BLE001 — fall through to the row update
+        pass
+    try:
+        now_ts = time.time()
+        fields: list[str] = []
+        values: list = []
+        if stage is not None:
+            fields.append("stage_detail = ?")
+            values.append(stage[:300])
+        if progress is not None:
+            fields.append("progress = ?")
+            values.append(progress)
+        if status is not None:
+            fields.append("status = ?")
+            values.append(status)
+        fields.append("updated_at = ?")
+        values.extend((now_ts, job_id))
+        db.execute(f"UPDATE correction_jobs SET {', '.join(fields)} WHERE id = ?",
+                   tuple(values))
+    except Exception:  # noqa: BLE001 — reporting is never load-bearing
+        log.debug("preparation progress not recorded", exc_info=True)
+
+
 
 # -- prepared-input manifest (§5/§6/§7/§10) ----------------------------------
 
@@ -480,6 +556,19 @@ class WorkerPool:
             log_event("workers", "prepared input reused (no re-download)",
                       job_id=job["id"], student=job["student_name"],
                       files=n)
+            summary = cached.get("optimization") or {}
+            if summary.get("used"):
+                _safe_progress(
+                    job["id"],
+                    stage=(f"Reusing the compressed PDFs from the last attempt — "
+                           f"{_fmt_bytes(summary.get('original_bytes'))} → "
+                           f"{_fmt_bytes(summary.get('upload_bytes'))} "
+                           f"({summary.get('reduction_percent', 0):.0f}% smaller)"),
+                    progress=0.12, status="PREPARING")
+            else:
+                _safe_progress(job["id"],
+                               stage="Reusing the PDFs prepared for the last attempt",
+                               progress=0.12, status="PREPARING")
             return {
                 "submission": list(cached.get("submission") or []),
                 "mark_scheme": cached.get("mark_scheme"),
@@ -596,28 +685,106 @@ class WorkerPool:
         # The staged files stay untouched (retention owns them); the model is
         # given a verified, smaller copy. A cached artifact is reused on every
         # retry and for every student sharing the same mark scheme.
+        #
+        # Reporting is deliberately OUTSIDE the failure guard: a progress
+        # event that cannot be published must never cause the compression to
+        # be skipped (that bug would have uploaded the original silently).
+        submission_reports: list = []
+        scheme_report = None
+        question_report = None
+        compression_cfg = get_config().pdf_compression
+        allow_lossy = bool(compression_cfg.allow_lossy)
         try:
             from ..engine.pdf_optimize import optimize_pdf
-            submission_paths = [
-                optimize_pdf(p, role="submission", job_id=job.get("id")).path
-                if Path(p).suffix.lower() == ".pdf" else p
-                for p in submission_paths]
-            if mark_scheme_path and Path(mark_scheme_path).suffix.lower() == ".pdf":
-                mark_scheme_path = optimize_pdf(
-                    mark_scheme_path, role="mark_scheme",
-                    job_id=job.get("id")).path
-            if question_path and Path(question_path).suffix.lower() == ".pdf":
-                question_path = optimize_pdf(question_path, role="mark_scheme",
-                                             job_id=job.get("id")).path
-        except Exception:  # noqa: BLE001 — optimization must never block a job
-            log_event("workers", "pdf optimization skipped",
+        except Exception:  # noqa: BLE001 — dependency trouble: keep originals
+            optimize_pdf = None
+            log_event("workers", "pdf optimization unavailable",
                       level=logging.WARNING, job_id=job.get("id"))
+
+        if not compression_cfg.enabled:
+            _safe_progress(job["id"],
+                           stage="PDF compression is off — using the originals",
+                           progress=0.02, status="PREPARING")
+
+        if optimize_pdf is not None and compression_cfg.enabled:
+            if any(Path(p).suffix.lower() == ".pdf" for p in submission_paths):
+                _safe_progress(job["id"], stage="Preparing the student's PDF",
+                               progress=0.02, status="PREPARING")
+            optimised: list[str] = []
+            for p in submission_paths:
+                if Path(p).suffix.lower() != ".pdf":
+                    optimised.append(p)
+                    continue
+                try:
+                    result = optimize_pdf(p, role="submission",
+                                          job_id=job.get("id"),
+                                          allow_lossy=allow_lossy)
+                except Exception:  # noqa: BLE001 — never block a paper
+                    optimised.append(p)
+                    continue
+                submission_reports.append(result.report)
+                optimised.append(result.path)
+            submission_paths = optimised
+            if submission_reports:
+                _safe_progress(job["id"],
+                               stage=_optimised_stage(submission_reports,
+                                                      "Student PDF"),
+                               progress=0.05, status="PREPARING")
+
+            if mark_scheme_path and Path(mark_scheme_path).suffix.lower() == ".pdf":
+                _safe_progress(job["id"], stage="Preparing the mark scheme",
+                               progress=0.06, status="PREPARING")
+                try:
+                    scheme_result = optimize_pdf(
+                        mark_scheme_path, role="mark_scheme",
+                        job_id=job.get("id"), allow_lossy=allow_lossy)
+                    mark_scheme_path = scheme_result.path
+                    scheme_report = scheme_result.report
+                    _safe_progress(job["id"],
+                                   stage=_optimised_stage([scheme_report],
+                                                          "Mark scheme"),
+                                   progress=0.08, status="PREPARING")
+                except Exception:  # noqa: BLE001
+                    pass
+            if question_path and Path(question_path).suffix.lower() == ".pdf":
+                try:
+                    question_result = optimize_pdf(
+                        question_path, role="mark_scheme", job_id=job.get("id"),
+                        allow_lossy=allow_lossy)
+                    question_path = question_result.path
+                    question_report = question_result.report
+                except Exception:  # noqa: BLE001
+                    pass
+
+        # One summary, stored with the prepared manifest so a retry can show
+        # the same sizes without re-measuring anything.
+        all_reports = submission_reports + [r for r in (scheme_report,
+                                                        question_report) if r]
+        original_total = sum(int(r.original_bytes or 0) for r in all_reports)
+        upload_total = sum(
+            int(r.optimized_bytes or 0)
+            if r.used in ("optimized", "cached") else int(r.original_bytes or 0)
+            for r in all_reports)
+        used = any(r.used in ("optimized", "cached") for r in all_reports)
+        reduction = (round((original_total - upload_total) / original_total * 100, 1)
+                     if used and original_total > upload_total > 0 else 0.0)
 
         prepared = {"submission": submission_paths,
                     "mark_scheme": mark_scheme_path,
                     "question": question_path,
+                    "optimization": {
+                        "original_bytes": original_total,
+                        "upload_bytes": upload_total,
+                        "used": used,
+                        "reduction_percent": reduction,
+                    },
                     "created_at": time.time()}
         _write_prepared_manifest(cache_dir, prepared)
+        _safe_progress(
+            job["id"],
+            stage=("Compressed PDFs ready — uploading them to Gemini"
+                   if used else "PDFs ready — uploading to Gemini"),
+            progress=0.12, status="PREPARING")
         return {"submission": submission_paths, "mark_scheme": mark_scheme_path,
                 "question": question_path}
 

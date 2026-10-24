@@ -39,6 +39,7 @@ import logging
 import os
 import shutil
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,7 +49,7 @@ from ..logging_setup import log_event
 log = logging.getLogger("engine.pdf_optimize")
 
 #: Bump when the algorithm changes so old cached artifacts are not reused.
-ALGORITHM_VERSION = "1"
+ALGORITHM_VERSION = "2"
 
 #: Above 250 dpi an image carries detail a 200 dpi page render cannot use.
 DPI_THRESHOLD = 250
@@ -63,11 +64,26 @@ MIN_OVERSIZED_SHARE = 0.35
 #: Trivial documents are not worth a rewrite pass.
 MIN_BYTES_FOR_REWRITE = 200 * 1024
 
+#: Native-resolution JPEG recompression. Phone-scanner PDFs often place a
+#: 2355x3477 photo on a page of exactly 2355x3477 POINTS, so by placement they
+#: claim 72 dpi and downsampling would destroy real detail — yet each page is
+#: a ~1.6 MB JPEG that re-encodes to about half with unchanged pixel
+#: dimensions (measured: 22.9 MB -> 11.8 MB, render diff 0.74/255, ink 1.0).
+#: This pass therefore never resizes: it only re-encodes JPEG streams that
+#: already dominate the file, and the normal integrity gate decides whether
+#: the result is acceptable.
+RECOMPRESS_MIN_IMAGE_BYTES = 200 * 1024
+MIN_RECOMPRESS_SHARE = 0.35
+
 #: Hard limits (memory/time safety). Beyond these only the lossless pass runs.
 MAX_BYTES_FOR_REWRITE = 120 * 1024 * 1024
 MAX_PAGES_FOR_REWRITE = 250
 #: The lossless pass itself is skipped above this size.
 MAX_BYTES_FOR_LOSSLESS = 400 * 1024 * 1024
+
+#: A ``.partial`` candidate older than this is debris from a killed process:
+#: it is unfinished, so it can never be served, and it is removed by the sweep.
+PARTIAL_MAX_AGE_SECONDS = 3600
 
 #: Render comparison: mean absolute difference (0-255) allowed per sampled
 #: page, and the worst single page tolerated. Measured baseline for an accepted
@@ -115,6 +131,23 @@ class OptimizationReport:
     cache_key: str | None = None
     detail: dict = field(default_factory=dict)
 
+    @property
+    def reduction_percent(self) -> float | None:
+        """Bytes saved by the file that was CHOSEN, as a percentage.
+
+        ``None`` when the original is in use (no compression happened), when
+        no size was measured, or when the candidate was not smaller: a
+        negative or meaningless percentage is never reported as a saving.
+        """
+        if self.used not in ("optimized", "cached"):
+            return None
+        if self.original_bytes <= 0 or self.optimized_bytes <= 0:
+            return None
+        saved = self.original_bytes - self.optimized_bytes
+        if saved <= 0:
+            return None
+        return round(saved / self.original_bytes * 100, 1)
+
     def as_dict(self) -> dict:
         return {
             "role": self.role, "source_name": self.source_name,
@@ -147,9 +180,10 @@ def cache_root() -> Path:
     return data_dir() / "tmp" / "pdf_cache"
 
 
-def _settings(role: str, *, lossy: bool) -> dict:
+def _settings(role: str, *, lossy: bool, recompress: bool = False) -> dict:
     return {
         "algorithm": ALGORITHM_VERSION, "role": role, "lossy": lossy,
+        "recompress": recompress,
         "dpi_threshold": DPI_THRESHOLD, "dpi_target": DPI_TARGET,
         "quality": QUALITY.get(role, 85),
     }
@@ -224,25 +258,44 @@ def _image_dpi(width: int, rects: list) -> float:
     return max(dpis) if dpis else 0.0
 
 
-def _oversized_image_share(doc, threshold_dpi: int) -> tuple[float, int]:
-    """Stored bytes held by images whose DPI exceeds ``threshold_dpi``.
+def _image_shares(doc, threshold_dpi: int,
+                  min_image_bytes: int) -> dict:
+    """One walk over the document's images for every planning decision.
 
-    DPI only exists relative to placement, so the on-page rectangle decides;
-    an image with no placement is ignored rather than guessed at. The stored
-    stream length (not raw pixel bytes) is what actually occupies the file.
+    Returns stored bytes/counts for (a) images displayed above
+    ``threshold_dpi`` (downsample candidates) and (b) large JPEG streams that
+    could be re-encoded at their existing size. Placement is expensive to
+    query (PyMuPDF hashes the decoded image), so this is done ONCE instead of
+    once per candidate technique.
     """
-    stored = 0
-    images = 0
+    oversized = 0
+    oversized_count = 0
+    recompress = 0
+    recompress_count = 0
     seen: set[int] = set()
     for page in doc:
         for xref, (width, _height, rects) in _page_images(page).items():
             if xref in seen or not rects:
                 continue
             seen.add(xref)
+            stored = _stream_length(doc, xref)
+            if stored <= 0:
+                continue
             if _image_dpi(width, rects) >= threshold_dpi:
-                stored += _stream_length(doc, xref)
-                images += 1
-    return stored, images
+                oversized += stored
+                oversized_count += 1
+                continue
+            try:
+                kind, value = doc.xref_get_key(xref, "Filter")
+            except Exception:  # noqa: BLE001
+                continue
+            if kind == "name" and "DCTDecode" in (value or "") \
+                    and stored >= min_image_bytes:
+                recompress += stored
+                recompress_count += 1
+    return {"oversized_bytes": oversized, "oversized_images": oversized_count,
+            "recompressible_bytes": recompress,
+            "recompressible_images": recompress_count}
 
 
 def _page_geometry(doc) -> list[tuple[float, float, int]]:
@@ -274,21 +327,17 @@ def _render_sample(doc, pages: int) -> list[bytes] | None:
     return shots
 
 
-def _ink_marks(doc, pages: int) -> list[int]:
-    """Mid-tone ink count per sampled page (faint pencil + printed marks).
+def _ink_marks(samples_pages: list[bytes]) -> list[int]:
+    """Mid-tone ink count for pages ALREADY rendered by the sample pass.
 
     Threshold 200 keeps pencil (≈92-140) and printed symbols while excluding
     white paper and pale rules, so a faded or blanked scan scores near zero.
+    Reusing the rendered pages matters: a second render of every sampled page
+    doubled verification time on large phone scans for no extra evidence.
     """
-    import pymupdf
-
-    counts = []
-    for index in range(min(pages, doc.page_count)):
-        samples = doc[index].get_pixmap(
-            dpi=SAMPLE_DPI, colorspace=pymupdf.csGRAY).samples
-        counts.append(sum(1 for pos in range(0, len(samples), INK_SAMPLE_STEP)
-                          if samples[pos] < INK_THRESHOLD))
-    return counts
+    return [sum(1 for pos in range(0, len(samples), INK_SAMPLE_STEP)
+                if samples[pos] < INK_THRESHOLD)
+            for samples in samples_pages]
 
 
 def _mean_abs_diff(a: bytes, b: bytes) -> float:
@@ -348,8 +397,8 @@ def verify_candidate(original_path: Path, candidate_path: Path) -> tuple[bool, d
         # Ink retention: a candidate that fades or blanks the writing fails even
         # when its mean pixel difference is tiny.
         try:
-            src_ink = _ink_marks(src, SAMPLE_PAGES)
-            out_ink = _ink_marks(out, SAMPLE_PAGES)
+            src_ink = _ink_marks(left)
+            out_ink = _ink_marks(right)
         except Exception:  # noqa: BLE001
             return False, {"reason": "a sampled page would not render"}
         ratios = [after / before if before else 1.0
@@ -388,7 +437,15 @@ def optimize_pdf(path: str | Path, *, role: str = "submission",
         report.skipped = "source missing"
         return OptimizedPdf(str(source), report)
 
+    # A document this large is a memory/time hazard: hashing and rewriting it
+    # would add minutes to the correction for a file the model may not even
+    # accept. The original is uploaded unchanged, which is always safe.
+    if report.original_bytes > MAX_BYTES_FOR_LOSSLESS:
+        report.skipped = "larger than the safe optimization limit"
+        return OptimizedPdf(str(source), report)
+
     lossy_planned = False
+    recompress_planned = False
     try:
         import pymupdf
     except Exception:  # noqa: BLE001 — dependency missing: keep original
@@ -404,8 +461,11 @@ def optimize_pdf(path: str | Path, *, role: str = "submission",
 
     # FAST PATH: a cached artifact is found from the key alone, so a retry (or
     # a second student on the same mark scheme) never pays the planning walk.
-    for lossy_flag in ((True, False) if allow_lossy else (False,)):
-        key = _cache_key(source_sha, _settings(role, lossy=lossy_flag))
+    cache_modes = ((True, False), (False, True), (False, False)) \
+        if allow_lossy else ((False, False),)
+    for lossy_flag, recompress_flag in cache_modes:
+        key = _cache_key(source_sha, _settings(role, lossy=lossy_flag,
+                                               recompress=recompress_flag))
         cached_pdf, cached_json = _cache_paths(key)
         if not (cached_pdf.is_file() and cached_pdf.stat().st_size > 0):
             continue
@@ -423,6 +483,7 @@ def optimize_pdf(path: str | Path, *, role: str = "submission",
         report.lossy = bool(saved.get("lossy", lossy_flag))
         report.detail.update({k: v for k, v in saved.items()
                               if k not in ("source_name", "role", "job_ids")})
+        report.detail.setdefault("recompressed", bool(saved.get("recompressed")))
         if job_id:
             _note_job(cached_json, job_id)      # cleanup must know it was used
         report.duration_ms = int((time.monotonic() - started) * 1000)
@@ -440,12 +501,26 @@ def optimize_pdf(path: str | Path, *, role: str = "submission",
             if allow_lossy and report.original_bytes <= MAX_BYTES_FOR_REWRITE \
                     and doc.page_count <= MAX_PAGES_FOR_REWRITE \
                     and report.original_bytes >= MIN_BYTES_FOR_REWRITE:
-                oversized, images = _oversized_image_share(doc, DPI_THRESHOLD)
-                share = oversized / max(1, report.original_bytes)
-                report.detail.update({"oversized_image_bytes": oversized,
-                                      "oversized_images": images,
-                                      "oversized_share": round(share, 3)})
+                plan = _image_shares(doc, DPI_THRESHOLD,
+                                     RECOMPRESS_MIN_IMAGE_BYTES)
+                share = (plan["oversized_bytes"]
+                         / max(1, report.original_bytes))
+                report.detail.update({
+                    "oversized_image_bytes": plan["oversized_bytes"],
+                    "oversized_images": plan["oversized_images"],
+                    "oversized_share": round(share, 3)})
                 lossy_planned = share >= MIN_OVERSIZED_SHARE
+                if not lossy_planned:
+                    # No image is oversized relative to its placement. Before
+                    # giving up, consider re-encoding large JPEGs WITHOUT
+                    # resizing (phone-scanner pages, see the constants above).
+                    jshare = (plan["recompressible_bytes"]
+                              / max(1, report.original_bytes))
+                    report.detail.update({
+                        "recompressible_image_bytes": plan["recompressible_bytes"],
+                        "recompressible_images": plan["recompressible_images"],
+                        "recompressible_share": round(jshare, 3)})
+                    recompress_planned = jshare >= MIN_RECOMPRESS_SHARE
             elif allow_lossy and (
                     report.original_bytes > MAX_BYTES_FOR_REWRITE
                     or doc.page_count > MAX_PAGES_FOR_REWRITE):
@@ -454,13 +529,15 @@ def optimize_pdf(path: str | Path, *, role: str = "submission",
         report.skipped = f"could not be read ({type(exc).__name__})"
         return OptimizedPdf(str(source), report)
 
-    settings = _settings(role, lossy=lossy_planned)
+    settings = _settings(role, lossy=lossy_planned,
+                         recompress=recompress_planned)
     key = _cache_key(source_sha, settings)
     cached_pdf, cached_json = _cache_paths(key)
     report.cache_key = key
 
     try:
-        result = _build_candidate(source, role=role, lossy=lossy_planned)
+        result = _build_candidate(source, role=role, lossy=lossy_planned,
+                                  recompress=recompress_planned)
     except Exception as exc:  # noqa: BLE001 — never block a correction
         report.skipped = f"optimization failed ({type(exc).__name__})"
         report.duration_ms = int((time.monotonic() - started) * 1000)
@@ -475,7 +552,9 @@ def optimize_pdf(path: str | Path, *, role: str = "submission",
 
     candidate_data, built = result
     candidate_bytes = len(candidate_data)
-    lossy_used = bool(built.get("lossy"))
+    # Re-encoding a JPEG is lossy too, even though the pixel dimensions are
+    # unchanged: the report must say so.
+    lossy_used = bool(built.get("lossy")) or bool(built.get("recompressed"))
     report.pages_after = report.pages_before
     report.lossy = lossy_used
     report.detail.update({k: v for k, v in built.items() if k != "lossy"})
@@ -494,7 +573,11 @@ def optimize_pdf(path: str | Path, *, role: str = "submission",
         return OptimizedPdf(str(source), report)
 
     cached_pdf.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = cached_pdf.with_suffix(".partial")
+    # Unique per writer: two jobs on the same paper (for example two students
+    # sharing one mark scheme) must never write over each other's candidate.
+    # The atomic replace below then publishes whichever finished intact.
+    tmp_path = cached_pdf.with_name(
+        f"{cached_pdf.name}.{uuid.uuid4().hex[:8]}.partial")
     tmp_path.write_bytes(candidate_data)
     ok, check = verify_candidate(source, tmp_path)
     report.integrity_ok = ok
@@ -613,8 +696,64 @@ def _downsample_images(doc, role: str) -> int:
     return len(replaced)
 
 
+def _recompress_jpeg_images(doc, role: str) -> int:
+    """Re-encode large JPEG streams at their EXISTING pixel size.
+
+    No resize, no crop, no colour change beyond what JPEG requires: the page
+    still holds exactly the same number of pixels, so fine handwriting is not
+    thrown away. A stream is only replaced when the new bytes are at least 10%
+    smaller; the caller's integrity gate then compares the rendered pages and
+    the retained ink before the candidate may be used.
+    """
+    import io as _io
+
+    from PIL import Image
+
+    quality = QUALITY.get(role, 85)
+    replaced: list[int] = []
+    for page in doc:
+        # No placement query here: this path never resizes, so the image's
+        # on-page rectangle is irrelevant. get_image_rects is expensive (it
+        # hashes the decoded image) and was the largest single cost on scans.
+        for entry in page.get_images(full=True):
+            xref = int(entry[0])
+            width = int(entry[2])
+            height = int(entry[3])
+            if xref in replaced:
+                continue
+            if width < 64 or height < 64 or width * height > 40_000_000:
+                continue
+            try:
+                info = doc.extract_image(xref)
+            except Exception:  # noqa: BLE001
+                continue
+            if not info or info.get("smask") or info.get("ext") != "jpeg":
+                continue
+            original = info.get("image") or b""
+            if len(original) < RECOMPRESS_MIN_IMAGE_BYTES:
+                continue
+            try:
+                with Image.open(_io.BytesIO(original)) as img:
+                    img.load()
+                    if img.mode not in ("RGB", "L"):
+                        img = img.convert("RGB")
+                    buffer = _io.BytesIO()
+                    img.save(buffer, "JPEG", quality=quality, optimize=True)
+            except Exception:  # noqa: BLE001 — leave an unreadable image alone
+                continue
+            if len(buffer.getvalue()) >= len(original) * 0.9:
+                continue
+            try:
+                page.replace_image(xref, stream=buffer.getvalue())
+                replaced.append(xref)
+            except Exception:  # noqa: BLE001
+                continue
+    return len(replaced)
+
+
 def _build_candidate(source: Path, *, role: str,
-                     lossy: bool) -> tuple[bytes, dict] | None:
+                     lossy: bool,
+                     recompress: bool = False) -> tuple[bytes, dict] | None:
     """Produce candidate bytes; ``None`` when nothing was worth keeping."""
     import pymupdf
 
@@ -626,6 +765,10 @@ def _build_candidate(source: Path, *, role: str,
             detail["images_rewritten"] = _downsample_images(doc, role)
             if not detail["images_rewritten"]:
                 lossy = False              # nothing oversized was found
+        if not lossy and recompress:
+            detail["images_recompressed"] = _recompress_jpeg_images(doc, role)
+            if not detail["images_recompressed"]:
+                recompress = False         # nothing worth re-encoding
         buffer = doc.tobytes(garbage=4, deflate=True, clean=True,
                              use_objstms=1)
     finally:
@@ -634,7 +777,7 @@ def _build_candidate(source: Path, *, role: str,
     detail["build_ms"] = int(elapsed * 1000)
     if elapsed > 300:  # wall-clock guard: absurdly slow is a failure signal
         log.warning("pdf optimisation took %.1fs", elapsed)
-    return buffer, {"lossy": lossy, **detail}
+    return buffer, {"lossy": lossy, "recompressed": recompress, **detail}
 
 
 def _note_job(sidecar: Path, job_id: str) -> None:
@@ -725,6 +868,16 @@ def sweep_cache(max_bytes: int | None = None,
         except OSError:
             continue
         if not path.name.endswith((".pdf", ".json", ".partial")):
+            continue
+        # An unfinished candidate is never served, so a stale one is debris
+        # from an interrupted run; do not keep it for the normal cache age.
+        if path.name.endswith(".partial") \
+                and now - stat.st_mtime > PARTIAL_MAX_AGE_SECONDS:
+            try:
+                path.unlink()
+                removed += 1
+            except OSError:
+                pass
             continue
         if now - stat.st_mtime > max_age_seconds:
             try:

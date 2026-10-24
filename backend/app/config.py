@@ -221,6 +221,24 @@ class GeminiConfig:
 
 
 @dataclass
+class PdfCompressionConfig:
+    """Upload-size reduction for the PDFs sent to Gemini.
+
+    ON by default because the optimizer is conservative and every candidate
+    must pass an independent page/ink integrity check before it is used. A
+    teacher can turn it off (nothing but the original is ever uploaded) or
+    keep only the lossless pass (``allow_lossy = false``), which removes
+    structure/metadata bloat but never re-encodes page images.
+
+    The numeric quality/DPI policy lives in app.engine.pdf_optimize and is
+    deliberately not exposed here: a low quality value would silently damage
+    handwriting, and the conservative defaults were measured on exam scans.
+    """
+    enabled: bool = True
+    allow_lossy: bool = True
+
+
+@dataclass
 class ClassroomConfig:
     enabled: bool = False
     # Draft grades are written back only when explicitly enabled per
@@ -608,6 +626,8 @@ class AssignmentNamingConfig:
 @dataclass
 class AppConfig:
     gemini: GeminiConfig = field(default_factory=GeminiConfig)
+    pdf_compression: PdfCompressionConfig = field(
+        default_factory=PdfCompressionConfig)
     classroom: ClassroomConfig = field(default_factory=ClassroomConfig)
     worker: WorkerConfig = field(default_factory=WorkerConfig)
     double_check: DoubleCheckConfig = field(default_factory=DoubleCheckConfig)
@@ -820,6 +840,13 @@ def get_config(reload: bool = False) -> AppConfig:
                 if gemini.get("user_prompt_override"):
                     cfg.gemini.user_prompt_override = str(
                         gemini["user_prompt_override"])
+            compression = data.get("pdf_compression", {})
+            if isinstance(compression, dict):
+                cfg.pdf_compression.enabled = bool(
+                    compression.get("enabled", cfg.pdf_compression.enabled))
+                cfg.pdf_compression.allow_lossy = bool(
+                    compression.get("allow_lossy",
+                                     cfg.pdf_compression.allow_lossy))
             classroom = data.get("classroom", {})
             if isinstance(classroom, dict):
                 cfg.classroom.enabled = bool(classroom.get("enabled", False))
@@ -1093,6 +1120,10 @@ def save_config(cfg: AppConfig) -> None:
                if cfg.gemini.system_prompt_override else {}),
             **({"user_prompt_override": cfg.gemini.user_prompt_override}
                if cfg.gemini.user_prompt_override else {}),
+        },
+        "pdf_compression": {
+            "enabled": cfg.pdf_compression.enabled,
+            "allow_lossy": cfg.pdf_compression.allow_lossy,
         },
         "classroom": {
             "enabled": cfg.classroom.enabled,

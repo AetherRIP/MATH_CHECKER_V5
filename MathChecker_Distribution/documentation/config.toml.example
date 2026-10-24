@@ -102,6 +102,16 @@ audit_models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
 request_timeout_ms = 180000
 
 
+[pdf_compression]
+# Shrink the PDFs uploaded to Gemini. ON by default: the optimizer only keeps
+# a smaller copy after an independent page/identity/ink check passes, and it
+# always falls back to the original. Set enabled = false to upload originals.
+enabled = true
+# allow_lossy = false keeps only the lossless cleanup (structure, metadata,
+# duplicate objects). Page images are then transmitted untouched.
+allow_lossy = true
+
+
 [classroom]
 # Google Classroom sync. Requires your own OAuth client file at
 # Data\secrets\google_oauth_client.json; without it this stays off and the

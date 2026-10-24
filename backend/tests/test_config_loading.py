@@ -95,3 +95,21 @@ def test_data_dir_is_resolved_on_every_call(fresh_state, monkeypatch, tmp_path):
     other = tmp_path / "relocated"
     monkeypatch.setattr(cfg, "DATA_DIR", other)
     assert cfg.data_dir() == other
+
+
+def test_pdf_compression_defaults_on_and_can_be_switched_off(tmp_path,
+                                                             monkeypatch):
+    from app import config as cfg
+
+    assert cfg.get_config().pdf_compression.enabled is True
+    assert cfg.get_config().pdf_compression.allow_lossy is True
+
+    file = tmp_path / "config.toml"
+    file.write_text("[pdf_compression]\nenabled = false\nallow_lossy = false\n",
+                    encoding="utf-8")
+    monkeypatch.setattr(cfg, "CONFIG_PATH", file)
+    monkeypatch.setattr(cfg, "_config", None)
+
+    loaded = cfg.get_config(reload=True)
+    assert loaded.pdf_compression.enabled is False
+    assert loaded.pdf_compression.allow_lossy is False
