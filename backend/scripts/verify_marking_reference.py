@@ -85,6 +85,18 @@ def canonical(question: str) -> str:
     return match.group(1) if match else str(question).strip()
 
 
+#: A label naming a MARKING POINT rather than a whole question (``1c``).
+_SUBQUESTION_LABEL = re.compile(r"^\s*\d+\s*[a-z]+\s*$", re.IGNORECASE)
+
+
+def is_subquestion_key(key: str) -> bool:
+    return bool(_SUBQUESTION_LABEL.match(str(key)))
+
+
+def question_of(label: str) -> str:
+    return canonical(label)
+
+
 def align(model_questions: dict, items: list[dict]) -> tuple[dict, dict, list]:
     """Line the model's question labels up with the manifest's.
 
@@ -112,6 +124,13 @@ def align(model_questions: dict, items: list[dict]) -> tuple[dict, dict, list]:
         stem = canonical(key)
         same_stem = [k for k in unmatched_manifest if canonical(k) == stem]
         if len(same_stem) == 1:
+            # Two DIFFERENT marking points (``1b`` returned where the key says
+            # ``1a``) must never be aligned with each other: that would turn a
+            # misplaced mark into an agreement. Stem matching is for a label
+            # that names a whole question where the key names a part (or the
+            # reverse); it is not an identity for sub-parts.
+            if is_subquestion_key(key) and is_subquestion_key(same_stem[0]):
+                continue
             mapping[key] = same_stem[0]
             method[key] = "stem"
             unmatched_manifest.remove(same_stem[0])
@@ -122,7 +141,7 @@ def align(model_questions: dict, items: list[dict]) -> tuple[dict, dict, list]:
     for key in list(unmatched_model):
         stem = canonical(key)
         same_stem = [k for k in unmatched_manifest if canonical(k) == stem]
-        if same_stem:
+        if same_stem and not is_subquestion_key(key):
             groups[key] = same_stem
             method[key] = "group"
             for k in same_stem:
@@ -134,11 +153,42 @@ def align(model_questions: dict, items: list[dict]) -> tuple[dict, dict, list]:
             items)
 
 
-def compare_paper(paper: dict, model_questions: dict) -> dict:
-    """Per-item comparison of awarded marks against the printed-scheme ruling."""
+def compare_paper(paper: dict, model_questions: dict,
+                  subquestions: dict | None = None) -> dict:
+    """Per-item comparison of awarded marks against the printed-scheme ruling.
+
+    ``subquestions`` is the app's per-marking-point result (``1a``, ``1b`` …),
+    which is where the marks for a sub-part scheme are actually awarded. It is
+    merged in as extra comparable labels so a reference item that names a
+    marking point is compared against THAT marking point instead of against the
+    question's roll-up. Reading only the roll-up is what made an accurate
+    paper-b run report ``compared 2/4 items`` with three "no mark returned"
+    errors: the marks existed, in a field nobody looked at.
+    """
     items = paper["items"]
     by_key = {item["question"]: item for item in items}
-    alignment, residue, _ = align(model_questions, items)
+    candidates = {str(k): v for k, v in model_questions.items()}
+    for sub_id, sub in (subquestions or {}).items():
+        if sub is None or str(sub_id) in candidates:
+            continue
+        candidates[str(sub_id)] = {"awarded": sub.get("awarded"),
+                                   "max": sub.get("max")}
+    alignment, residue, _ = align(candidates, items)
+    model_questions = candidates
+
+    # A question's roll-up row repeats marks that were just compared one
+    # marking point at a time. Counting it as "a question the model invented"
+    # would be a false error, so it is recorded as a roll-up instead.
+    rollup_labels = {}
+    mapped = set(alignment["mapping"].values())
+    for label in list(residue["unmatched_model"]):
+        if is_subquestion_key(label):
+            continue
+        children = [sub_id for sub_id in (subquestions or {})
+                    if question_of(sub_id) == canonical(label)]
+        if children and all(child in mapped for child in children):
+            rollup_labels[label] = sorted(children)
+            residue["unmatched_model"].remove(label)
 
     rows, over, under, rejected, wrong_scheme = [], [], [], [], []
     exact = 0
@@ -178,6 +228,7 @@ def compare_paper(paper: dict, model_questions: dict) -> dict:
 
     # A model label that matches nothing is a matching error, and so is a
     # manifest question the model never returned: the teacher sees neither.
+    grouped_away: list[str] = []
     for model_key in list(residue["unmatched_model"]):
         if model_key in alignment["groups"]:
             members = [by_key[k] for k in alignment["groups"][model_key]]
@@ -185,6 +236,9 @@ def compare_paper(paper: dict, model_questions: dict) -> dict:
             awarded = model_questions.get(model_key, {}).get("awarded")
             if awarded is None:
                 continue
+            # This label WAS compared (against the group's total), so it is not
+            # an unmatched model label as well.
+            grouped_away.append(model_key)
             compared += 1
             diff = int(awarded) - int(expected)
             errors.append(abs(diff))
@@ -207,6 +261,10 @@ def compare_paper(paper: dict, model_questions: dict) -> dict:
                 under.append(row)
             rows.append(row)
 
+    for label in grouped_away:
+        if label in residue["unmatched_model"]:
+            residue["unmatched_model"].remove(label)
+
     max_errors = []
     for model_key, manifest_key in alignment["mapping"].items():
         maximum = model_questions.get(model_key, {}).get("max")
@@ -228,6 +286,9 @@ def compare_paper(paper: dict, model_questions: dict) -> dict:
         "wrong_because_scheme_wrong": wrong_scheme,
         "mark_allocation_disagreements": max_errors,
         "matching_errors": residue,
+        "rollup_labels": rollup_labels,
+        "subquestions_compared": len(
+            [r for r in rows if is_subquestion_key(r["question"])]),
         "rows": rows,
     }
 
@@ -292,7 +353,8 @@ def run_paper(paper: dict, args, work: Path) -> dict:
         "harness_report": str(report_path),
     }
     if outcome.get("questions"):
-        result["comparison"] = compare_paper(paper, outcome["questions"])
+        result["comparison"] = compare_paper(paper, outcome["questions"],
+                                             outcome.get("subquestions"))
     return result
 
 

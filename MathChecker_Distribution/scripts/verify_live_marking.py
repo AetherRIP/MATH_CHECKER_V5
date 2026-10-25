@@ -55,6 +55,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -287,11 +288,19 @@ class LiveApp:
 
 @dataclass
 class Outcome:
-    """What the live model awarded, question by question."""
+    """What the live model awarded, question by question.
+
+    ``subquestions`` carries the per-marking-point rows the app stores inside
+    each question (``id`` -> ``{"awarded", "max", "question"}``). A paper whose
+    scheme declares 1(a)/1(b)/1(c) is scored at THAT level, so an accuracy
+    harness that only reads the question roll-up cannot see the marks the app
+    actually awarded — it reports every sub-part as "no mark returned".
+    """
 
     awarded: dict[str, int] = field(default_factory=dict)
     maximum: dict[str, int] = field(default_factory=dict)
     reasons: dict[str, str] = field(default_factory=dict)
+    subquestions: dict[str, dict] = field(default_factory=dict)
     earned: float = 0.0
     available: float = 0.0
     percentage: float = 0.0
@@ -310,6 +319,55 @@ class Verdict:
     @property
     def certified(self) -> bool:
         return self.status == "CERTIFIED"
+
+
+def load_outcome(stored: dict, *, result_id: str = "",
+                 seconds: float = 0.0) -> Outcome:
+    """Build an Outcome from a stored result payload (GET /api/results/<id>).
+
+    Kept out of the run loop so the accuracy machinery can be exercised on a
+    stored result without starting the app or spending quota. The question
+    roll-up and the per-subquestion breakdown are BOTH read: the first is what
+    a scheme without sub-parts needs, the second is what a scheme such as
+    1(a)/1(b)/1(c) is actually marked against.
+    """
+    outcome = Outcome(result_id=str(result_id), seconds=seconds)
+    payload = (stored or {}).get("result_json") or {}
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    for question in (payload.get("questions") or []):
+        number = str(question.get("question_number") or "?")
+        try:
+            outcome.awarded[number] = int(float(question.get("awarded_marks") or 0))
+            outcome.maximum[number] = int(float(question.get("max_marks") or 0))
+        except (TypeError, ValueError):
+            continue
+        note = question.get("loss_reason") or question.get("summary") or ""
+        if note:
+            outcome.reasons[number] = str(note)
+        for sub in (question.get("subquestions") or []):
+            if not isinstance(sub, dict):
+                continue
+            sub_id = str(sub.get("id") or "").strip()
+            if not sub_id:
+                continue
+            try:
+                outcome.subquestions[sub_id] = {
+                    "awarded": int(float(sub.get("awarded_marks") or 0)),
+                    "max": int(float(sub.get("max_marks") or 0)),
+                    "question": number,
+                }
+            except (TypeError, ValueError):
+                continue
+    try:
+        outcome.earned = float((stored or {}).get("earned") or 0)
+        outcome.available = float((stored or {}).get("available") or 0)
+        outcome.percentage = float((stored or {}).get("percentage") or 0)
+    except (TypeError, ValueError):
+        pass
+    outcome.grade = str((stored or {}).get("provisional_grade") or "")
+    outcome.model = str((stored or {}).get("marking_model") or "")
+    return outcome
 
 
 def load_expected(path: Path) -> dict:
@@ -352,6 +410,22 @@ def fixture_key_for(student: Path, scheme: Path) -> dict | None:
     return None
 
 
+#: A label that names a MARKING POINT rather than a whole question: ``1c``,
+#: ``4bii``. The answer key may itemise either, and the app stores both, so a
+#: comparator has to know which level a given key belongs to.
+_SUBQUESTION_LABEL = re.compile(r"^\s*\d+\s*[a-z]+\s*$", re.IGNORECASE)
+
+
+def is_subquestion_key(key: str) -> bool:
+    return bool(_SUBQUESTION_LABEL.match(str(key)))
+
+
+def question_of(label: str) -> str:
+    """The question a marking point belongs to: ``1c`` -> ``1``."""
+    match = re.match(r"\s*(\d+)", str(label))
+    return match.group(1) if match else ""
+
+
 def compare_marks(outcome: Outcome, expected: dict,
                   tolerance: int) -> Verdict:
     """Compare the live marks with ground truth, question by question.
@@ -361,14 +435,46 @@ def compare_marks(outcome: Outcome, expected: dict,
     question 4 — the teacher would never see those marks. ``tolerance`` is the
     per-question slack the operator accepts, and it is reported, because every
     mark of slack weakens the claim.
+
+    A key that names a MARKING POINT (``1c``) is compared against the stored
+    per-subquestion row, because that is where the app awarded it. The
+    question's roll-up row is then not an "extra question" — it is the same
+    marks counted once more — so it is skipped rather than reported as an
+    invention. When no subquestion row exists for the key, the item is reported
+    as NOT COMPARABLE (a harness/attribution limit) instead of "the model
+    returned no mark", which would be a false accusation.
     """
     verdict = Verdict(status="NOT CERTIFIED")
     wanted = {str(k): int(v) for k, v in (expected.get("questions") or {}).items()}
     slack = int(expected.get("tolerance", tolerance) or 0)
+    sub_keys = {key for key in wanted if is_subquestion_key(key)}
 
     if wanted:
-        for number in sorted(set(wanted) | set(outcome.awarded),
-                             key=lambda n: (len(n), n)):
+        for number in sorted(wanted, key=lambda n: (len(n), n)):
+            if number in sub_keys:
+                sub = outcome.subquestions.get(number)
+                if sub is None:
+                    parent_label = question_of(number)
+                    parent = outcome.awarded.get(parent_label) \
+                        if parent_label else None
+                    verdict.mismatches += 1
+                    verdict.lines.append(
+                        f"Q{number}: expected {wanted[number]} but it could "
+                        f"NOT be compared — the app returned no per-subquestion "
+                        f"row for {number}"
+                        + (f" (it scored question {parent_label} as a single "
+                           f"mark: {parent}/"
+                           f"{outcome.maximum.get(parent_label, '?')})"
+                           if parent is not None else
+                           " and no question-level mark either"))
+                    continue
+                got = int(sub.get("awarded") or 0)
+                if abs(got - wanted[number]) > slack:
+                    verdict.mismatches += 1
+                    verdict.lines.append(
+                        f"Q{number}: expected {wanted[number]}, model awarded "
+                        f"{got} (of {sub.get('max')})")
+                continue
             if number not in outcome.awarded:
                 verdict.mismatches += 1
                 verdict.lines.append(
@@ -376,12 +482,6 @@ def compare_marks(outcome: Outcome, expected: dict,
                     f"returned no mark for this question")
                 continue
             got = outcome.awarded[number]
-            if number not in wanted:
-                verdict.mismatches += 1
-                verdict.lines.append(
-                    f"Q{number}: the model marked a question that is not in "
-                    f"the answer key (awarded {got})")
-                continue
             delta = abs(got - wanted[number])
             if delta > slack:
                 verdict.mismatches += 1
@@ -389,10 +489,35 @@ def compare_marks(outcome: Outcome, expected: dict,
                     f"Q{number}: expected {wanted[number]}, model awarded {got}"
                     + (f" — {outcome.reasons.get(number, '')[:120]}"
                        if outcome.reasons.get(number) else ""))
+
+        # Questions the model marked that the key does not mention. A roll-up
+        # row whose marking points were just compared is NOT one of them.
+        rollups = {str(outcome.subquestions[key].get("question"))
+                   for key in sub_keys if key in outcome.subquestions}
+        for number in sorted(outcome.awarded, key=lambda n: (len(n), n)):
+            if number in wanted or number in rollups:
+                continue
+            verdict.mismatches += 1
+            verdict.lines.append(
+                f"Q{number}: the model marked a question that is not in "
+                f"the answer key (awarded {outcome.awarded[number]})")
         if slack:
             verdict.lines.append(
                 f"tolerance ±{slack} mark(s) per question: a mark of slack "
                 f"weakens this certification")
+
+    # A marking point that exists in the app's result but not in the key is
+    # work nobody expected: report it rather than certifying silently.
+    if sub_keys:
+        for sub_id in sorted(outcome.subquestions, key=lambda n: (len(n), n)):
+            if sub_id in wanted:
+                continue
+            verdict.mismatches += 1
+            verdict.lines.append(
+                f"Q{sub_id}: the app returned a mark for a marking point "
+                f"that is not in the answer key "
+                f"({outcome.subquestions[sub_id].get('awarded')}"
+                f"/{outcome.subquestions[sub_id].get('max')})")
 
     if "total" in expected and expected["total"] is not None:
         want_total = float(expected["total"])
@@ -432,11 +557,12 @@ def _find(node, key):
 
 def mark_once(app: LiveApp, session: tuple[str, str], student: Path,
               scheme: Path, report: Report,
-              timeout: float) -> tuple[Outcome | None, dict]:
+              timeout: float,
+              student_name: str = "Live Marking Verification") -> tuple[Outcome | None, dict]:
     """One real correction: upload, mark, read the stored result back."""
     cookie, csrf = session
     body, content_type = multipart(
-        {"student_name": "Live Marking Verification", "pipeline": "auto"},
+        {"student_name": student_name, "pipeline": "auto"},
         {"submission": (student.name, student.read_bytes()),
          "mark_scheme": (scheme.name, scheme.read_bytes())})
     started = time.time()
@@ -500,28 +626,7 @@ def mark_once(app: LiveApp, session: tuple[str, str], student: Path,
     stored = json.loads(raw)
     report.check("the stored result is readable", True, f"result {result_id}")
 
-    outcome = Outcome(result_id=str(result_id), seconds=elapsed)
-    payload = stored.get("result_json") or {}
-    if isinstance(payload, str):
-        payload = json.loads(payload)
-    for question in (payload.get("questions") or []):
-        number = str(question.get("question_number") or "?")
-        try:
-            outcome.awarded[number] = int(float(question.get("awarded_marks") or 0))
-            outcome.maximum[number] = int(float(question.get("max_marks") or 0))
-        except (TypeError, ValueError):
-            continue
-        note = question.get("loss_reason") or question.get("summary") or ""
-        if note:
-            outcome.reasons[number] = str(note)
-    try:
-        outcome.earned = float(stored.get("earned") or 0)
-        outcome.available = float(stored.get("available") or 0)
-        outcome.percentage = float(stored.get("percentage") or 0)
-    except (TypeError, ValueError):
-        pass
-    outcome.grade = str(stored.get("provisional_grade") or "")
-    outcome.model = str(stored.get("marking_model") or "")
+    outcome = load_outcome(stored, result_id=str(result_id), seconds=elapsed)
     return outcome, stored
 
 
@@ -538,6 +643,14 @@ def _report_lines(outcome: Outcome, verdict: Verdict, expected: dict,
     lines.append("  marks       : " + ", ".join(
         f"Q{number} {outcome.awarded.get(number, '?')}/{outcome.maximum.get(number, '?')}"
         for number in sorted(outcome.maximum, key=lambda n: (len(n), n))))
+    if outcome.subquestions:
+        # The marking points the marks were actually awarded against. Without
+        # this line a sub-part scheme reads as "two questions" and hides where
+        # the marks went.
+        lines.append("  parts       : " + ", ".join(
+            f"{sub_id} {sub.get('awarded')}/{sub.get('max')}"
+            for sub_id, sub in sorted(outcome.subquestions.items(),
+                                      key=lambda kv: (len(kv[0]), kv[0]))))
     lines.append(f"  total       : {outcome.earned:g}/{outcome.available:g} "
                  f"= {outcome.percentage:g}% | provisional grade {outcome.grade}")
     for number in sorted(outcome.reasons, key=lambda n: (len(n), n)):
@@ -579,6 +692,9 @@ def main() -> int:
     parser.add_argument("--expected", default=None,
                         help="ground-truth JSON (default: the built-in answer "
                              "key for the bundled fixture quiz)")
+    parser.add_argument("--student-name", default="Live Marking Verification",
+                        help="name stored with the correction (use a test name "
+                             "so no real student is touched)")
     parser.add_argument("--tolerance", type=int, default=0,
                         help="per-question marks of slack (default 0 = exact)")
     parser.add_argument("--port", type=int, default=0)
@@ -732,7 +848,8 @@ def main() -> int:
 
         report.note("\n== live correction ==")
         outcome, stored = mark_once(app_instance, session, student, scheme,
-                                    report, args.timeout)
+                                    report, args.timeout,
+                                    student_name=args.student_name)
         if outcome is None:
             return 1
         if not outcome.model:
@@ -777,6 +894,10 @@ def main() -> int:
             "questions": {number: {"awarded": outcome.awarded.get(number),
                                    "max": outcome.maximum.get(number)}
                           for number in outcome.maximum},
+            "subquestions": {sub_id: {"awarded": sub.get("awarded"),
+                                      "max": sub.get("max"),
+                                      "question": sub.get("question")}
+                             for sub_id, sub in outcome.subquestions.items()},
             "expected": {k: v for k, v in (expected or {}).items()
                          if k != "source"},
             "mismatches": verdict.lines,

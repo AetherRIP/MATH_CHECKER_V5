@@ -282,6 +282,101 @@ def test_evidence_survives_a_cp1252_console(tmp_path):
     assert "UnicodeEncodeError" not in proc.stderr
 
 
+# ----------------------------------------------- subquestion-level comparison
+def _paper_b_stored(live, *, awarded=("1a", 1, "1b", 1, "1c", 1)):
+    """A stored result shaped exactly like the app's own reconciliation.
+
+    Question 1 declares 1(a)=1, 1(b)=1, 1(c)=2, so the question row is the
+    ROLL-UP (3/4) and the three marking points live in ``subquestions``. This
+    is the shape a real paper-b run stored; reading only the roll-up is what
+    made an accurate correction report three "no mark returned" errors.
+    """
+    parts = list(zip(awarded[0::2], awarded[1::2]))
+    return {
+        "result_json": {"questions": [
+            {"question_number": "1", "awarded_marks": sum(p[1] for p in parts),
+             "max_marks": 4,
+             "subquestions": [
+                 {"id": part, "label": part, "parent_id": "1",
+                  "max_marks": 2 if part == "1c" else 1,
+                  "awarded_marks": mark, "status": "MARKED"}
+                 for part, mark in parts]},
+            {"question_number": "2", "awarded_marks": 3, "max_marks": 3,
+             "subquestions": []},
+        ]},
+        "earned": 6, "available": 7, "percentage": 85.71,
+        "provisional_grade": "8", "marking_model": "gemini-3.6-flash",
+    }
+
+
+def test_the_stored_subquestion_rows_are_read(live):
+    read = live.load_outcome(_paper_b_stored(live))
+    assert read.awarded == {"1": 3, "2": 3}
+    assert read.subquestions["1a"]["awarded"] == 1
+    assert read.subquestions["1c"]["max"] == 2
+    assert read.subquestions["1c"]["question"] == "1"
+    assert read.model == "gemini-3.6-flash"
+
+
+def test_a_subquestion_key_is_compared_against_its_own_marking_point(live):
+    """The end-to-end finding: 4 items must be COMPARED, and agree."""
+    read = live.load_outcome(_paper_b_stored(live))
+    key = {"questions": {"1a": 1, "1b": 1, "1c": 1, "2": 3},
+           "total": 6, "total_marks": 7}
+    verdict = live.compare_marks(read, key, 0)
+    assert verdict.status == "CERTIFIED", verdict.lines
+    assert verdict.mismatches == 0
+    # The question roll-up is the same marks counted once more, not a fifth
+    # question the model invented.
+    assert not any("not in the answer key" in line for line in verdict.lines)
+
+
+def test_a_genuine_subquestion_error_is_caught(live):
+    read = live.load_outcome(_paper_b_stored(
+        live, awarded=("1a", 1, "1b", 1, "1c", 2)))
+    key = {"questions": {"1a": 1, "1b": 1, "1c": 1, "2": 3},
+           "total": 6, "total_marks": 7}
+    verdict = live.compare_marks(read, key, 0)
+    assert verdict.status == "NOT CERTIFIED"
+    assert any("Q1c: expected 1, model awarded 2" in line
+               for line in verdict.lines)
+
+
+def test_an_unreachable_marking_point_is_reported_as_not_comparable(live):
+    """An older/thinner result must not be misreported as a missing mark."""
+    stored = {"result_json": {"questions": [
+        {"question_number": "1", "awarded_marks": 3, "max_marks": 4}]}}
+    read = live.load_outcome(stored)
+    verdict = live.compare_marks(
+        read, {"questions": {"1a": 1, "1b": 1, "1c": 1}}, 0)
+    joined = " ".join(verdict.lines)
+    assert verdict.status == "NOT CERTIFIED"
+    assert "could NOT be compared" in joined
+    assert "(it scored question 1 as a single mark: 3/4)" in joined
+    assert "no mark for this question" not in joined
+
+
+def test_a_top_level_only_key_is_compared_exactly_as_before(live):
+    """The bundled fixture quiz has no sub-parts; nothing may regress."""
+    read = live.load_outcome(
+        {"result_json": {"questions": [
+            {"question_number": "1", "awarded_marks": 3, "max_marks": 3},
+            {"question_number": "2", "awarded_marks": 2, "max_marks": 2}]},
+         "earned": 5, "available": 5}
+    )
+    verdict = live.compare_marks(
+        read, {"questions": {"1": 3, "2": 2}, "total": 5}, 0)
+    assert verdict.certified and verdict.mismatches == 0
+
+
+def test_a_marking_point_outside_the_key_is_reported(live):
+    read = live.load_outcome(_paper_b_stored(live))
+    verdict = live.compare_marks(read, {"questions": {"1a": 1, "2": 3}}, 0)
+    assert verdict.status == "NOT CERTIFIED"
+    # 1b and 1c were awarded but the key does not mention them.
+    assert sum("not in the answer key" in line for line in verdict.lines) == 2
+
+
 def test_expected_files_need_something_to_compare(live, tmp_path):
     good = tmp_path / "good.json"
     good.write_text(json.dumps({"total": 9}), encoding="utf-8")
