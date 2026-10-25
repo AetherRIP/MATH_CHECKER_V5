@@ -1362,6 +1362,27 @@ def render_result_pdf(result: dict, *, detail: str = "standard",
                        generated_at, result)
 
 
+def _subquestion_detail(sub: dict) -> str:
+    """One subquestion row: its own mark, then the scheme evidence it has.
+
+    An UNMARKED part is named as such: printing 0 would claim the marker
+    awarded nothing when in fact it returned no row for that part.
+    """
+    maximum = sub.get("max_marks")
+    maximum_text = maximum if maximum is not None else "?"
+    if str(sub.get("status") or "").upper() != "MARKED":
+        return f"UNMARKED - no mark was returned for this part (of {maximum_text})"
+    awarded = sub.get("awarded_marks")
+    text = f"{awarded if awarded is not None else 0} / {maximum_text} marks"
+    answers = [str(a).strip() for a in sub.get("answers") or [] if str(a).strip()]
+    if answers:
+        text += " - scheme: " + " or ".join(answers)
+    codes = [str(c).strip() for c in sub.get("mark_codes") or [] if str(c).strip()]
+    if codes:
+        text += " - points: " + ", ".join(codes)
+    return text
+
+
 def _question_block(theme, styles, q: dict):
     """One question as a self-contained block, never split across pages."""
     from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyle
@@ -1399,6 +1420,11 @@ def _question_block(theme, styles, q: dict):
                       str(q.get("student_answer") or q.get("working_summary"))))
     if q.get("correct_method"):
         items.append(("Mark scheme", str(q["correct_method"])))
+    # Each subquestion keeps its own mark in the report, so a parent total of
+    # "2 / 5" can be read down to the part that lost the marks.
+    for sub in q.get("subquestions") or []:
+        label = str(sub.get("label") or sub.get("id") or "?")
+        items.append((f"Subquestion {label}", _subquestion_detail(sub)))
     for item in q.get("mark_breakdown") or []:
         mark = "awarded" if item.get("awarded") else "not awarded"
         items.append((f"Mark point {D.esc(item.get('code', ''))}",

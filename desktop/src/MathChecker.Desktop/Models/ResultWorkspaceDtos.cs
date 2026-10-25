@@ -27,6 +27,51 @@ public sealed class SubquestionDto
     public List<string> MarkCodes { get; set; } = new();
 
     public bool IsMarked => string.Equals(Status, "MARKED", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Anything the marker did not return as MARKED is UNMARKED, never a
+    /// confirmed zero: the engine writes the row when it declared the part but
+    /// received nothing for it.
+    /// </summary>
+    public bool IsUnmarked => !IsMarked;
+
+    /// <summary>The identifier exactly as the engine stored it ("7a", "(ii)").</summary>
+    public string LabelText => !string.IsNullOrWhiteSpace(Label) ? Label!
+        : !string.IsNullOrWhiteSpace(Id) ? Id!
+        : "Unnamed part";
+
+    public string MarkText => IsUnmarked
+        ? "—"
+        : $"{Format(AwardedMarks)} / {Format(MaxMarks)}";
+
+    public string VerdictText => IsUnmarked ? "Unmarked"
+        : MaxMarks is null or <= 0 ? "Marked"
+        : (AwardedMarks ?? 0) >= MaxMarks ? "Full marks"
+        : (AwardedMarks ?? 0) <= 0 ? "No marks"
+        : "Partial";
+
+    /// <summary>ok | warn | err | muted — the desk's badge tone.</summary>
+    public string Tone => IsUnmarked ? "muted" : VerdictText switch
+    {
+        "Full marks" => "ok",
+        "No marks" => "err",
+        "Partial" => "warn",
+        _ => "muted",
+    };
+
+    public string AnswersText => Answers.Count > 0
+        ? string.Join(" or ", Answers.Where(a => !string.IsNullOrWhiteSpace(a)))
+        : "Not stated in the scheme";
+
+    public bool HasAnswers => Answers.Any(a => !string.IsNullOrWhiteSpace(a));
+
+    public string MarkCodesText => MarkCodes.Count > 0
+        ? string.Join(", ", MarkCodes.Where(c => !string.IsNullOrWhiteSpace(c)))
+        : "No marking points listed";
+
+    public bool HasMarkCodes => MarkCodes.Any(c => !string.IsNullOrWhiteSpace(c));
+
+    private static string Format(double? value) => value is null ? "—" : value.Value.ToString("0.##");
 }
 
 /// <summary>
@@ -43,6 +88,12 @@ public sealed class SchemeCheckDto
     public string? Evidence { get; set; }
     public double? Confidence { get; set; }
     public double? JustifiedMarks { get; set; }
+
+    /// <summary>The engine's label ("incorrect_answer") written for a teacher:
+    /// "Incorrect answer". The raw value is never shown.</summary>
+    public string DiscrepancyTypeText => Core.UI.PayloadFacts.StatusLabel(DiscrepancyType);
+
+    public bool HasDiscrepancyType => !string.IsNullOrWhiteSpace(DiscrepancyType);
 }
 
 /// <summary>One row of <c>result_json.questions</c>.</summary>

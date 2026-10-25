@@ -26,6 +26,7 @@ from ..classroom.auth import (
 )
 from ..config import data_dir, ensure_dirs, get_config, save_config
 from ..engine import legacy_marking as legacy
+from ..engine import pdf_inspect
 from ..errors import AppError, brief_traceback
 from ..gemini.tester import KeyManagerHolder as KMHolder, test_key
 from ..jobs.manager import ACTIVE_STATUSES, JobManagerHolder
@@ -204,7 +205,20 @@ def job_detail(job_id: str):
     if not job:
         raise HTTPException(404, "Job not found")
     from .. import api_stats
+    from ..jobs.manager import stage_history
     job["bandwidth"] = api_stats.job_bandwidth(job_id)
+    # The stages the backend really recorded, oldest first (the detail panel
+    # shows them with their timestamps). A terminal job's last transition is
+    # appended from its OWN stored status/finished_at, so the history ends
+    # where the job actually ended instead of at the last stage report.
+    history = stage_history(job_id)
+    if job.get("finished_at") and job.get("status"):
+        if not history or history[-1].get("status") != job["status"]:
+            history.append({"status": job["status"],
+                            "stage": job.get("stage_detail") or job["status"],
+                            "progress": job.get("progress"),
+                            "at": job["finished_at"]})
+    job["stage_history"] = history
     return job
 
 
@@ -240,6 +254,14 @@ def _job_public(job: dict) -> dict:
         "coursework_id": job["coursework_id"], "course_id": job["course_id"],
         "student_id": job["student_id"],
         "student_name": job["student_name"],
+        # Who is doing the work and what it is: the dashboard's worker cards
+        # are useless without these, and a streamed row must not differ from
+        # the polled one.
+        "worker_id": job.get("worker_id"),
+        "paper_name": job.get("paper_name"),
+        "page_count": job.get("page_count"),
+        "is_remark": job.get("is_remark"),
+        "updated_at": job.get("updated_at"),
         # Canonical nickname -> Classroom name, so a streamed job shows the
         # same student the results list and PDF do (never a raw id).
         "display_name": _identity.resolve(
@@ -425,7 +447,7 @@ def export_result(result_id: str, format: str = "md", detail: str = "standard"):
         buf = io.StringIO()
         writer = csv.DictWriter(buf, fieldnames=[
             "Student", "Question", "Awarded", "Max", "Percentage",
-            "Topic", "Loss Reason", "Correct Method"])
+            "Topic", "Loss Reason", "Correct Method", "Parts"])
         writer.writeheader()
         for row in legacy.build_csv_rows(student, inner):
             writer.writerow(row)
@@ -714,6 +736,20 @@ def retry_result_operation(result_id: str, payload: dict):
 # ============================================================
 
 
+def _discard_saved_uploads(paths: dict[str, str]) -> None:
+    """Delete files staged for an upload that was refused.
+
+    A rejected upload must leave nothing behind: no temp file, and (because the
+    caller raises before inserting pending_manual_files) no job row either.
+    """
+    for path in list(paths.values()):
+        try:
+            Path(path).unlink(missing_ok=True)
+        except OSError:
+            pass
+    paths.clear()
+
+
 
 @router.post("/corrections/manual")
 async def manual_correction(
@@ -741,6 +777,15 @@ async def manual_correction(
                            status=413, code="file_too_large")
         out.write_bytes(content)
         saved_paths[kind] = str(out)
+        if suffix == ".pdf":
+            # The bytes are the only evidence of what this file IS. A corrupt
+            # or empty PDF has nothing to mark, so it is refused HERE, before a
+            # job exists, instead of becoming a queued job that fails later.
+            problem = pdf_inspect.integrity_problem(out)
+            if problem:
+                _discard_saved_uploads(saved_paths)
+                raise AppError(f"The {kind} PDF cannot be marked: {problem}.",
+                               status=400, code="corrupt_pdf")
 
     with db.transaction() as conn:
         for kind, upload in uploads:
@@ -749,7 +794,11 @@ async def manual_correction(
                 (job_id, kind, saved_paths[kind], upload.filename),
             )
 
-    job = _correction_service().enqueue_manual_pdf(student_name=student_name)
+    submission_pages = int(pdf_inspect.page_count(saved_paths["submission"]) or 0)
+    job = _correction_service().enqueue_manual_pdf(
+        student_name=student_name,
+        paper_name=submission.filename or "Submission",
+        page_count=submission_pages or None)
     # Re-point the pending rows at the real job id.
     db.execute("UPDATE pending_manual_files SET job_id = ? WHERE job_id = ?",
                (job["id"], job_id))
@@ -794,8 +843,15 @@ async def unified_correction(
         saved[kind] = str(out)
         sizes[kind] = len(content)
         names[kind] = upload.filename or f"{kind}{suffix}"
+        if suffix == ".pdf":
+            # Content, not filename or MIME type: an unreadable PDF is refused
+            # before any job row exists, so no orphaned job can be left behind.
+            problem = pdf_inspect.integrity_problem(out)
+            if problem:
+                _discard_saved_uploads(saved)
+                raise AppError(f"The {kind} PDF cannot be marked: {problem}.",
+                               status=400, code="corrupt_pdf")
 
-    from ..engine import pdf_inspect
     page_count = int(pdf_inspect.page_count(saved["submission"]) or 0)
 
     job_id = uuid.uuid4().hex
@@ -806,7 +862,8 @@ async def unified_correction(
                 "filename) VALUES(?,?,?,?)",
                 (job_id, kind, saved[kind], names[kind]))
     job = _correction_service().enqueue_manual_pdf(
-        student_name=student_name or "Student")
+        student_name=student_name or "Student",
+        paper_name=names["submission"], page_count=page_count or None)
     db.execute("UPDATE pending_manual_files SET job_id = ? WHERE job_id = ?",
                (job["id"], job_id))
     log_event("corrections", "unified correction queued",
@@ -1023,6 +1080,15 @@ def submissions(course_id: str, coursework_id: str, force: bool = False):
         for s in subs:
             row = dict(s)
             row["student_name"] = classroom_sync.student_name(s["user_id"])
+            # The Classroom grade shown next to a returned paper comes from the
+            # tracking layer (the cache above stores no grades), so the page
+            # does not list a returned paper with a blank score.
+            tracked = db.query_one(
+                "SELECT assigned_grade, draft_grade, max_points FROM classroom_submissions "
+                "WHERE submission_id = ?", (s["id"],))
+            row["assigned_grade"] = tracked["assigned_grade"] if tracked else None
+            row["draft_grade"] = tracked["draft_grade"] if tracked else None
+            row["max_points"] = tracked["max_points"] if tracked else None
             job = db.query_one(
                 "SELECT id, status FROM correction_jobs WHERE submission_id = ? "
                 "ORDER BY created_at DESC LIMIT 1", (s["id"],))

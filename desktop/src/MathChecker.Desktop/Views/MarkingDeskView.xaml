@@ -5,6 +5,64 @@
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI"
              Focusable="True" IsTabStop="False" Background="Transparent">
     <UserControl.Resources>
+        <!-- One subquestion row: its own identifier, its own mark, and the
+             scheme evidence that belongs to that part. An UNMARKED part says
+             so instead of showing a 0 the marker never awarded. -->
+        <DataTemplate x:Key="SubquestionRow">
+            <Border Margin="0,0,0,6" Padding="10,8" CornerRadius="10"
+                    Background="{DynamicResource CanvasBrush}"
+                    BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1"
+                    AutomationProperties.Name="{Binding LabelText}">
+                <StackPanel>
+                    <DockPanel>
+                        <Border DockPanel.Dock="Right" VerticalAlignment="Center">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource Chip}">
+                                    <Setter Property="Background" Value="{DynamicResource SunkenBrush}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
+                                    <Setter Property="Padding" Value="8,2" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Tone}" Value="ok">
+                                            <Setter Property="Background" Value="{DynamicResource SuccessSurfaceBrush}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Tone}" Value="warn">
+                                            <Setter Property="Background" Value="{DynamicResource WarningSurfaceBrush}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Tone}" Value="err">
+                                            <Setter Property="Background" Value="{DynamicResource DangerSurfaceBrush}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="{Binding VerdictText}" FontSize="10" FontWeight="SemiBold" />
+                        </Border>
+                        <TextBlock Text="{Binding LabelText}" FontWeight="SemiBold" FontSize="12"
+                                   VerticalAlignment="Center" TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding MarkText}" FontFamily="{StaticResource MonoFont}"
+                                   FontSize="12" FontWeight="SemiBold" Margin="10,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
+
+                    <TextBlock Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Visibility="{Binding HasAnswers, Converter={StaticResource BoolToVis}}">
+                        <Run Text="Scheme answer: " FontWeight="SemiBold" />
+                        <Run Text="{Binding AnswersText, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Margin="0,2,0,0" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               Visibility="{Binding HasMarkCodes, Converter={StaticResource BoolToVis}}">
+                        <Run Text="Marking points: " FontWeight="SemiBold" />
+                        <Run Text="{Binding MarkCodesText, Mode=OneWay}" />
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
         <CollectionViewSource x:Key="GroupedQuestions" Source="{Binding Questions}">
             <CollectionViewSource.GroupDescriptions>
                 <PropertyGroupDescription PropertyName="Topic" />
@@ -28,11 +86,11 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Row" Property="Background"
-                                        Value="{StaticResource SurfaceHoverBrush}" />
+                                        Value="{DynamicResource SurfaceHoverBrush}" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="Row" Property="Background"
-                                        Value="{StaticResource AccentSoftBrush}" />
+                                        Value="{DynamicResource AccentSoftBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -46,9 +104,9 @@
             <Setter Property="MinWidth" Value="0" />
             <Setter Property="Margin" Value="0,0,7,7" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource HairlineStrongBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="FontFamily" Value="{StaticResource BodyFont}" />
             <Setter Property="FontSize" Value="13" />
@@ -66,11 +124,11 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Chrome" Property="BorderBrush"
-                                        Value="{StaticResource AccentBrush}" />
+                                        Value="{DynamicResource AccentBrush}" />
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="Chrome" Property="BorderBrush"
-                                        Value="{StaticResource AccentBrush}" />
+                                        Value="{DynamicResource AccentBrush}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.35" />
@@ -81,68 +139,68 @@
             </Setter>
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsCurrent}" Value="True">
-                    <Setter Property="BorderBrush" Value="{StaticResource TextMutedBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource TextMutedBrush}" />
                     <Setter Property="BorderThickness" Value="1" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsStaged}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-                    <Setter Property="Foreground" Value="{StaticResource AccentInkBrush}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentInkBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                     <Setter Property="FontWeight" Value="SemiBold" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
 
         <Style x:Key="ProvenanceChip" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource HairlineStrongBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="999" />
             <Setter Property="Padding" Value="10,5" />
             <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="TextElement.Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource TextBrush}" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding ProvenanceTone}" Value="lime">
-                    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                    <Setter Property="TextElement.Foreground" Value="{StaticResource AccentInkBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="TextElement.Foreground" Value="{DynamicResource AccentInkBrush}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ProvenanceTone}" Value="lime-outline">
                     <Setter Property="Background" Value="Transparent" />
-                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                     <Setter Property="BorderThickness" Value="1.5" />
-                    <Setter Property="TextElement.Foreground" Value="{StaticResource TextBrush}" />
+                    <Setter Property="TextElement.Foreground" Value="{DynamicResource TextBrush}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ProvenanceTone}" Value="amber">
-                    <Setter Property="Background" Value="{StaticResource WarningSurfaceBrush}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource WarningBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource WarningSurfaceBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ProvenanceTone}" Value="mint">
-                    <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
 
         <Style x:Key="QuestionChip" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource HairlineStrongBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="999" />
             <Setter Property="Padding" Value="10,4" />
             <Setter Property="HorizontalAlignment" Value="Left" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding ActiveQuestion.StateTone}" Value="amber">
-                    <Setter Property="Background" Value="{StaticResource WarningSurfaceBrush}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource WarningBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource WarningSurfaceBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActiveQuestion.StateTone}" Value="lime">
-                    <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActiveQuestion.StateTone}" Value="mint">
-                    <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -165,14 +223,14 @@
         </Grid.RowDefinitions>
 
         <!-- Header: whose paper, how it scores, how it came to be. -->
-        <Border Grid.Row="0" Padding="2,0,2,14" BorderBrush="{StaticResource HairlineBrush}"
+        <Border Grid.Row="0" Padding="2,0,2,14" BorderBrush="{DynamicResource HairlineBrush}"
                 BorderThickness="0,0,0,1"
                 Visibility="{Binding HasPaper, Converter={StaticResource BoolToVis}}">
             <ui:HeaderPanel>
                 <StackPanel VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                         <Border Width="6" Height="6" CornerRadius="2" Margin="0,0,8,0"
-                                VerticalAlignment="Center" Background="{StaticResource AccentBrush}" />
+                                VerticalAlignment="Center" Background="{DynamicResource AccentBrush}" />
                         <TextBlock Text="MARKING DESK" Style="{StaticResource PageEyebrow}" />
                         <TextBlock Text="PAPER REVIEW" Style="{StaticResource PageEyebrow}"
                                    Margin="10,0,0,0" />
@@ -204,11 +262,11 @@
                                        FontSize="22" FontWeight="SemiBold"
                                        VerticalAlignment="Center" />
                             <TextBlock Text="{Binding PercentageText}" FontSize="12"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" Margin="8,0,0,0" />
                         </StackPanel>
                         <TextBlock Text="{Binding GradeText}" FontSize="10.5"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    HorizontalAlignment="Right" />
                     </StackPanel>
 
@@ -246,7 +304,7 @@
                 <TextBlock Text="No paper open" FontFamily="{StaticResource DisplayFont}"
                            FontSize="24" FontWeight="Medium" TextAlignment="Center" />
                 <TextBlock Text="Open a correction from Results, then the student's paper appears here."
-                           Margin="0,8,0,0" Foreground="{StaticResource TextSecondaryBrush}"
+                           Margin="0,8,0,0" Foreground="{DynamicResource TextSecondaryBrush}"
                            TextAlignment="Center" />
                 <Button Content="Go to Results" Style="{StaticResource PrimaryButton}"
                         Command="{Binding OpenResultsCommand}" HorizontalAlignment="Center"
@@ -271,10 +329,10 @@
                     <Border DockPanel.Dock="Top" Padding="16,14,14,10">
                         <DockPanel>
                             <TextBlock Text="QUESTIONS" FontSize="10" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+                                       Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
                             <TextBlock DockPanel.Dock="Right"
                                        Text="{Binding Questions.Count, StringFormat={}{0}}"
-                                       FontSize="10.5" Foreground="{StaticResource TextMutedBrush}"
+                                       FontSize="10.5" Foreground="{DynamicResource TextMutedBrush}"
                                        HorizontalAlignment="Right" />
                         </DockPanel>
                     </Border>
@@ -292,7 +350,7 @@
                                     <DataTemplate>
                                         <TextBlock Text="{Binding Name}" FontSize="9.5" FontWeight="SemiBold"
                                                    Typography.Capitals="AllSmallCaps"
-                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                   Foreground="{DynamicResource TextMutedBrush}"
                                                    Margin="16,12,0,4" />
                                     </DataTemplate>
                                 </GroupStyle.HeaderTemplate>
@@ -307,7 +365,7 @@
                                             <Setter Property="BorderBrush" Value="Transparent" />
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsAttention}" Value="True">
-                                                    <Setter Property="BorderBrush" Value="{StaticResource WarningBrush}" />
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -319,16 +377,16 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="{Binding RailGlyph}" Width="18" FontSize="12"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                                    VerticalAlignment="Center" />
                                         <StackPanel Grid.Column="1">
                                             <TextBlock Text="{Binding Number}" FontSize="13"
                                                        FontWeight="SemiBold" />
                                             <TextBlock Text="{Binding StateLabel}" FontSize="10.5"
-                                                       Foreground="{StaticResource TextMutedBrush}" />
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
                                         </StackPanel>
                                         <TextBlock Grid.Column="2" Text="{Binding MarkText}" FontSize="12"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                                    VerticalAlignment="Center" Margin="6,0,0,0" />
                                     </Grid>
                                 </Border>
@@ -341,7 +399,7 @@
             <GridSplitter x:Name="QuestionSplitter" Grid.Column="1" Style="{StaticResource DeskSplitter}" />
 
             <Border x:Name="PaperPane" Grid.Column="2" Style="{StaticResource Card}" Margin="0" Padding="0"
-                    CornerRadius="20" Background="{StaticResource SurfaceBrush}">
+                    CornerRadius="20" Background="{DynamicResource SurfaceBrush}">
                 <controls:PaperPaneView x:Name="PaperView" DataContext="{Binding Paper}"
                                         Margin="16,14,16,12" />
             </Border>
@@ -356,8 +414,8 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <Border Padding="18,14,16,12" BorderBrush="{StaticResource HairlineBrush}"
-                            BorderThickness="0,0,0,1" Background="{StaticResource SurfaceRaisedBrush}"
+                    <Border Padding="18,14,16,12" BorderBrush="{DynamicResource HairlineBrush}"
+                            BorderThickness="0,0,0,1" Background="{DynamicResource SurfaceRaisedBrush}"
                             Visibility="{Binding HasActiveQuestion, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <DockPanel>
@@ -366,17 +424,17 @@
                                            FontWeight="Medium" />
                                 <TextBlock DockPanel.Dock="Right" Text="{Binding ActiveQuestion.MarkText}"
                                            FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Right"
-                                           Foreground="{StaticResource AccentBrush}" />
+                                           Foreground="{DynamicResource AccentBrush}" />
                             </DockPanel>
                             <DockPanel Margin="0,3,0,0">
                                 <TextBlock Text="{Binding ActiveQuestion.Topic}" FontSize="11.5"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <TextBlock DockPanel.Dock="Right" Text="{Binding QuestionPosition}"
-                                           Foreground="{StaticResource TextMutedBrush}" FontSize="10.5"
+                                           Foreground="{DynamicResource TextMutedBrush}" FontSize="10.5"
                                            HorizontalAlignment="Right" />
                             </DockPanel>
                             <Border Style="{StaticResource QuestionChip}" Margin="0,9,0,0">
-                                <TextBlock FontSize="10.5" Foreground="{StaticResource TextBrush}">
+                                <TextBlock FontSize="10.5" Foreground="{DynamicResource TextBrush}">
                                     <Run Text="{Binding ActiveQuestion.StateGlyph, Mode=OneWay}"
                                          FontWeight="Bold" />
                                     <Run Text=" " />
@@ -385,7 +443,7 @@
                             </Border>
                             <TextBlock Text="{Binding ActiveQuestion.AttentionText}"
                                        FontSize="10.5" Margin="0,7,0,0"
-                                       Foreground="{StaticResource WarningTextBrush}"
+                                       Foreground="{DynamicResource WarningTextBrush}"
                                        Visibility="{Binding ActiveQuestion.AttentionText, Converter={StaticResource NullToVisibility}}" />
                         </StackPanel>
                     </Border>
@@ -397,7 +455,7 @@
                                       VerticalScrollBarVisibility="Auto" Padding="18,14,14,16">
                             <StackPanel>
                                 <TextBlock Text="Select a question on the left to review its mark."
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            TextWrapping="Wrap">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -412,10 +470,28 @@
                                 </TextBlock>
 
                                 <TextBlock Text="This correction stored totals only. The PDF report has the feedback."
-                                           Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
                                            Visibility="{Binding HasNoQuestionData, Converter={StaticResource BoolToVis}}" />
 
                                 <StackPanel Visibility="{Binding HasActiveQuestion, Converter={StaticResource BoolToVis}}">
+                                    <!-- Each subquestion keeps its own mark, so a
+                                         question that lost marks in one part can
+                                         never read as uniformly correct. -->
+                                    <StackPanel Margin="0,2,0,12"
+                                                Visibility="{Binding ActiveQuestion.HasSubquestions, Converter={StaticResource BoolToVis}}">
+                                        <DockPanel Margin="0,0,0,7">
+                                            <TextBlock DockPanel.Dock="Right"
+                                                       Text="{Binding ActiveQuestion.SubquestionSummary}"
+                                                       FontSize="10.5" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                            <TextBlock Text="SUBQUESTIONS" Style="{StaticResource SectionTitle}"
+                                                       Margin="0" />
+                                        </DockPanel>
+                                        <ItemsControl ItemsSource="{Binding ActiveQuestion.Subquestions}"
+                                                      ItemTemplate="{StaticResource SubquestionRow}"
+                                                      AutomationProperties.Name="Subquestions" />
+                                    </StackPanel>
+
                                     <TextBlock Text="HOW THE MARK WAS BUILT" Style="{StaticResource SectionTitle}"
                                                Margin="0,2,0,8" />
                                     <ItemsControl ItemsSource="{Binding ActiveQuestion.Source.MarkBreakdown}">
@@ -426,11 +502,11 @@
                                                         <TextBlock.Style>
                                                             <Style TargetType="TextBlock">
                                                                 <Setter Property="Text" Value="✗" />
-                                                                <Setter Property="Foreground" Value="{StaticResource WarningBrush}" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
                                                                 <Style.Triggers>
                                                                     <DataTrigger Binding="{Binding Awarded}" Value="True">
                                                                         <Setter Property="Text" Value="✓" />
-                                                                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
@@ -438,15 +514,15 @@
                                                     </TextBlock>
                                                     <TextBlock DockPanel.Dock="Left" Text="{Binding Code}"
                                                                Width="44" FontWeight="SemiBold" FontSize="11"
-                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                                     <TextBlock Text="{Binding Reason}" FontSize="12"
-                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </DockPanel>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     <TextBlock Text="No mark breakdown was stored for this question."
-                                               Foreground="{StaticResource TextMutedBrush}" FontSize="11.5">
+                                               Foreground="{DynamicResource TextMutedBrush}" FontSize="11.5">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
                                                 <Setter Property="Visibility" Value="Visible" />
@@ -461,39 +537,40 @@
 
                                     <TextBlock Text="WHY MARKS WERE LOST" Style="{StaticResource SectionTitle}" />
                                     <TextBlock Text="{Binding ActiveQuestion.LossReasonText}" FontSize="12"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
 
                                     <TextBlock Text="WHAT THE STUDENT WROTE" Style="{StaticResource SectionTitle}" />
-                                    <Border Background="{StaticResource CanvasBrush}"
-                                            BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1"
+                                    <Border Background="{DynamicResource CanvasBrush}"
+                                            BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1"
                                             CornerRadius="12" Padding="12">
                                         <TextBlock Text="{Binding ActiveQuestion.StudentAnswerText}"
-                                                   FontSize="12.5" Foreground="{StaticResource TextBrush}" />
+                                                   FontSize="12.5" Foreground="{DynamicResource TextBrush}" />
                                     </Border>
 
-                                    <Border Background="{StaticResource WarningSurfaceBrush}"
-                                            BorderBrush="{StaticResource WarningBrush}" BorderThickness="1"
+                                    <Border Background="{DynamicResource WarningSurfaceBrush}"
+                                            BorderBrush="{DynamicResource WarningBrush}" BorderThickness="1"
                                             CornerRadius="14" Padding="12" Margin="0,14,0,0"
                                             Visibility="{Binding ActiveQuestion.HasSchemeCheck, Converter={StaticResource BoolToVis}}">
                                         <StackPanel>
                                             <TextBlock Text="Scheme check" FontWeight="SemiBold" FontSize="12"
-                                                       Foreground="{StaticResource WarningTextBrush}" />
+                                                       Foreground="{DynamicResource WarningTextBrush}" />
                                             <TextBlock Text="{Binding ActiveQuestion.SchemeCheck.Evidence}"
                                                        TextWrapping="Wrap" FontSize="11.5" Margin="0,5,0,0"
-                                                       Foreground="{StaticResource TextBrush}" />
+                                                       Foreground="{DynamicResource TextBrush}" />
                                             <TextBlock Margin="0,5,0,0" TextWrapping="Wrap" FontSize="11.5"
-                                                       Foreground="{StaticResource TextSecondaryBrush}">
+                                                       Foreground="{DynamicResource TextSecondaryBrush}">
                                                 <Run Text="Scheme answer: " FontWeight="SemiBold" />
                                                 <Run Text="{Binding ActiveQuestion.SchemeCheck.SchemeAnswer, Mode=OneWay}" />
                                             </TextBlock>
                                             <TextBlock Margin="0,3,0,0" TextWrapping="Wrap" FontSize="11.5"
-                                                       Foreground="{StaticResource TextSecondaryBrush}">
+                                                       Foreground="{DynamicResource TextSecondaryBrush}">
                                                 <Run Text="Independently verified: " FontWeight="SemiBold" />
                                                 <Run Text="{Binding ActiveQuestion.SchemeCheck.IndependentlyVerifiedAnswer, Mode=OneWay}" />
                                             </TextBlock>
-                                            <TextBlock Text="{Binding ActiveQuestion.SchemeCheck.DiscrepancyType}"
-                                                       Foreground="{StaticResource WarningTextBrush}"
-                                                       FontSize="10.5" Margin="0,5,0,0" />
+                                            <TextBlock Text="{Binding ActiveQuestion.SchemeCheck.DiscrepancyTypeText}"
+                                                       Foreground="{DynamicResource WarningTextBrush}"
+                                                       FontSize="10.5" Margin="0,5,0,0"
+                                                       Visibility="{Binding ActiveQuestion.SchemeCheck.HasDiscrepancyType, Converter={StaticResource BoolToVis}}" />
                                         </StackPanel>
                                     </Border>
 
@@ -514,7 +591,7 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     <TextBlock Text="{Binding ActiveQuestion.MaxZeroText}"
-                                               Foreground="{StaticResource WarningTextBrush}" FontSize="11"
+                                               Foreground="{DynamicResource WarningTextBrush}" FontSize="11"
                                                Visibility="{Binding ActiveQuestion.MaxZeroText, Converter={StaticResource NullToVisibility}}" />
 
                                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
@@ -527,10 +604,10 @@
                                                 ToolTip="Write the staged mark (Enter)" />
                                     </StackPanel>
                                     <TextBlock Text="Enter accepts when nothing is staged. Digits stage; nothing is saved until Set."
-                                               Foreground="{StaticResource TextMutedBrush}" FontSize="10.5"
+                                               Foreground="{DynamicResource TextMutedBrush}" FontSize="10.5"
                                                Margin="0,8,0,0" TextWrapping="Wrap" />
                                     <TextBlock Text="{Binding ActiveQuestion.LedgerLine}"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                FontSize="11" Margin="0,7,0,0"
                                                Visibility="{Binding ActiveQuestion.LedgerLine, Converter={StaticResource NullToVisibility}}" />
 
@@ -541,24 +618,24 @@
                                 </StackPanel>
 
                                 <!-- Approval sheet: one durable whole-paper decision. -->
-                                <Border x:Name="ApprovePanel" Background="{StaticResource SurfaceRaisedBrush}"
-                                        BorderBrush="{StaticResource HairlineStrongBrush}"
+                                <Border x:Name="ApprovePanel" Background="{DynamicResource SurfaceRaisedBrush}"
+                                        BorderBrush="{DynamicResource HairlineStrongBrush}"
                                         BorderThickness="1" CornerRadius="16" Padding="14" Margin="0,16,0,0"
                                         Visibility="{Binding IsApprovePanelOpen, Converter={StaticResource BoolToVis}}">
                                     <StackPanel>
                                         <TextBlock Text="Approve this paper" FontWeight="SemiBold" FontSize="13" />
                                         <TextBlock Text="{Binding ApproveHint}" FontSize="11.5"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                                    Margin="0,5,0,0" TextWrapping="Wrap" />
                                         <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                             <TextBlock Text="Whole-paper mark" VerticalAlignment="Center"
                                                        FontSize="11.5" Margin="0,0,8,0"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                                             <TextBox Width="76" Text="{Binding WholePaperMarkText, UpdateSourceTrigger=PropertyChanged}"
                                                      AutomationProperties.Name="Whole-paper mark" />
                                         </StackPanel>
                                         <TextBlock Text="Leave empty to approve the engine's marks as they stand."
-                                                   Foreground="{StaticResource TextMutedBrush}" FontSize="10.5"
+                                                   Foreground="{DynamicResource TextMutedBrush}" FontSize="10.5"
                                                    Margin="0,6,0,0" TextWrapping="Wrap" />
                                         <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                             <Button Content="Confirm approval" Style="{StaticResource PrimaryButton}"
@@ -581,8 +658,8 @@
             <!-- Shortcut sheet: pointer users keep every action too. -->
             <Border Grid.ColumnSpan="5" HorizontalAlignment="Right" VerticalAlignment="Top"
                     Width="380" Margin="0,10,12,0" Padding="16" Panel.ZIndex="10"
-                    Background="{StaticResource SurfaceRaisedBrush}"
-                    BorderBrush="{StaticResource HairlineStrongBrush}" BorderThickness="1"
+                    Background="{DynamicResource SurfaceRaisedBrush}"
+                    BorderBrush="{DynamicResource HairlineStrongBrush}" BorderThickness="1"
                     CornerRadius="18"
                     Visibility="{Binding IsShortcutsOpen, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
@@ -594,13 +671,13 @@
                     </DockPanel>
                     <TextBlock Text="{Binding ShortcutText}" FontFamily="{StaticResource MonoFont}"
                                FontSize="11.5" Margin="0,10,0,0" TextWrapping="NoWrap"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
             </Border>
         </Grid>
 
         <!-- Footer: three honest counts and the one durable action. -->
-        <Border Grid.Row="3" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,1,0,0"
+        <Border Grid.Row="3" BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="0,1,0,0"
                 Padding="2,12,2,2" Margin="0,14,0,0"
                 Visibility="{Binding HasPaper, Converter={StaticResource BoolToVis}}">
             <DockPanel LastChildFill="True">
@@ -617,7 +694,7 @@
                     <TextBlock Text="{Binding ProgressText}" FontSize="14" FontWeight="SemiBold"
                                VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite" />
                     <TextBlock Text="N/P question  ·  Shift+N/P paper  ·  Enter accept  ·  A approve"
-                               Foreground="{StaticResource TextMutedBrush}" FontSize="10.5"
+                               Foreground="{DynamicResource TextMutedBrush}" FontSize="10.5"
                                VerticalAlignment="Center" Margin="14,0,0,0" TextWrapping="NoWrap" />
                 </StackPanel>
             </DockPanel>

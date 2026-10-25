@@ -450,8 +450,53 @@ def build_markdown_report(student_name: str, result: dict, totals: dict) -> str:
                 f"Full-mark solution: {q['full_mark_solution']}",
             ]
         )
+        # The parts keep their own marks in the export too: a report that shows
+        # only "2 / 5" cannot say which part lost the three marks.
+        for sub in q.get("subquestions") or []:
+            part_lines = subquestion_lines(sub)
+            if not part_lines:
+                continue
+            lines.append(f"  - {part_lines[0]}")
+            lines.extend(f"    {line.strip()}" for line in part_lines[1:])
 
     return "\n".join(lines)
+
+
+def subquestion_lines(sub: dict) -> list:
+    """One subquestion as report lines: its own mark, then its scheme evidence.
+
+    An UNMARKED part says so instead of printing a 0 the marker never awarded.
+    """
+    label = str(sub.get("label") or sub.get("id") or "?")
+    maximum = sub.get("max_marks")
+    if str(sub.get("status") or "").upper() != "MARKED":
+        lines = [f"{label}: UNMARKED (of {maximum if maximum is not None else '?'})"]
+    else:
+        awarded = sub.get("awarded_marks")
+        lines = [f"{label}: {awarded if awarded is not None else 0} / "
+                 f"{maximum if maximum is not None else '?'}"]
+    answers = [str(a).strip() for a in sub.get("answers") or [] if str(a).strip()]
+    if answers:
+        lines.append(f"  Scheme answer: {' or '.join(answers)}")
+    codes = [str(c).strip() for c in sub.get("mark_codes") or [] if str(c).strip()]
+    if codes:
+        lines.append(f"  Marking points: {', '.join(codes)}")
+    return lines
+
+
+def parts_summary(question: dict) -> str:
+    """The subquestions of one question as one spreadsheet cell."""
+    parts = []
+    for sub in question.get("subquestions") or []:
+        label = str(sub.get("label") or sub.get("id") or "?")
+        if str(sub.get("status") or "").upper() != "MARKED":
+            parts.append(f"{label} unmarked")
+        else:
+            awarded = sub.get("awarded_marks")
+            maximum = sub.get("max_marks")
+            parts.append(f"{label} {awarded if awarded is not None else 0}"
+                         f"/{maximum if maximum is not None else '?'}")
+    return "; ".join(parts)
 
 
 def build_csv_rows(student_name: str, result: dict) -> list:
@@ -463,6 +508,9 @@ def build_csv_rows(student_name: str, result: dict) -> list:
                 "Question": q["question_number"],
                 "Awarded": q["awarded_marks"],
                 "Max": q["max_marks"],
+                # One cell keeps the row counting exactly one question (adding
+                # a row per part would double the paper total in a sheet).
+                "Parts": parts_summary(q),
                 "Percentage": (
                     round(q["awarded_marks"] / q["max_marks"] * 100, 2)
                     if q["max_marks"]
@@ -791,8 +839,22 @@ def grade_with_model(
     # model. This is a pure normalisation of the caller's list; the fallback
     # ORDER is untouched.
     all_models = normalize_model_chain(model_names)
-    model_names = MODEL_HEALTH.usable_models(all_models)
-    skipped = [m for m in all_models if m not in model_names]
+    from ..config import is_trusted_marking_model
+    trusted = [m for m in all_models if is_trusted_marking_model(m)]
+    untrusted = [m for m in all_models if m not in trusted]
+    if untrusted and status_callback:
+        status_callback(
+            "⏭️ Skipping lightweight models for marking: " + ", ".join(untrusted)
+        )
+    if not trusted:
+        raise RuntimeError(
+            "No full-capability Gemini model is configured for marking "
+            f"(refused lightweight: {', '.join(untrusted) or 'none'}). "
+            "A correction cannot be trusted from a lightweight fallback; "
+            "configure a full model and retry."
+        )
+    model_names = MODEL_HEALTH.usable_models(trusted)
+    skipped = [m for m in trusted if m not in model_names]
     if skipped and status_callback:
         status_callback(
             "⏭️ Skipping models that recently failed: " + ", ".join(skipped)

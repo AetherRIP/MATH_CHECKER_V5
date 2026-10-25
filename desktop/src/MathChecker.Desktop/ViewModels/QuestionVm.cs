@@ -110,6 +110,40 @@ public sealed class QuestionVm : ObservableObject
 
     public bool HasBreakdown => Source.MarkBreakdown.Count > 0;
 
+    /// <summary>
+    /// The declared subquestions the engine marked (or explicitly could not
+    /// mark) for this question. Empty for a question the scheme did not split,
+    /// which is why the desk only shows the section when there are parts.
+    /// </summary>
+    public IReadOnlyList<SubquestionDto> Subquestions => Source.Subquestions;
+
+    public bool HasSubquestions => Source.Subquestions.Count > 0;
+
+    /// <summary>"3 parts · 2 marked, 1 unmarked" for the section heading.</summary>
+    public string SubquestionSummary
+    {
+        get
+        {
+            var parts = Source.Subquestions;
+            if (parts.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var unmarked = parts.Count(part => part.IsUnmarked);
+            var marked = parts.Count - unmarked;
+            var label = parts.Count == 1 ? "1 part" : $"{parts.Count} parts";
+            if (unmarked == 0)
+            {
+                return $"{label} · all marked";
+            }
+
+            return marked == 0
+                ? $"{label} · none marked"
+                : $"{label} · {marked} marked, {unmarked} unmarked";
+        }
+    }
+
     public bool HasSchemeCheck => Source.SchemeCheck is not null;
 
     public SchemeCheckDto? SchemeCheck => Source.SchemeCheck;

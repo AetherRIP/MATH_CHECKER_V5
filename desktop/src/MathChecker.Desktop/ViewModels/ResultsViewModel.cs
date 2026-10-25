@@ -1,12 +1,19 @@
 using System.Collections.ObjectModel;
 using MathChecker.Desktop.Core;
+using MathChecker.Desktop.Core.UI;
 using MathChecker.Desktop.Models;
 
 namespace MathChecker.Desktop.ViewModels;
 
 public sealed class ResultsViewModel : PageViewModel
 {
-    private readonly List<string> _statusOptions = new() { "all", "needs_review", "corrected", "overridden" };
+    private readonly List<ChoiceOption> _statusOptions = new()
+    {
+        new("All statuses", "all"),
+        new("Needs review", "needs_review"),
+        new("Corrected", "corrected"),
+        new("Overridden", "overridden"),
+    };
 
     private string _query = string.Empty;
     private string _statusFilter = "all";
@@ -16,6 +23,7 @@ public sealed class ResultsViewModel : PageViewModel
     private string _detailNote = "Select a correction to see its marks and feedback.";
     private string _summary = string.Empty;
     private bool _loadingDetail;
+    private int _storedTotal;
 
     public ResultsViewModel(AppSession session)
         : base(session, "results", "Results")
@@ -25,7 +33,7 @@ public sealed class ResultsViewModel : PageViewModel
     public ObservableCollection<ResultSummaryDto> Items { get; } = new();
     public ObservableCollection<QuestionMarkDto> Questions { get; } = new();
     public ObservableCollection<VersionEntryDto> Versions { get; } = new();
-    public ObservableCollection<string> StatusOptions => new(_statusOptions);
+    public ObservableCollection<ChoiceOption> StatusOptions => new(_statusOptions);
 
     public string Query
     {
@@ -87,6 +95,16 @@ public sealed class ResultsViewModel : PageViewModel
 
     public bool IsEmpty => Items.Count == 0;
 
+    /// <summary>An empty table means two different things: nothing has ever been
+    /// stored, or the current search/status hides what is there. Making the
+    /// first case tell the teacher to clear a filter that does not exist is a
+    /// dead end, so the wording follows the stored total.</summary>
+    public string EmptyTitle => _storedTotal == 0 ? "No corrections yet" : "No corrections match";
+
+    public string EmptyText => _storedTotal == 0
+        ? "Nothing has been marked on this machine yet. Start one from Today or the header."
+        : "Clear the search or choose another status to see stored results.";
+
     public bool HasQuestions => Questions.Count > 0;
 
     public bool HasVersions => Versions.Count > 0;
@@ -100,8 +118,24 @@ public sealed class ResultsViewModel : PageViewModel
     public QuestionMarkDto? SelectedQuestion
     {
         get => _selectedQuestion;
-        set => SetProperty(ref _selectedQuestion, value);
+        set
+        {
+            if (!SetProperty(ref _selectedQuestion, value))
+            {
+                return;
+            }
+
+            // The parts section is a plain bool rather than a multi-hop binding
+            // into the selected DTO's list: a path like
+            // SelectedQuestion.Subquestions.Count has nothing to notify it when
+            // the selected row changes, so the section kept whatever state it
+            // was first given.
+            OnPropertyChanged(nameof(HasSelectedSubquestions));
+        }
     }
+
+    /// <summary>True when the selected question declares subquestions.</summary>
+    public bool HasSelectedSubquestions => _selectedQuestion?.Subquestions.Count > 0;
 
     public string DetailNote
     {
@@ -267,7 +301,10 @@ public sealed class ResultsViewModel : PageViewModel
             return;
         }
 
-        var file = await Session.Api.ExportResultAsync(Detail.Id, format);
+        // The detailed report is the one that carries the per-question and
+        // per-subquestion marking, so the exported correction matches the desk.
+        var file = await Session.Api.ExportResultAsync(Detail.Id, format,
+            detail: "detailed");
         var filter = format switch
         {
             "pdf" => "PDF (*.pdf)|*.pdf",
@@ -295,10 +332,13 @@ public sealed class ResultsViewModel : PageViewModel
             Items.Add(result);
         }
 
+        _storedTotal = results.Total;
         Summary = $"{results.Total} corrections stored · showing {Items.Count}"
-                  + (results.Total > Items.Count ? " (raise the filter or search to narrow it)" : string.Empty);
+                  + (results.Total > Items.Count ? " (clear the filter or search to see more)" : string.Empty);
         OnPropertyChanged(nameof(HasItems));
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(EmptyTitle));
+        OnPropertyChanged(nameof(EmptyText));
 
         if (previous is not null)
         {

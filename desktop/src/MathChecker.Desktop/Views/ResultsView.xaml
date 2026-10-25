@@ -9,11 +9,20 @@
         <ui:PageFrame.Actions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                <!-- Every action here reads the selected correction; with no row
+                     selected they used to look available and do nothing. -->
                 <Button Content="Open paper" Style="{StaticResource PrimaryButton}"
-                        Command="{Binding OpenDeskCommand}" />
-                <Button Content="Export PDF" Command="{Binding ExportPdfCommand}" />
-                <Button Content="CSV" Command="{Binding ExportCsvCommand}" />
-                <Button Content="Markdown" Command="{Binding ExportMarkdownCommand}" Margin="0" />
+                        Command="{Binding OpenDeskCommand}" IsEnabled="{Binding HasSelection}"
+                        ToolTip="Open the selected correction on the marking desk" />
+                <Button Content="Export PDF" Command="{Binding ExportPdfCommand}"
+                        IsEnabled="{Binding HasSelection}"
+                        ToolTip="Export the selected correction as PDF" />
+                <Button Content="Export CSV" Command="{Binding ExportCsvCommand}"
+                        IsEnabled="{Binding HasSelection}"
+                        ToolTip="Export the selected correction as CSV" />
+                <Button Content="Export Markdown" Command="{Binding ExportMarkdownCommand}" Margin="0"
+                        IsEnabled="{Binding HasSelection}"
+                        ToolTip="Export the selected correction as Markdown" />
             </StackPanel>
         </ui:PageFrame.Actions>
 
@@ -25,16 +34,23 @@
 
             <Border Grid.Row="0" Style="{StaticResource FilterBar}">
                 <WrapPanel>
-                    <TextBox Width="240" Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
-                             AutomationProperties.Name="Search results" />
+                    <Grid Width="260" Margin="0,0,6,0">
+                        <TextBox Margin="0" Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Search results" />
+                        <TextBlock Text="Search student or assignment…"
+                                   FontSize="12.5" Margin="12,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextMutedBrush}" IsHitTestVisible="False"
+                                   TextWrapping="NoWrap"
+                                   Visibility="{Binding Query, Converter={StaticResource EmptyToVisibility}}" />
+                    </Grid>
                     <Button Content="Apply" Command="{Binding SearchCommand}" Style="{StaticResource PrimaryButton}"
-                            Height="38" Padding="16,7" />
+                            Height="32" Padding="16,5" />
                     <TextBlock Text="Status" Style="{StaticResource FieldLabel}" Margin="12,0,6,0" />
                     <ComboBox Width="150" ItemsSource="{Binding StatusOptions}"
-                              SelectedItem="{Binding StatusFilter}" />
+                              SelectedValuePath="Value" SelectedValue="{Binding StatusFilter}" />
                     <Border Style="{StaticResource Chip}" Padding="9,3" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Items.Count, StringFormat={}{0} rows}"
-                                   FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                                   FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                 </WrapPanel>
             </Border>
@@ -57,15 +73,19 @@
                                       SelectedItem="{Binding Selected}"
                                       AutomationProperties.Name="Stored corrections">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Student" Binding="{Binding Name}" Width="118" />
+                                    <DataGridTextColumn Header="Student" Binding="{Binding Name}" Width="118"
+                                                        ElementStyle="{StaticResource CellText}" />
                                     <DataGridTextColumn Header="Assignment" Binding="{Binding AssignmentTitle}"
-                                                        Width="*" MinWidth="150" />
+                                                        Width="*" MinWidth="150"
+                                                        ElementStyle="{StaticResource CellText}" />
                                     <DataGridTextColumn Header="Score" Binding="{Binding ScoreText}" Width="64" />
                                     <DataGridTextColumn Header="%" Binding="{Binding PercentageText}" Width="54"
                                                         ui:TableLayout.Priority="2" />
                                     <DataGridTextColumn Header="Status" Binding="{Binding StatusLabel}" Width="96"
                                                         ui:TableLayout.Priority="1" />
-                                    <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="112"
+                                    <!-- 112 clipped the timestamp ("2026-10-24 02:1");
+                                         132 holds the full value at 100 % and 125 % scaling. -->
+                                    <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="132"
                                                         ui:TableLayout.Priority="2" />
                                 </DataGrid.Columns>
                             </DataGrid>
@@ -74,8 +94,8 @@
                                     HorizontalAlignment="Center" VerticalAlignment="Center"
                                     Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}">
                                 <StackPanel>
-                                    <TextBlock Text="No corrections match" Style="{StaticResource EmptyTitle}" />
-                                    <TextBlock Text="Clear the search or choose another status to see stored results."
+                                    <TextBlock Text="{Binding EmptyTitle}" Style="{StaticResource EmptyTitle}" />
+                                    <TextBlock Text="{Binding EmptyText}"
                                                Style="{StaticResource EmptyText}" />
                                 </StackPanel>
                             </Border>
@@ -115,10 +135,41 @@
                                     <DataGridTextColumn Header="Q" Binding="{Binding NumberText}" Width="52" />
                                     <DataGridTextColumn Header="Mark" Binding="{Binding MarkText}" Width="72" />
                                     <DataGridTextColumn Header="Topic" Binding="{Binding Topic}" Width="130"
-                                                        ui:TableLayout.Priority="2" />
-                                    <DataGridTextColumn Header="Loss reason" Binding="{Binding LossReason}" Width="*" />
+                                                        ui:TableLayout.Priority="2"
+                                                        ElementStyle="{StaticResource CellText}" />
+                                    <DataGridTextColumn Header="Loss reason" Binding="{Binding LossReason}" Width="*"
+                                                        ElementStyle="{StaticResource CellText}" />
                                 </DataGrid.Columns>
                             </DataGrid>
+                            <!-- The parts of the row selected above, from the same
+                                 stored result. Hidden when the question has none. -->
+                            <StackPanel Margin="0,8,0,0"
+                                        Visibility="{Binding HasSelectedSubquestions, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="Subquestions" Style="{StaticResource SectionTitle}"
+                                           Margin="0,0,0,4" />
+                                <ItemsControl ItemsSource="{Binding SelectedQuestion.Subquestions}"
+                                              AutomationProperties.Name="Subquestions">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <DockPanel Margin="0,2,0,2">
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding MarkText}"
+                                                           FontFamily="{StaticResource MonoFont}"
+                                                           FontSize="11.5" FontWeight="SemiBold"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock DockPanel.Dock="Left" Text="{Binding LabelText}"
+                                                           Width="54" FontSize="11.5" FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding VerdictText}" FontSize="11.5"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           TextWrapping="NoWrap" />
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
                             <TextBlock Text="No per-question breakdown was stored for this correction."
                                        Style="{StaticResource CardSubtitle}" Margin="0,8,0,0"
                                        Visibility="{Binding HasQuestions, Converter={StaticResource InverseBoolToVis}}" />
@@ -130,8 +181,10 @@
                                     <DataGridTextColumn Header="#" Binding="{Binding Version}" Width="46" />
                                     <DataGridTextColumn Header="Score" Binding="{Binding ScoreText}" Width="84" />
                                     <DataGridTextColumn Header="Confidence" Binding="{Binding Confidence}" Width="112"
-                                                        ui:TableLayout.Priority="2" />
-                                    <DataGridTextColumn Header="Model" Binding="{Binding MarkingModel}" Width="*" />
+                                                        ui:TableLayout.Priority="2"
+                                                        ElementStyle="{StaticResource CellText}" />
+                                    <DataGridTextColumn Header="Model" Binding="{Binding MarkingModel}" Width="*"
+                                                        ElementStyle="{StaticResource CellText}" />
                                     <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="120"
                                                         ui:TableLayout.Priority="1" />
                                 </DataGrid.Columns>

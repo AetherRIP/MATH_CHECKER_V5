@@ -741,7 +741,11 @@ public sealed class MarkingDeskViewModel : PageViewModel
 
         try
         {
-            var file = await Session.Api.ExportResultAsync(resultId, format).ConfigureAwait(true);
+            // "detailed" is the report that carries the per-question blocks, and
+            // with them each subquestion's own mark; the standard PDF stops at
+            // the summary table.
+            var file = await Session.Api.ExportResultAsync(resultId, format,
+                detail: "detailed").ConfigureAwait(true);
             var filter = format switch
             {
                 "pdf" => "PDF (*.pdf)|*.pdf",
