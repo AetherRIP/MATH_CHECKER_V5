@@ -7,6 +7,10 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <!-- Swapped for DarkTheme.xaml by ThemeManager when the saved
+                     appearance is dark. Must stay first: controls look up
+                     every colour from it at runtime. -->
+                <ResourceDictionary Source="Themes/LightTheme.xaml" />
                 <ResourceDictionary Source="Themes/Controls.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
@@ -28,6 +32,9 @@
             </DataTemplate>
             <DataTemplate DataType="{x:Type vm:CorrectionViewModel}">
                 <views:CorrectionView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:WorkersViewModel}">
+                <views:WorkersView />
             </DataTemplate>
             <DataTemplate DataType="{x:Type vm:JobsViewModel}">
                 <views:JobsView />

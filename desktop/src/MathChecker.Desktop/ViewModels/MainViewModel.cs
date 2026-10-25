@@ -3,6 +3,7 @@ using System.Windows;
 using MathChecker.Desktop.Core;
 using MathChecker.Desktop.Core.Backend;
 using MathChecker.Desktop.Core.Mvvm;
+using MathChecker.Desktop.Core.Sync;
 using MathChecker.Desktop.Core.UI;
 
 namespace MathChecker.Desktop.ViewModels;
@@ -39,7 +40,6 @@ public sealed class MainViewModel : ObservableObject
 {
     private readonly AppSession _session;
     private readonly Dictionary<string, PageViewModel> _pages = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _lastPageBySpace = new(StringComparer.OrdinalIgnoreCase);
     private PageViewModel? _current;
     private SpaceVm? _currentSpace;
     private string _backendSummary = "Starting…";
@@ -59,6 +59,7 @@ public sealed class MainViewModel : ObservableObject
         _session.Navigate = NavigateTo;
         _session.Toast = message => Toast = message;
         _session.Host.StatusChanged += OnBackendStatusChanged;
+        _session.Sync.Completed += OnSyncCompleted;
 
         _railExpanded = !session.Settings.RailCollapsed;
 
@@ -103,6 +104,18 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Raised by the File menu; the window owns the shutdown sequence.</summary>
     public event Action? ExitRequested;
 
+    /// <summary>A sync reached its final state: say what happened, then reload
+    /// the page whose rows came from Classroom. Only the visible page is
+    /// reloaded — every other page re-reads on navigation anyway.</summary>
+    private void OnSyncCompleted(SyncResult result)
+    {
+        _session.Notify("Google Classroom — " + result.Summary);
+        if (Current is { SyncsFromClassroom: true } page)
+        {
+            _ = page.LoadAsync();
+        }
+    }
+
     public AsyncCommand RestartBackendCommand { get; }
     public RelayCommand ToggleRailCommand { get; }
     public RelayCommand TogglePaletteCommand { get; }
@@ -131,7 +144,6 @@ public sealed class MainViewModel : ObservableObject
             }
 
             _session.Settings.LastPage = value.Key;
-            _lastPageBySpace[value.Group] = value.Key;
             SyncSpace(value.Group);
             value.OnActivated();
             _ = value.LoadAsync();
@@ -157,12 +169,12 @@ public sealed class MainViewModel : ObservableObject
                 return;
             }
 
+            // A rail entry stands for a destination, not a memory: clicking
+            // People must open Classroom, never whichever tab happened to be
+            // last used in that space (that read as "it opens Classes").
             if (Current is null || Current.Group != value.Name)
             {
-                var target = _lastPageBySpace.TryGetValue(value.Name, out var key)
-                    ? value.Pages.FirstOrDefault(p => string.Equals(p.Key, key, StringComparison.OrdinalIgnoreCase))
-                    : null;
-                Current = target ?? value.Pages[0];
+                Current = value.Pages[0];
             }
         }
     }
@@ -402,6 +414,7 @@ public sealed class MainViewModel : ObservableObject
         Add(new SearchViewModel(_session) { Group = "Desk" });
 
         Add(new CorrectionViewModel(_session) { Group = "Correct" });
+        Add(new WorkersViewModel(_session) { Group = "Correct" });
         Add(new JobsViewModel(_session, "tasks", "Tasks", showWorkers: true) { Group = "Correct" });
         Add(new JobsViewModel(_session, "jobs", "Job log", showWorkers: false) { Group = "Correct" });
         Add(new AutomationViewModel(_session) { Group = "Correct" });

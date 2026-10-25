@@ -168,6 +168,87 @@ score, and the Results page's false selected-correction empty state) are
 documented in
 [`docs/reports/live-classroom-readonly-audit-2026-10-22.md`](../reports/live-classroom-readonly-audit-2026-10-22.md).
 
+## 2b. Correction page: live worker dashboard
+
+The correction page used to show one progress bar for the single job the page
+happened to be following. It is now a dashboard: one card per correction job,
+updated in place, plus a summary strip, filters, search and a details panel.
+
+**What a card represents.** A card is one real correction job (`correction_jobs`
+row) and shows its real worker when the pool has assigned one (`worker_id`, e.g.
+`W1` → "Worker 01"). Queued jobs are shown as queued with a "Waiting" bar — never
+as processing — and jobs with no worker assignment say "Not assigned".
+
+**How the data reaches it.** `GET /api/jobs` (poll every 3 s) is the
+reconciliation path and `GET /api/jobs/stream` (SSE) pushes each stage change as
+it happens; both use the same payload shape, so a live card never looks
+different from a refreshed one. `GET /api/jobs/{id}` adds the stored result and
+the recorded stage history. Merging is by job id and monotonic on `updated_at`:
+a stale event cannot rewind a card and a late stage event cannot reopen a
+finished job.
+
+**What the backend had to expose.** The uploaded filename and page count were
+only in `pending_manual_files`, which terminal cleanup deletes, so the card would
+have had nothing to show after the first job finished. `correction_jobs` now
+carries `paper_name` and `page_count` (written at enqueue), `job_stage_events`
+records every stage the backend reports (with its time), and the job payloads
+carry `worker_id`, `paper_name`, `page_count`, `updated_at` on both the streamed
+and the polled shapes. Progress is never synthesised: a job that has measured
+nothing shows an indeterminate bar, and an ETA appears only when a stage has
+actually completed and elapsed time is known.
+
+Verified on 2026-10-25 against a real backend (Demo Mode, isolated data folder):
+
+| Check | Evidence | Result |
+|---|---|---|
+| Backend dashboard data | `pytest backend/tests/test_job_dashboard_data.py` | **10 passed**: paper/page stored at enqueue, stage history recorded with times, repeats and heartbeats not recorded, history capped, terminal state appended, stream payload carries worker/paper/pages |
+| Card + merge rules | `dotnet test desktop/MathChecker.Desktop.slnx` (`WorkerDashboardTests`) | **14 passed**: real fields on the card, "Not available" instead of guesses, queued/active/failed tones, marks only after completion, in-place update, stale update ignored, finished job not reopened, filters/search, stage history, render test |
+| Real multi-job run | `dotnet run --project desktop/tools/MathChecker.Desktop.E2E` | **31 passed**: three simultaneous real corrections; every card showed `student.pdf`, "1 page", its student, worker `W1` → "Worker 01", 14 recorded stages starting with QUEUED, and marks `9 / 12 · 75%` only after COMPLETED |
+| Dashboard render | `dev_local/dashboard.png` | 12 jobs / 1 processing / 11 completed, three live cards (one at 12% Preparing, two at 100%), details panel with the selected job's real stage history |
+
+Known limitation: question-level progress is not reported by the engine during a
+single marking call, so a card shows the backend's stage text and (when the stage
+names one) the question it mentions; it does not invent a per-question
+percentage.
+
+## 2c. One Sync control on every Classroom-backed page
+
+The People page's **Sync now** started the backend job, slept 1.5 s, read ONE
+progress snapshot and reloaded. On a real account (20 assignments, 80 students,
+1 484 submissions, ~45 s) that meant the page showed "Connecting… 5 %" and then
+a list read from BEFORE the sync — it read exactly like a sync that stops
+halfway, although the backend run itself was complete and correct.
+
+**One service, one button.** `ClassroomSyncService` (`Core/Sync/`) is now the only
+synchronization path. Every page whose rows come from Classroom — Classroom,
+Classes, Students, Assignments and Today — passes `Sync="{Binding SyncService}"`
+to the shared `PageFrame`, which renders the same header control: a live chip
+(stage text + the backend's own percentage), a determinate/indeterminate bar, one
+`Sync` button and a `Retry failed` button that appears only when the backend
+named a part it could not sync. Pages with no synchronized data (Results,
+Reports, Search, Config…) render no button at all.
+
+**How it completes.** The service starts `/api/classroom/sync/start`, then polls
+`/api/classroom/sync/progress` until the backend reports `running: false`, and
+takes the outcome from that terminal snapshot only: `error` → failed, a summary
+with `partial: true` → partial (with the failing parts), otherwise completed.
+A second click joins the run already in flight, so no duplicate job is queued;
+the backend enforces the same rule. Completion reloads the visible page through
+`MainViewModel`, and `Retry failed` re-syncs only the assignments the backend
+named (`/sync/start?course_id=…&coursework_id=…`), not the whole class.
+
+The backend carries `course_id`/`coursework_id` on submission errors so that
+retry is possible, and paginates every listing to its last page (already true,
+now asserted).
+
+| Check | Evidence | Result |
+|---|---|---|
+| Pagination, join, retryable partials | `pytest backend/tests/test_full_sync_completeness.py` | **4 passed**: 3 pages of submissions all stored (12 rows, 24 counted), repeated `nextPageToken` stops the loop, a second `/sync/start` joins the running run (`started: false`, same id), a failed assignment is reported `partial` with its ids and the assignment-scoped retry repairs it |
+| Service behaviour | `dotnet test` (`ClassroomSyncTests`) | **7 passed**: waits past the first snapshot, partial ≠ success, two clicks = one POST, retry hits only `course_id=c2&coursework_id=w9`, a refused start is a failure, completion fires once, the five Classroom pages share one service and a local-only page has none |
+| Live full sync (real account) | `/api/classroom/sync/start` + polling | **completed**: 2 courses · 20 assignments · 80 students · 1 484 submissions · 0 errors · 47.6 s; roster 80 → 80 and tracking rows 1 484 → 1 484 (idempotent, no duplicates) |
+| Real UI run | `dev_local/sync_ui_check.ps1` | **28 checks, 0 failed** — every Classroom page has the button, a local-only page does not, the Students header run and the Classroom `Sync now` card both reached the backend's final state, the chip/card read "Sync complete in 42 s · 2 courses · 20 assignments · 80 students · 1484 submissions", the button is disabled while running and enabled afterwards |
+| Regression | full `pytest` + `dotnet test` | **2 206 passed / 1 skipped** and **182 passed** |
+
 ## 3. Defects found during verification and fixed
 
 | Defect | Cause | Fix | Regression evidence |
@@ -177,6 +258,7 @@ documented in
 | Students table was always empty while the summary said "5 students" | rebuilding the class filter list cleared the `ComboBox`, WPF wrote `null` back to `ClassFilter`, and the filter then excluded every student | normalise `null`/empty to "All classes", restore the previous selection after rebuilding, compare with `Ordinal` | `StudentsPageTests` (3 tests): 5 rows after load, null selection does not hide rows, filters survive reload |
 | Closing the window did not exit the process (backend stayed alive) | `Close()` called from inside a cancelled `Closing` handler is ignored by WPF | finish with `Application.Current.Shutdown()` after the async cleanup | UI probe: `CLOSED process-alive=False`; packaged run: exit + no orphan python |
 | Approval sheet's whole-paper hint was clipped ("Leave empty to approve the e…") | the hint sat in a horizontal `StackPanel`, so it never wrapped | moved it to its own wrapping line under the mark field | `dev_local\d2\desk_approval_sheet.png`: full hint visible |
+| Every determinate progress bar rendered as an empty track (the correction card showed "35%" next to a blank bar) | the shared `ProgressBar` template had no `PART_Track`, so WPF never sized `PART_Indicator` | wrapped the indicator in a named `PART_Track` grid | `dev_local\dashboard.png`: 12% and 100% bars visibly filled; all page smoke tests still render |
 | Status bar glued the desk status onto the data-folder path ("…\demoQuestion 3 set back…") | `DockPanel.LastChildFill` made the status text fill the row after a left-docked sibling | `LastChildFill="False"` so each status item keeps its dock | `dev_local\d2\desk_decisions.png`: folder left, status right |
 
 Additional hardening done in the same pass: `ProgressBar.Value` and inline `Run`
@@ -253,8 +335,9 @@ engine, API client, backend host or models.
 Views ready to receive the design (each has a view model with loading, error,
 empty and busy state):
 
-* `DashboardView`, `SearchView`, `CorrectionView`, `JobsView` (Tasks + Job log),
-  `AutomationView`, `ReviewView`, `SchemeReviewView`;
+* `DashboardView`, `SearchView`, `CorrectionView`, `WorkersView` (Correction
+  monitor), `JobsView` (Tasks + Job log), `AutomationView`, `ReviewView`,
+  `SchemeReviewView`;
 * `ResultsView`, `ReportsView`, `UsageView`;
 * `ClassroomView`, `ClassesView`, `StudentsView`, `AssignmentsView`;
 * `SettingsView`, `AiKeysView`, `PromptsView`, `JsonPageView` (Storage, Privacy,

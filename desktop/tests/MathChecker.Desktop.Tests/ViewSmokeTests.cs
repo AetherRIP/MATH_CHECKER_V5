@@ -10,6 +10,7 @@ namespace MathChecker.Desktop.Tests;
 /// XAML resource mistakes (a missing StaticResource, a broken template) throw
 /// here instead of in front of a teacher.
 /// </summary>
+[Collection(WpfCollection.Name)]
 public sealed class ViewSmokeTests
 {
     private static readonly (int Width, int Height)[] Sizes =
@@ -92,7 +93,7 @@ public sealed class ViewSmokeTests
                     Actions = Array.Empty<object>(),
                     Sections = new[]
                     {
-                        new ViewModels.JsonSectionVm("Inventory", "data/inventory") { Text = "{ }" },
+                        new ViewModels.JsonSectionVm("Inventory", "data/inventory") { Raw = "{ }" },
                     },
                 },
             };
@@ -141,6 +142,7 @@ public sealed class ViewSmokeTests
         yield return () => new DashboardView();
         yield return () => new SearchView();
         yield return () => new CorrectionView();
+        yield return () => new WorkersView();
         yield return () => new JobsView();
         yield return () => new AutomationView();
         yield return () => new ReviewView();

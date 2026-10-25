@@ -1,0 +1,357 @@
+<UserControl x:Class="MathChecker.Desktop.Views.WorkersView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
+
+    <UserControl.Resources>
+        <!-- One worker card is a button so it is reachable by keyboard and by a
+             screen reader; the template is the card itself, never a chrome
+             around it. -->
+        <Style x:Key="WorkerCard" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{StaticResource CardRadius}"
+                                Padding="18,16" Effect="{DynamicResource CardShadowEffect}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush"
+                                        Value="{DynamicResource AccentLineBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush"
+                                        Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The dot carries the real state tone: active, queued, done, error. -->
+        <Style x:Key="StatusDot" TargetType="Ellipse">
+            <Setter Property="Width" Value="9" />
+            <Setter Property="Height" Value="9" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Tone}" Value="active">
+                    <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tone}" Value="queued">
+                    <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tone}" Value="done">
+                    <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tone}" Value="error">
+                    <Setter Property="Fill" Value="{DynamicResource DangerBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SummaryTile" TargetType="Border" BasedOn="{StaticResource StatTile}">
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="MinWidth" Value="118" />
+        </Style>
+
+        <Style x:Key="SummaryNumber" TargetType="TextBlock" BasedOn="{StaticResource StatValue}">
+            <Setter Property="FontSize" Value="22" />
+        </Style>
+    </UserControl.Resources>
+
+    <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}"
+                  Description="Live worker cards from the backend's own job rows."
+                  StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
+                  BodyPadding="0,18,0,0">
+        <ui:PageFrame.Actions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
+                <Button Content="New correction" Style="{StaticResource PrimaryButton}"
+                        Command="{Binding StartCorrectionCommand}" Margin="0,0,8,0" />
+                <Button Content="Refresh" Command="{Binding RefreshNowCommand}" />
+                <Button Content="Open job log" Command="{Binding OpenJobsCommand}" Margin="0" />
+            </StackPanel>
+        </ui:PageFrame.Actions>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- =============================================== 1 · summary -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,8">
+                    <!-- Why queued work is waiting: the backend's own cooldown. -->
+                    <Border Style="{StaticResource WarningChip}" Padding="10,4" Margin="0,0,8,0"
+                            Visibility="{Binding HasProviderPause, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding ProviderText}" FontSize="10.5"
+                                   Foreground="{DynamicResource WarningTextBrush}" />
+                    </Border>
+                    <Border Style="{StaticResource Chip}" Padding="10,4" Margin="0,0,8,0">
+                        <TextBlock Text="{Binding LiveMode}" FontSize="10.5"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                    <Border Style="{StaticResource Chip}" Padding="10,4">
+                        <TextBlock Text="{Binding WorkersText}" FontSize="10.5"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                </StackPanel>
+                <!-- Five tiles across the page width; the chips above keep their
+                     own line so a narrow window never drops one tile onto a row
+                     of its own. -->
+                <WrapPanel>
+                    <Border Style="{StaticResource SummaryTile}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding TotalCount}" Style="{StaticResource SummaryNumber}" />
+                            <TextBlock Text="JOBS" Style="{StaticResource StatLabel}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SummaryTile}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding ProcessingCount}" Style="{StaticResource SummaryNumber}" />
+                            <TextBlock Text="PROCESSING" Style="{StaticResource StatLabel}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SummaryTile}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding QueuedCount}" Style="{StaticResource SummaryNumber}" />
+                            <TextBlock Text="QUEUED" Style="{StaticResource StatLabel}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SummaryTile}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding CompletedCount}" Style="{StaticResource SummaryNumber}" />
+                            <TextBlock Text="COMPLETED" Style="{StaticResource StatLabel}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SummaryTile}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding FailedCount}" Style="{StaticResource SummaryNumber}" />
+                            <TextBlock Text="FAILED" Style="{StaticResource StatLabel}" />
+                        </StackPanel>
+                    </Border>
+                </WrapPanel>
+            </StackPanel>
+
+            <!-- ================================================ 2 · filters -->
+            <Border Grid.Row="1" Style="{StaticResource FilterBar}" Margin="0,0,0,12">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Right" Width="260" Margin="12,0,0,0">
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Find a student or paper" />
+                        <!-- WPF has no placeholder: the hint is a muted label that
+                             disappears as soon as the teacher types. -->
+                        <TextBlock Text="Find a student or paper" IsHitTestVisible="False"
+                                   Margin="11,0,0,0" VerticalAlignment="Center" FontSize="12"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   Visibility="{Binding SearchText,
+                                                Converter={StaticResource EmptyToVisibility}}" />
+                    </Grid>
+                    <ListBox Style="{StaticResource SpaceTabs}" ItemsSource="{Binding Filters}"
+                             SelectedValuePath="Value" SelectedValue="{Binding Filter}"
+                             AutomationProperties.Name="Filter jobs">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Label}" FontSize="12.5" FontWeight="Medium"
+                                           TextWrapping="NoWrap" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- ============================================ 3 · worker grid -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="320" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Grid Grid.Column="0">
+                    <ScrollViewer x:Name="WorkerScroll" VerticalScrollBarVisibility="Auto"
+                                  Padding="0,0,8,0" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Cards}" AutomationProperties.Name="Correction workers">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <!-- Equal-width cards that follow the window: as
+                                         many per row as fit at a readable card width,
+                                         fewer when the window narrows. -->
+                                    <ui:ResponsiveGridPanel MinItemWidth="320" Gap="14" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource WorkerCard}" MinHeight="232"
+                                            HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                                            Command="{Binding DataContext.OpenCardCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            AutomationProperties.Name="{Binding StudentName}">
+                                        <StackPanel>
+                                            <!-- identity + state -->
+                                            <DockPanel>
+                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                    <Ellipse Style="{StaticResource StatusDot}" Margin="0,0,6,0" />
+                                                    <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               VerticalAlignment="Center" TextWrapping="NoWrap" />
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding WorkerGlyph}"
+                                                               FontFamily="{StaticResource IconFont}"
+                                                               FontSize="12" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource AccentBrush}" />
+                                                    <TextBlock Text="{Binding WorkerLabel}" FontSize="11.5"
+                                                               FontWeight="SemiBold" Margin="6,0,0,0"
+                                                               VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </DockPanel>
+
+                                            <TextBlock Text="{Binding StudentName}" FontFamily="{StaticResource DisplayFont}"
+                                                       FontSize="18" FontWeight="Medium" Margin="0,10,0,0"
+                                                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                            <TextBlock Text="{Binding PaperText}" Style="{StaticResource CardSubtitle}"
+                                                       FontSize="12" Margin="0,3,0,0"
+                                                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+
+                                            <WrapPanel Margin="0,9,0,0">
+                                                <Border Style="{StaticResource Chip}" Padding="8,2" Margin="0,0,6,0">
+                                                    <TextBlock Text="{Binding PagesText}" FontSize="10.5"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                </Border>
+                                                <Border Style="{StaticResource Chip}" Padding="8,2">
+                                                    <TextBlock Text="{Binding AttemptsText, StringFormat=Attempt {0}}"
+                                                               FontSize="10.5"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                </Border>
+                                            </WrapPanel>
+
+                                            <!-- measured progress: bigger than a chip, readable at a glance -->
+                                            <Grid Margin="0,14,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <ProgressBar Grid.Column="0" Height="8" Minimum="0" Maximum="1"
+                                                             Value="{Binding Progress, Mode=OneWay}"
+                                                             IsIndeterminate="{Binding IsIndeterminate, Mode=OneWay}"
+                                                             Background="{DynamicResource SunkenBrush}"
+                                                             VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Text="{Binding ProgressText}"
+                                                           FontSize="12" FontWeight="SemiBold" Margin="10,0,0,0"
+                                                           VerticalAlignment="Center" />
+                                            </Grid>
+
+                                            <TextBlock Text="{Binding PhaseText}" FontSize="12.5" Margin="0,10,0,0"
+                                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding StageText}" FontSize="11"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       Margin="0,2,0,0" TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding QuestionText, StringFormat=At {0}}"
+                                                       FontSize="11" Margin="0,2,0,0"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       Visibility="{Binding HasQuestion,
+                                                                    Converter={StaticResource BoolToVis}}" />
+
+                                            <TextBlock Text="{Binding ErrorText}" Style="{StaticResource ErrorText}"
+                                                       FontSize="11" Margin="0,8,0,0" MaxHeight="32"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Visibility="{Binding HasError,
+                                                                    Converter={StaticResource BoolToVis}}" />
+
+                                            <DockPanel Margin="0,12,0,0">
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding EtaText}"
+                                                           FontSize="11" FontWeight="Medium"
+                                                           Foreground="{DynamicResource AccentBrush}"
+                                                           VerticalAlignment="Center" />
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding ElapsedText}" FontSize="11"
+                                                               FontFamily="{StaticResource MonoFont}"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="{Binding FinishedText}" FontSize="11"
+                                                               Margin="10,0,0,0"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <Border Style="{StaticResource EmptyState}" MaxWidth="440"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding EmptyTitle}" Style="{StaticResource EmptyTitle}" />
+                            <TextBlock Text="{Binding EmptyText}" Style="{StaticResource EmptyText}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- =============================================== 4 · details -->
+                <Border Grid.Column="1" Style="{StaticResource Card}" Width="360" Margin="14,0,0,0"
+                        VerticalAlignment="Top" MaxHeight="720"
+                        Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <Button DockPanel.Dock="Right" Content="Close" Style="{StaticResource GhostButton}"
+                                    Height="28" Padding="10,3" Command="{Binding CloseDetailsCommand}"
+                                    VerticalAlignment="Top" />
+                            <StackPanel>
+                                <TextBlock Text="WORKER DETAILS" Style="{StaticResource SectionLabel}" />
+                                <TextBlock Text="{Binding DetailTitle}" Style="{StaticResource RowTitle}"
+                                           Margin="0,4,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DockPanel>
+
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <ItemsControl ItemsSource="{Binding DetailFacts}"
+                                              ItemTemplate="{StaticResource FactRowTemplate}" />
+                                <TextBlock Text="STAGE HISTORY" Style="{StaticResource SectionLabel}"
+                                           Margin="0,12,0,6"
+                                           Visibility="{Binding HasStages, Converter={StaticResource BoolToVis}}" />
+                                <ItemsControl ItemsSource="{Binding DetailStages}"
+                                              Visibility="{Binding HasStages, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <DockPanel Margin="0,0,0,6">
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding AtText}"
+                                                           FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                                           Foreground="{DynamicResource TextMutedBrush}"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding StageText}" FontSize="11.5"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           TextWrapping="NoWrap" />
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </Grid>
+    </ui:PageFrame>
+</UserControl>

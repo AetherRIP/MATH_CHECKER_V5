@@ -14,6 +14,7 @@ public static class PageIcons
         ["dashboard"] = "\uE80F",   // Home
         ["search"] = "\uE721",      // Search
         ["correct"] = "\uE710",     // Add
+        ["workers"] = "\uE9F5",     // Processing
         ["tasks"] = "\uE9D5",       // Checklist
         ["jobs"] = "\uE81C",        // History
         ["automation"] = "\uE945",  // Lightning

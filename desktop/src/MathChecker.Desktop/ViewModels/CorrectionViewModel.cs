@@ -1,10 +1,20 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using MathChecker.Desktop.Core;
+using MathChecker.Desktop.Core.UI;
 using MathChecker.Desktop.Models;
 
 namespace MathChecker.Desktop.ViewModels;
 
+/// <summary>
+/// The New correction page: choose a student's paper and the mark scheme, then
+/// hand both to the backend.
+///
+/// Watching the correction happen belongs to the Correction monitor
+/// (<see cref="WorkersViewModel"/>), which owns the worker cards; this page
+/// keeps its original job — attaching the two files and queueing one
+/// correction — and sends the teacher there once the backend accepts it.
+/// </summary>
 public sealed class CorrectionViewModel : PageViewModel
 {
     private static readonly string[] AllowedExtensions = { ".pdf", ".png", ".jpg", ".jpeg", ".webp" };
@@ -13,17 +23,19 @@ public sealed class CorrectionViewModel : PageViewModel
     private string? _submissionPath;
     private string? _markSchemePath;
     private string _studentName = "Student";
-    private double _progress;
+    private double _uploadProgress;
     private string _progressText = string.Empty;
-    private string _outcome = string.Empty;
+    private string _outcomeNote = string.Empty;
     private bool _uploading;
+    private bool _uploadIndeterminate;
 
     public CorrectionViewModel(AppSession session)
         : base(session, "correct", "New correction")
     {
+        Group = "Correct";
     }
 
-    public ObservableCollection<JobDto> RecentJobs { get; } = new();
+    // ---------------------------------------------------------------- files
 
     public string? SubmissionPath
     {
@@ -63,10 +75,12 @@ public sealed class CorrectionViewModel : PageViewModel
         set => SetProperty(ref _studentName, value);
     }
 
+    /// <summary>Upload transfer progress only — the correction's own progress
+    /// is reported per worker card on the Correction monitor.</summary>
     public double Progress
     {
-        get => _progress;
-        private set => SetProperty(ref _progress, value);
+        get => _uploadProgress;
+        private set => SetProperty(ref _uploadProgress, value);
     }
 
     public string ProgressText
@@ -75,11 +89,27 @@ public sealed class CorrectionViewModel : PageViewModel
         private set => SetProperty(ref _progressText, value);
     }
 
-    public string Outcome
+    public bool IsProgressIndeterminate
     {
-        get => _outcome;
-        private set => SetProperty(ref _outcome, value);
+        get => _uploadIndeterminate;
+        private set => SetProperty(ref _uploadIndeterminate, value);
     }
+
+    public ObservableCollection<FactRow> OutcomeFacts { get; } = new();
+
+    public string OutcomeNote
+    {
+        get => _outcomeNote;
+        private set
+        {
+            if (SetProperty(ref _outcomeNote, value))
+            {
+                OnPropertyChanged(nameof(HasOutcome));
+            }
+        }
+    }
+
+    public bool HasOutcome => OutcomeFacts.Count > 0 || !string.IsNullOrWhiteSpace(OutcomeNote);
 
     public bool CanSubmit => !_uploading && SubmissionPath is not null && MarkSchemePath is not null;
 
@@ -107,10 +137,20 @@ public sealed class CorrectionViewModel : PageViewModel
     {
         SubmissionPath = null;
         MarkSchemePath = null;
-        Outcome = string.Empty;
+        OutcomeFacts.Clear();
+        OutcomeNote = string.Empty;
+        OnPropertyChanged(nameof(HasOutcome));
         Progress = 0;
+        IsProgressIndeterminate = false;
         ProgressText = string.Empty;
         RaiseCanSubmit();
+    });
+
+    /// <summary>Opens the page that shows every correction the backend runs.</summary>
+    public AsyncCommand OpenMonitorCommand => new(() =>
+    {
+        Session.GoTo("workers");
+        return Task.CompletedTask;
     });
 
     // Cached: the XAML binding holds ONE command instance, so the instance
@@ -135,15 +175,18 @@ public sealed class CorrectionViewModel : PageViewModel
         _uploading = true;
         RaiseCanSubmit();
         Progress = 0;
-        ProgressText = "Uploading…";
-        Outcome = string.Empty;
+        IsProgressIndeterminate = true;
+        ProgressText = "Uploading the files…";
+        OutcomeFacts.Clear();
+        OutcomeNote = string.Empty;
+        OnPropertyChanged(nameof(HasOutcome));
         Error = null;
         try
         {
             var progress = new Progress<double>(fraction =>
             {
                 Progress = fraction;
-                ProgressText = $"Uploading… {fraction * 100:0}%";
+                ProgressText = $"Uploading the files… {fraction * 100:0}%";
             });
 
             var result = await Session.Api.SubmitUnifiedCorrectionAsync(
@@ -151,15 +194,26 @@ public sealed class CorrectionViewModel : PageViewModel
                 string.IsNullOrWhiteSpace(StudentName) ? "Student" : StudentName.Trim(),
                 progress, CancellationToken.None);
 
-            ProgressText = "Accepted by the backend";
-            Outcome = Describe(result);
-            Session.Notify("Correction queued.");
-            await RefreshJobsAsync();
+            FillOutcome(result);
+            Status = "Correction queued — it is running on the Correction monitor.";
+            Session.Notify("Correction queued. Follow it on the Correction monitor.");
+
+            // The upload ending is not the correction finishing: the monitor
+            // shows the job the backend actually queued, as its own card.
+            var jobId = result.TryGetProperty("job_id", out var id) && id.ValueKind == JsonValueKind.String
+                ? id.GetString()
+                : null;
+            if (!string.IsNullOrWhiteSpace(jobId))
+            {
+                Session.GoTo("workers");
+            }
         }
         finally
         {
             _uploading = false;
             RaiseCanSubmit();
+            IsProgressIndeterminate = false;
+            ProgressText = Progress >= 0.999 ? string.Empty : "Upload did not finish.";
         }
     }, canExecute: () => CanSubmit);
 
@@ -219,29 +273,28 @@ public sealed class CorrectionViewModel : PageViewModel
         return true;
     }
 
-    private static string Describe(JsonElement result)
+    private void FillOutcome(JsonElement result)
     {
-        var pages = result.TryGetProperty("page_count", out var pc) ? pc.GetInt32() : 0;
-        var reason = result.TryGetProperty("reason", out var r) ? r.GetString() : string.Empty;
-        var jobId = result.TryGetProperty("job_id", out var j) ? j.GetString() : null;
-
-        return $"Standard single-pass pipeline\nPages: {pages}\n"
-               + (jobId is null ? string.Empty : $"Correction job: {jobId}\n")
-               + $"\n{reason}";
-    }
-
-    private async Task RefreshJobsAsync()
-    {
-        var jobs = await Session.Api.JobsAsync(limit: 5);
-        RecentJobs.Clear();
-        foreach (var job in jobs.Jobs)
+        OutcomeFacts.Clear();
+        foreach (var fact in PayloadFacts.Of(result))
         {
-            RecentJobs.Add(job);
+            OutcomeFacts.Add(fact);
         }
+
+        var reason = result.TryGetProperty("reason", out var r) && r.ValueKind == JsonValueKind.String
+            ? r.GetString()
+            : null;
+        OutcomeNote = string.IsNullOrWhiteSpace(reason)
+            ? "The backend accepted the upload and queued the correction."
+            : reason!;
+        OnPropertyChanged(nameof(HasOutcome));
     }
 
-    protected override async Task LoadCoreAsync()
+    protected override Task LoadCoreAsync()
     {
-        await RefreshJobsAsync();
+        // A form has nothing to fetch: every figure on this page comes from the
+        // files the teacher just chose, and the queued correction is followed
+        // on the Correction monitor.
+        return Task.CompletedTask;
     }
 }

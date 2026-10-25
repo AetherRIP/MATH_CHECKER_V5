@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using MathChecker.Desktop.Core;
 using MathChecker.Desktop.Core.Api;
 using MathChecker.Desktop.Core.Backend;
 using MathChecker.Desktop.Core.Configuration;
@@ -103,6 +106,18 @@ public static class Program
             else
             {
                 await CorrectionRoundTripAsync(api, pdfs.Value.Submission, pdfs.Value.Scheme);
+                await DashboardCardsAsync(api, pdfs.Value.Submission, pdfs.Value.Scheme);
+
+                var shotPath = ArgumentValue(args, "--shot");
+                if (shotPath is not null)
+                {
+                    // Renders the REAL page with the REAL job rows this backend
+                    // just produced, so the picture is the dashboard, not a mock.
+                    var jobs = await api.JobsAsync(limit: 12);
+                    RenderDashboard(settings, log, host, api, jobs.Jobs, shotPath);
+                    Check("the dashboard renders to a PNG", File.Exists(shotPath),
+                        Path.GetFullPath(shotPath));
+                }
             }
 
             await api.SaveSettingsAsync(new { debug = false });
@@ -206,6 +221,164 @@ public static class Program
 
         var versions = await api.ResultVersionsAsync(resultId);
         Check("version history answers", versions.Versions.Count >= 0, $"{versions.Versions.Count} versions");
+    }
+
+    /// <summary>
+    /// The worker dashboard binds one card per real correction job. This queues
+    /// three real corrections against the running backend and checks the values
+    /// the cards render: the paper and page count the teacher uploaded, the
+    /// worker the pool assigned, the recorded stage history, and the final
+    /// marks that may only appear once the job actually finished.
+    /// </summary>
+    private static async Task DashboardCardsAsync(MathCheckerApiClient api, string submission,
+        string scheme)
+    {
+        var ids = new List<string>();
+        for (var index = 1; index <= 3; index++)
+        {
+            var queued = await api.SubmitUnifiedCorrectionAsync(submission, scheme,
+                $"Dashboard E2E {index}", null, CancellationToken.None);
+            if (queued.TryGetProperty("job_id", out var id) && id.GetString() is { } value)
+            {
+                ids.Add(value);
+            }
+        }
+
+        Check("three simultaneous corrections are queued", ids.Count == 3,
+            "jobs=" + string.Join(",", ids));
+
+        var list = await api.JobsAsync(limit: 50);
+        var ours = list.Jobs.Where(job => ids.Contains(job.Id)).ToList();
+        Check("every queued job is returned for the dashboard", ours.Count == 3,
+            $"returned={ours.Count}");
+
+        var cards = ours.Select(job => new ViewModels.WorkerCardViewModel(job)).ToList();
+        Check("cards show the uploaded paper",
+            cards.All(card => card.PaperText == "student.pdf"),
+            string.Join(" | ", cards.Select(card => card.PaperText)));
+        Check("cards show the real page count",
+            cards.All(card => card.PagesText == "1 page"),
+            string.Join(" | ", cards.Select(card => card.PagesText)));
+        Check("cards show the queued student",
+            cards.All(card => card.StudentName.StartsWith("Dashboard E2E")),
+            string.Join(" | ", cards.Select(card => card.StudentName)));
+
+        // Watch one job to its end, exactly as a card does. The card is looked
+        // up by id: the backend returns the newest job first, so cards[0] is
+        // not necessarily the job that was submitted first.
+        var watched = ids[0];
+        var deadline = DateTime.UtcNow.AddMinutes(3);
+        var card0 = cards.First(card => card.JobId == watched);
+        while (DateTime.UtcNow < deadline)
+        {
+            var detail = await api.JobAsync(watched);
+            card0.Apply(detail);
+            if (detail.IsTerminal)
+            {
+                break;
+            }
+
+            await Task.Delay(500);
+        }
+
+        var final = await api.JobAsync(watched);
+        card0.Apply(final);
+        Check("the watched card reaches its terminal state", final.IsTerminal,
+            final.Status ?? "(none)");
+        Check("a worker is recorded on the job", !string.IsNullOrWhiteSpace(final.WorkerId),
+            final.WorkerId ?? "(none)");
+        Check("the card shows that worker", card0.WorkerLabel.StartsWith("Worker ")
+                                              || card0.WorkerLabel == final.WorkerId,
+            card0.WorkerLabel);
+        Check("the backend recorded a stage history", final.StageHistory.Count >= 2,
+            $"stages={final.StageHistory.Count}");
+        Check("the history starts with QUEUED",
+            final.StageHistory.FirstOrDefault()?.Status == "QUEUED",
+            final.StageHistory.FirstOrDefault()?.Status ?? "(none)");
+        Check("marks are only shown once the job finished",
+            final.IsCompleted ? card0.Job.MarksText.Length > 0 : card0.Job.MarksText.Length == 0,
+            $"status={final.Status} marks='{card0.Job.MarksText}'");
+    }
+
+    private static void RenderDashboard(DesktopSettings settings, IFileLog log, BackendHost host,
+        MathCheckerApiClient api, IReadOnlyList<Models.JobDto> jobs, string path)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                if (System.Windows.Application.Current is not MathChecker.Desktop.App)
+                {
+                    var app = new MathChecker.Desktop.App();
+                    app.InitializeComponent();
+                }
+
+                var session = new AppSession(settings, log, host, api, new NoDialogs());
+                var page = new ViewModels.WorkersViewModel(session);
+                page.ApplyJobs(jobs);
+
+                // Open a completed correction so the details panel shows real
+                // stage history and the final marks.
+                var card = page.Cards.FirstOrDefault(c => c.IsCompleted) ?? page.Cards.FirstOrDefault();
+                if (card is not null)
+                {
+                    page.SelectAsync(card).GetAwaiter().GetResult();
+                }
+
+                var view = new Views.WorkersView
+                {
+                    DataContext = page,
+                    Width = 1440,
+                    Height = 900,
+                };
+                view.Measure(new System.Windows.Size(1440, 900));
+                view.Arrange(new System.Windows.Rect(0, 0, 1440, 900));
+                view.UpdateLayout();
+
+                var bitmap = new RenderTargetBitmap(1440, 900, 96, 96, PixelFormats.Pbgra32);
+                bitmap.Render(view);
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                var full = Path.GetFullPath(path);
+                Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                using var stream = File.Create(full);
+                encoder.Save(stream);
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (failure is not null)
+        {
+            _failures++;
+            Console.Error.WriteLine("FAIL: the dashboard could not be rendered: " + failure.Message);
+        }
+    }
+
+    private sealed class NoDialogs : IDialogService
+    {
+        public bool Confirm(string title, string message) => false;
+        public void Info(string title, string message)
+        {
+        }
+
+        public void Error(string title, string message) => Console.Error.WriteLine(message);
+        public string? PickOpenFile(string title, string filter) => null;
+        public string? PickSaveFile(string title, string filter, string defaultName) => null;
+        public string? AskText(string title, string message, string initial = "") => null;
+        public void OpenExternal(string pathOrUrl)
+        {
+        }
+
+        public void OpenFolder(string directory)
+        {
+        }
     }
 
     private static (string Submission, string Scheme)? CreatePdfs(string backendDirectory, string workRoot)
