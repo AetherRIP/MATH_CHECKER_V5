@@ -254,7 +254,7 @@ def _full_work(report) -> None:
                 items = classroom_sync.sync_coursework(cid, force=True)
             except Exception as exc:  # noqa: BLE001 — report this part, keep going
                 errors.append({"part": f"assignments ({course.get('name') or cid})",
-                               "detail": str(exc)})
+                               "detail": str(exc), "course_id": cid})
                 log_event("classroom.sync", "assignments fetch failed",
                           level=20, course_id=cid, error=str(exc))
                 continue
@@ -276,7 +276,7 @@ def _full_work(report) -> None:
                 roster_list = gc.list_course_students(token, cid)
             except Exception as exc:  # noqa: BLE001
                 errors.append({"part": f"students ({course.get('name') or cid})",
-                               "detail": str(exc)})
+                               "detail": str(exc), "course_id": cid})
                 rosters[cid] = {}
                 continue
             roster: dict[str, dict] = {}
@@ -347,8 +347,12 @@ def _full_work(report) -> None:
                                   "assignment submissions unavailable",
                                   coursework_id=wid, status=status)
                         continue
+                    # The ids are carried so a client can re-sync THIS part
+                    # without repeating the whole class sync (the retry route
+                    # accepts course_id + coursework_id).
                     errors.append({"part": f"submissions ({title})",
-                                   "detail": str(exc)})
+                                   "detail": str(exc), "course_id": cid,
+                                   "coursework_id": wid})
                     log_event("classroom.sync", "assignment submissions failed",
                               level=20, coursework_id=wid, error=str(exc))
                     continue

@@ -153,6 +153,31 @@ def _active_coursework(course_id: str) -> list[dict]:
         "ORDER BY update_time DESC", (course_id,))]
 
 
+#: Google submission states that mean the student actually handed work in.
+#: RETURNED matters: a paper that has been graded and returned used to vanish
+#: from the Classroom page (the legacy listing asked only for TURNED_IN), so the
+#: page could show "0 submissions" while Google still held the student's work.
+HANDED_IN_STATES = ("TURNED_IN", "STUDENT_EDITED_AFTER_TURN_IN", "RETURNED")
+
+
+def _handed_in_submissions(course_id: str, coursework_id: str) -> list[dict]:
+    """Every handed-in submission, in any of :data:`HANDED_IN_STATES`.
+
+    Follows pagination to the end (Google caps a page at 100) and drops
+    CREATED / NEW / RECLAIMED_BY_STUDENT rows: those are not work to mark.
+    """
+    token = _token()
+    out: list[dict] = []
+    page_token: str | None = None
+    while True:
+        page, next_token = gc.list_student_submissions(
+            token, course_id, coursework_id, page_token)
+        out.extend(s for s in page if s.get("state") in HANDED_IN_STATES)
+        if not next_token:
+            return out
+        page_token = next_token
+
+
 def sync_submissions(course_id: str, coursework_id: str, force: bool = False) -> list[dict]:
     row = db.query_one(
         "SELECT MAX(fetched_at) AS latest FROM submissions WHERE coursework_id = ?",
@@ -165,8 +190,7 @@ def sync_submissions(course_id: str, coursework_id: str, force: bool = False) ->
             (coursework_id,),
         )]
 
-    token = _token()
-    subs = gc.list_turned_in_submissions(token, course_id, coursework_id)
+    subs = _handed_in_submissions(course_id, coursework_id)
     with db.transaction() as conn:
         for s in subs:
             attachment_ids = gc.classroom_attachment_ids(s)
