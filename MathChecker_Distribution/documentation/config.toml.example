@@ -98,8 +98,13 @@ document_label = "TEACHER COPY"
 primary_models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
 # The second-opinion model used by the double-check pass.
 audit_models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
-# Per-request timeout in milliseconds (180000 = 3 minutes).
-request_timeout_ms = 180000
+# Per-request timeout in milliseconds (600000 = 10 minutes).
+# A marking request sends the whole answer scan AND the whole mark scheme in
+# one call; on a 15-page scan against a 26-page scheme that takes 4-8 minutes,
+# so a 3-minute ceiling fails the correction with 504 DEADLINE_EXCEEDED.
+# This is a FLOOR: the effective timeout is max(this, 120 s + 15 s per page),
+# so a bigger homework gets proportionally longer (capped at 30 minutes).
+request_timeout_ms = 600000
 
 
 [pdf_compression]

@@ -151,6 +151,31 @@ def clear_job_files(job_id: str) -> None:
         pass
 
 
+def remote_held_by_other_active_jobs(remote_name: str, job_id: str,
+                                     active_statuses: tuple[str, ...]) -> bool:
+    """True when ANOTHER job that is still running holds this provider file.
+
+    Two corrections of the same paper share one upload (the registry is keyed
+    by content), so deleting the file when the first job finishes pulls it out
+    from under the jobs still marking. Gemini then answers 403 PERMISSION_DENIED
+    ("or it may not exist") and a healthy correction fails for no reason.
+    """
+    if not remote_name or not job_id or not active_statuses:
+        return False
+    placeholders = ",".join("?" for _ in active_statuses)
+    try:
+        row = db.query_one(
+            "SELECT 1 AS held FROM job_remote_files rf "
+            "JOIN correction_jobs j ON j.id = rf.job_id "
+            "WHERE rf.remote_name = ? AND rf.job_id <> ? "
+            f"AND j.status IN ({placeholders}) LIMIT 1",
+            (remote_name, job_id, *active_statuses),
+        )
+        return row is not None
+    except Exception:
+        return False
+
+
 def purge_expired(now_ts: float | None = None) -> int:
     """Drop expired rows so the registry stays small. Returns rows removed."""
     now_ts = time.time() if now_ts is None else now_ts

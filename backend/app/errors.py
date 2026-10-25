@@ -58,9 +58,20 @@ def classify_gemini_error(exc: Exception) -> dict:
         return {"kind": "model_no_access", "message": (
             "The key has no access to this model (quota limit 0); skipping to the "
             "next model in the fallback chain.")}
-    if "timed out" in lowered or "timeout" in lowered or "deadline exceeded" in lowered:
+    if ("timed out" in lowered or "timeout" in lowered
+            or "deadline exceeded" in lowered
+            or "deadline_exceeded" in lowered):
+        # Google's 504 spells the status ``DEADLINE_EXCEEDED`` (underscore) and
+        # the nested payload says "Deadline expired before operation could
+        # complete." Neither matched the space-separated check, so the recorded
+        # outage fell through to ``unknown`` and the job policy allowed TWO
+        # retries — three full marking passes for a request the provider had
+        # already answered with "this will not finish". Recognised as a
+        # timeout it costs one retry, the same budget every other "the request
+        # ran out of time" failure gets.
         return {"kind": "timeout", "message": (
-            "The Gemini request timed out. It will retry with the next model/key.")}
+            "The Gemini request timed out. It will retry with the next "
+            "model/key.")}
     if "503" in message or "unavailable" in lowered or "overloaded" in lowered or "high demand" in lowered:
         return {"kind": "temporary", "message": (
             "Gemini is temporarily overloaded. Retrying shortly.")}

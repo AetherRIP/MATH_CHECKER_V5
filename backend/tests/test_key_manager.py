@@ -92,6 +92,20 @@ class TestFailureKinds:
     def test_timeout_classification(self, fresh_state):
         assert classify_gemini_error(Exception("request timed out"))["kind"] == "timeout"
 
+    def test_a_504_deadline_is_a_timeout_in_every_spelling(self, fresh_state):
+        """The provider's own status text must not land in ``unknown``.
+
+        An ``unknown`` kind let the job policy retry a dead 504 twice; the
+        timeout budget is one retry.
+        """
+        payload = ("504 DEADLINE_EXCEEDED. {'error': {'code': 504, 'message': "
+                   "'Deadline expired before operation could complete.', "
+                   "'status': 'DEADLINE_EXCEEDED'}}")
+        for message in (payload, "DEADLINE_EXCEEDED", "Deadline Exceeded",
+                        "deadline exceeded"):
+            assert classify_gemini_error(Exception(message))["kind"] == "timeout", \
+                message
+
     def test_timeout_counted_not_cooldown(self, two_keys):
         km = two_keys
         fp, _ = km.acquire()

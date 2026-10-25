@@ -156,15 +156,35 @@ def resolve_oauth_client_path() -> Path:
 DEFAULT_PRIMARY_MODELS = (
     "gemini-3.8-flash",
     "gemini-3.6-flash",
-    "gemini-3.5-flash-lite",
 )
 
 #: Second-opinion chain for the (off-by-default) audit pass.
 DEFAULT_AUDIT_MODELS = (
     "gemini-3.8-flash",
     "gemini-3.6-flash",
-    "gemini-3.5-flash-lite",
 )
+
+#: Lightweight models are deliberately NOT part of the default marking chain.
+#: A live TEST 3 run fell back to ``gemini-3.5-flash-lite`` after the full
+#: models returned 503, then produced 103/103 by inventing answers that were
+#: not on the page (a blank question was returned as "implied complete" with
+#: full marks).  Cheap is not a substitute for evidence in high-stakes marking;
+#: when no full model is available the correction must wait/retry instead of
+#: being graded by a model that is known to fabricate handwritten answers.
+#: The check stays suffix-based so a future lightweight model cannot silently
+#: re-enter the trusted chain.
+UNTRUSTED_MARKING_SUFFIXES = ("-lite",)
+
+
+def is_trusted_marking_model(model: str | None) -> bool:
+    """Whether this model may produce the marks a teacher will use.
+
+    Configuration still accepts every model ID (a preview or lightweight model
+    can be useful for auxiliary work), but the correction engine refuses to
+    treat a ``-lite`` variant as its marking model.
+    """
+    name = str(model or "").strip().lower()
+    return bool(name) and not name.endswith(UNTRUSTED_MARKING_SUFFIXES)
 
 #: Models Google still ACCEPTS but no longer serves itself: a request to these
 #: IDs is automatically routed to the replacement. Leaving one in a fallback
@@ -211,7 +231,23 @@ class GeminiConfig:
     # verification replaces it); kept for parity with the legacy app.
     audit_models: list[str] = field(
         default_factory=lambda: list(DEFAULT_AUDIT_MODELS))
-    request_timeout_ms: int = 180_000
+    # A full marking request is ONE multimodal call carrying the whole answer
+    # scan plus the whole mark scheme, so it is bounded by how fast the model
+    # reads 30-40 pages, not by a text prompt. Measured on a 15-page scan
+    # against a 26-page scheme (2026-10-25): the marking call took 230-440 s,
+    # and five repeat runs of the same paper finished in 271-536 s end to end.
+    # The old 180_000 ms ceiling cut that call off mid-answer: Gemini answered
+    # 504 DEADLINE_EXCEEDED, the single bounded retry timed out the same way,
+    # and a perfectly good paper failed permanently - while the marking itself
+    # was reproducible (5/5 runs, identical per-question marks).
+    #
+    # This value is a FLOOR, not a ceiling. The effective per-request timeout
+    # is max(this, 120 s + 15 s per page image), capped at 30 minutes - see
+    # gemini/client_proxy.timeout_for_pages. 600_000 therefore covers papers up
+    # to about 32 pages, and every larger paper gets a budget that grows with
+    # it instead of inheriting a number chosen for a 15-page script. Key
+    # probes clamp to 30 s in gemini/tester.py, so testing a key stays quick.
+    request_timeout_ms: int = 600_000
     # Developer prompt editor (prompt-inspection page): optional overrides
     # stored in config.toml so EVERY process (parent, worker child, automation
     # scheduler) reads the same text. None = the built-in legacy prompts are

@@ -52,6 +52,66 @@ class PdfInspection:
         }
 
 
+def integrity_problem(path: str | Path) -> str | None:
+    """Why this file is NOT a usable PDF, or ``None`` when it is.
+
+    Content-based on purpose: the upload's filename and MIME type are chosen by
+    the browser and prove nothing about the bytes. A file that fails here has
+    no pages to mark, so queueing it only produces a job that must fail later
+    with a message the teacher cannot act on.
+
+    The reason is a short, fixed sentence — never a document excerpt, a page
+    count from the content, or a parser traceback — so it is safe to log and to
+    return to the client. A PDF that opens but whose pages cannot be read is
+    reported as unusable for the same reason: it cannot be marked.
+    """
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return "the file could not be read"
+    if size == 0:
+        return "the file is empty"
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(1024)
+    except OSError:
+        return "the file could not be read"
+    # The PDF header may be preceded by junk (the spec tolerates it inside the
+    # first 1024 bytes); its absence means these are not PDF bytes at all.
+    if b"%PDF-" not in head:
+        return "it does not contain a PDF header"
+
+    lib = _pymupdf()
+    if lib is not None:
+        doc = None
+        try:
+            doc = lib.open(str(path))
+        except Exception:
+            doc = None
+        if doc is not None:
+            try:
+                if int(doc.page_count) <= 0:
+                    return "it contains no pages"
+                doc.load_page(0)   # a truncated body can still open
+                return None
+            except Exception:
+                return "its pages cannot be read"
+            finally:
+                try:
+                    doc.close()
+                except Exception:
+                    pass
+
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(str(path))
+        if len(reader.pages) <= 0:
+            return "it contains no pages"
+        return None
+    except Exception:
+        return "it is not a readable PDF"
+
+
 def _pymupdf():
     for name in ("pymupdf", "fitz"):
         try:
@@ -77,6 +137,30 @@ def page_count(path: str | Path) -> int:
         from pypdf import PdfReader
         return len(PdfReader(str(path)).pages)
     except Exception:
+        return 0
+
+
+#: File types a submission may arrive as that the model reads as ONE page
+#: image (see classroom.submission_validation for the accepted set).
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff",
+                   ".bmp", ".gif"}
+
+
+def page_images(path: str | Path | None) -> int:
+    """Page images this file contributes to a Gemini request, or 0/1.
+
+    Used to size the per-request timeout (a 41-page paper takes minutes; a
+    70-page booklet must not inherit the budget of a 15-page one). Counting
+    reads the document index, never the pages, and never raises: an unreadable
+    file simply contributes 0 and the configured floor applies.
+    """
+    if not path:
+        return 0
+    if str(path).lower().endswith(tuple(_IMAGE_SUFFIXES)):
+        return 1
+    try:
+        return max(0, int(page_count(path)))
+    except Exception:  # noqa: BLE001 - sizing must never fail a correction
         return 0
 
 

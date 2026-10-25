@@ -97,6 +97,29 @@ def test_data_dir_is_resolved_on_every_call(fresh_state, monkeypatch, tmp_path):
     assert cfg.data_dir() == other
 
 
+def test_default_request_timeout_fits_a_full_marking_call(tmp_path, monkeypatch):
+    """The default must not cut a real paper off mid-answer.
+
+    A marking request is ONE multimodal call carrying the whole answer scan and
+    the whole mark scheme. Measured on a 15-page scan against a 26-page scheme
+    (2026-10-25): 230-440 s for the call itself, 271-536 s per correction. The
+    previous 180 s default produced ``504 DEADLINE_EXCEEDED`` and a permanent
+    job failure on a paper that marked correctly five times out of five when
+    the call was allowed to finish.
+    """
+    from app import config as cfg
+
+    assert cfg.GeminiConfig().request_timeout_ms >= 600_000
+
+    file = tmp_path / "config.toml"
+    file.write_text("[gemini]\nrequest_timeout_ms = 900000\n", encoding="utf-8")
+    monkeypatch.setattr(cfg, "CONFIG_PATH", file)
+    monkeypatch.setattr(cfg, "_config", None)
+
+    # An explicit setting still wins: the default is a floor, not a fixed value.
+    assert cfg.get_config(reload=True).gemini.request_timeout_ms == 900_000
+
+
 def test_pdf_compression_defaults_on_and_can_be_switched_off(tmp_path,
                                                              monkeypatch):
     from app import config as cfg

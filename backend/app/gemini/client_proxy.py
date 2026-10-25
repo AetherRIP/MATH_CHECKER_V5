@@ -51,6 +51,41 @@ _MAX_ATTEMPTS = 8
 _MAX_REUPLOAD_BYTES = 3 * 1024 * 1024
 
 
+# --- how long a request may take, given how big the paper is --------------
+# A marking request sends EVERY page as an image, so its duration is bounded
+# by how long the model takes to read the paper, not by the prompt text.
+# Measured on 2026-10-25 (15-page scan + 26-page scheme = 41 pages): 230-440 s
+# for the call, i.e. 6-11 s per page. 15 s per page leaves room for a slower
+# model or a denser page, and the fixed floor covers start-up and queueing.
+PER_PAGE_TIMEOUT_MS = 15_000
+FIXED_REQUEST_TIMEOUT_MS = 120_000
+#: Never wait longer than this however many pages arrive: a wedged request has
+#: to release its worker eventually.
+MAX_REQUEST_TIMEOUT_MS = 1_800_000  # 30 minutes
+
+
+def timeout_for_pages(pages: int | None, configured_ms: int | None = None) -> int:
+    """Per-request timeout for a paper of ``pages`` pages.
+
+    ``gemini.request_timeout_ms`` is a FLOOR for small papers, not a ceiling
+    for big ones: the same 10 minutes that comfortably marks a 15-page script
+    would cut off a 70-page booklet mid-answer, because the request time grows
+    with the number of page images the model has to read. The budget therefore
+    grows with the page count and is capped so one stuck request cannot hold a
+    worker indefinitely.
+
+    ``configured_ms`` is passed in by callers that already resolved the
+    setting; ``None`` reads it from config.
+    """
+    base = int(configured_ms if configured_ms is not None else get_timeout())
+    try:
+        count = max(0, int(pages or 0))
+    except (TypeError, ValueError):
+        count = 0
+    budget = FIXED_REQUEST_TIMEOUT_MS + count * PER_PAGE_TIMEOUT_MS
+    return min(MAX_REQUEST_TIMEOUT_MS, max(base, budget))
+
+
 class ProviderCoolingError(RuntimeError):
     """The provider is known to be overloaded — the request was NOT sent.
 
@@ -97,8 +132,15 @@ class KeyAwareClient:
     """Rotating facade over google-genai clients (or a mock in mock mode)."""
 
     def __init__(self, key_manager: KeyManager, preferred_fp: str | None = None,
-                 job_id: str | None = None):
+                 job_id: str | None = None, pages: int = 0):
         self.keys = key_manager
+        # Page images in this transaction (submission + mark scheme, plus a
+        # question paper when one is attached). They decide the request
+        # timeout — see ``timeout_for_pages``. 0 keeps the configured value.
+        try:
+            self.pages = max(0, int(pages or 0))
+        except (TypeError, ValueError):
+            self.pages = 0
         # Bandwidth diagnostics (§17): per-job counters live in SQLite so the
         # child process can record uploads/attempts against the right job.
         self.job_id = job_id
@@ -174,7 +216,9 @@ class KeyAwareClient:
         from google.genai import types  # local import: mock mode never needs it
 
         import google.genai as genai
-        cfg = get_timeout()
+        # Scale with the paper, not just the configured floor: a 70-page
+        # booklet must not inherit the budget that fits 15 pages.
+        cfg = timeout_for_pages(self.pages)
         return genai.Client(
             api_key=key,
             http_options=types.HttpOptions(timeout=cfg),
@@ -183,7 +227,7 @@ class KeyAwareClient:
     def _sdk_client_for_current_key(self):
         from google.genai import types
         import google.genai as genai
-        cfg = get_timeout()
+        cfg = timeout_for_pages(self.pages)
         return genai.Client(
             api_key=self._current_key(),
             http_options=types.HttpOptions(timeout=cfg),
@@ -301,12 +345,29 @@ class KeyAwareClient:
                 contents, transient = self._reupload_for_key(contents, fp)
 
                 started = time.time()
-                response = sdk_client.models.generate_content(
-                    model=model,
-                    contents=contents,
-                    config=config,
-                    **kwargs,
-                )
+                # A referenced provider file can disappear mid-job (an expired
+                # upload, or a sibling job's terminal cleanup of the shared
+                # submission before this guard existed). Gemini answers 403
+                # PERMISSION_DENIED "... or it may not exist", which used to be
+                # terminal AND to cool down a perfectly healthy key. Repair by
+                # re-uploading the inputs under this key and retry once.
+                for file_attempt in range(2):
+                    try:
+                        response = sdk_client.models.generate_content(
+                            model=model,
+                            contents=contents,
+                            config=config,
+                            **kwargs,
+                        )
+                        break
+                    except Exception as file_exc:
+                        if file_attempt or not self._is_file_permission_error(file_exc):
+                            raise
+                        log_event("gemini.proxy",
+                                  "referenced file unreadable; re-uploading",
+                                  level=logging.WARNING, fingerprint=fp,
+                                  model=model)
+                        contents = self._repair_missing_files(contents, fp)
                 self.keys.record_success(fp)
                 try:
                     from ..api_stats import record_request
@@ -383,6 +444,50 @@ class KeyAwareClient:
             if name:
                 total += self._file_sizes.get(name, 0)
         return total
+
+    @staticmethod
+    def _is_file_permission_error(exc: Exception) -> bool:
+        """True for a Files-API permission/not-found failure (not a key fault)."""
+        text = str(exc).lower()
+        if "permission" not in text and "403" not in text:
+            return False
+        return "file" in text or "not exist" in text
+
+    def _repair_missing_files(self, contents, fp: str):
+        """Re-upload every referenced local file the provider no longer serves.
+
+        The registry entry and the in-memory owner mapping are dropped first,
+        otherwise ``upload_file`` would keep returning the dead reference.
+        """
+        import os
+
+        if not isinstance(contents, (list, tuple)):
+            return contents
+        repaired = []
+        for item in contents:
+            name = getattr(item, "name", None)
+            source = self._file_sources.get(name) if name else None
+            if not (name and source and os.path.exists(source)):
+                repaired.append(item)
+                continue
+            purpose = self._file_purposes.get(name, "submission")
+            abs_source = os.path.abspath(source)
+            with self._client_lock:
+                self._upload_cache.pop((fp, abs_source), None)
+                self._file_owner.pop(name, None)
+            try:
+                from . import file_registry
+                file_registry.forget(fp, file_registry.content_sha256(abs_source),
+                                      purpose)
+            except Exception:
+                pass
+            try:
+                repaired.append(self.upload_file(
+                    source, prefer_fp=fp, purpose=purpose,
+                    shared=(purpose == "mark_scheme")))
+            except Exception:
+                repaired.append(item)
+        return repaired
 
     def _needs_reupload(self, contents, fp: str) -> bool:
         """True when some file reference in ``contents`` is owned by another

@@ -25,7 +25,12 @@ def test_default_chain_uses_only_models_google_currently_serves():
     from app import config as cfg
 
     assert cfg.DEFAULT_PRIMARY_MODELS == (
-        "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite")
+        "gemini-3.8-flash", "gemini-3.6-flash")
+    assert cfg.DEFAULT_AUDIT_MODELS == (
+        "gemini-3.8-flash", "gemini-3.6-flash")
+    # A lightweight model is not a trustworthy marking model.
+    assert not cfg.is_trusted_marking_model("gemini-3.5-flash-lite")
+    assert cfg.is_trusted_marking_model("gemini-3.6-flash")
     for model in DEPRECATED:
         assert model not in cfg.DEFAULT_PRIMARY_MODELS
         assert model not in cfg.DEFAULT_AUDIT_MODELS
