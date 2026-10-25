@@ -305,6 +305,272 @@ def _group_by_class(rows: list[dict]) -> list[dict]:
     return groups
 
 
+# ------------------------------------------------ multi-assignment report
+#
+# A teacher regularly needs "how did this class do across THESE assignments?".
+# The single-assignment report cannot answer it, and averaging per-assignment
+# percentages answers a DIFFERENT question: a 5-mark quiz would weigh exactly
+# as much as a 50-mark paper. The combined figure here is always
+#     sum(marks earned) / sum(marks available)
+# so 18/20 + 40/50 reads 58/70 = 82.9%, the fraction the marks themselves
+# imply. Every per-assignment result stays visible next to it.
+
+#: A report this wide is already unreadable, and every id costs a table.
+MAX_REPORT_ASSIGNMENTS = 60
+
+#: Classroom states that mean "this student did not hand the work in". They are
+#: reported separately from a corrected paper that scored zero.
+_NOT_SUBMITTED = frozenset({"NOT_STARTED", "CREATED", "MISSING", "RECLAIMED"})
+
+
+def _assignment_ids(raw: str | None) -> list[str]:
+    """Deduplicated ids in the order the teacher ticked them."""
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for part in (raw or "").split(","):
+        cid = part.strip()
+        if cid and cid not in seen:
+            seen.add(cid)
+            ordered.append(cid)
+    return ordered
+
+
+def _weighted(earned: float, available: float) -> float | None:
+    return round(earned / available * 100, 1) if available else None
+
+
+def _multi_report(ids_raw: str | None, class_label: str | None = None,
+                  course_id: str | None = None,
+                  student: str | None = None) -> dict:
+    """Build the multi-assignment report from verified local rows."""
+    ids = _assignment_ids(ids_raw)
+    if not ids:
+        raise AppError("Select at least one assignment for the report.",
+                       status=400, code="no_assignments_selected")
+    if len(ids) > MAX_REPORT_ASSIGNMENTS:
+        raise AppError(
+            f"A report can cover at most {MAX_REPORT_ASSIGNMENTS} assignments "
+            "at once.", status=400, code="too_many_assignments")
+
+    known = {str(a["id"]): dict(a) for a in db.query("SELECT * FROM coursework")}
+    unknown = [cid for cid in ids if cid not in known]
+    chosen = [known[cid] for cid in ids if cid in known]
+    if not chosen:
+        raise AppError("None of the selected assignments exist locally. "
+                       "Sync Google Classroom first.",
+                       status=404, code="assignment_not_found")
+    if course_id:
+        chosen = [a for a in chosen if str(a["course_id"]) == course_id]
+        if not chosen:
+            raise AppError("The selected assignments are not in that class.",
+                           status=404, code="assignment_not_found")
+
+    wanted = {str(a["id"]) for a in chosen}
+    rows = [r for r in _report_rows(course_id or None, None)
+            if str(r.get("coursework_id") or "") in wanted]
+
+    if class_label and class_label.strip():
+        wanted_label = class_label.strip()
+        rows = [r for r in rows if (r.get("class_label") or "") == wanted_label]
+    if student and student.strip():
+        needle = student.strip().lower()
+        rows = [r for r in rows
+                if needle in (r.get("display_name") or "").lower()
+                or needle == str(r.get("student_id") or "").lower()]
+
+    titles = {str(a["id"]): a for a in chosen}
+    courses = {str(c["id"]): dict(c) for c in db.query("SELECT * FROM courses")}
+
+    # ---- per student -----------------------------------------------------
+    students: dict[str, dict] = {}
+    for r in rows:
+        sid = str(r.get("student_id") or "")
+        if not sid:
+            continue
+        entry = students.get(sid)
+        if entry is None:
+            entry = students[sid] = {
+                "student_id": sid,
+                "display_name": r.get("display_name"),
+                "student_name": r.get("student_name"),
+                "nickname": r.get("nickname"),
+                "class_name": r.get("class_name"),
+                "class_label": r.get("class_label"),
+                "student_email": r.get("student_email"),
+                "assignments": 0,
+                "submitted": 0,
+                "missing": 0,
+                "late": 0,
+                "corrected": 0,
+                "incomplete": 0,
+                "failed": 0,
+                "not_processed": 0,
+                "zero_marks": 0,
+                "graded_in_classroom": 0,
+                "earned": 0.0,
+                "available": 0.0,
+                "classroom_earned": 0.0,
+                "classroom_available": 0.0,
+                "by_assignment": [],
+            }
+
+        entry["assignments"] += 1
+        if r["status"] in _NOT_SUBMITTED:
+            entry["missing"] += 1
+        else:
+            entry["submitted"] += 1
+        if r.get("late"):
+            entry["late"] += 1
+        if r["mc_status"] == "CORRECTED":
+            entry["corrected"] += 1
+            entry["earned"] += r.get("mc_earned") or 0
+            entry["available"] += r.get("mc_available") or 0
+            if not r.get("mc_earned"):
+                entry["zero_marks"] += 1
+        elif r["mc_status"] == "INCOMPLETE":
+            entry["incomplete"] += 1
+        elif r["mc_status"] == "FAILED":
+            entry["failed"] += 1
+        elif r["mc_status"] in ("NOT_PROCESSED", "CANCELLED"):
+            entry["not_processed"] += 1
+
+        if r.get("classroom_graded"):
+            entry["graded_in_classroom"] += 1
+            if r.get("max_points"):
+                entry["classroom_earned"] += float(r["assigned_grade"] or 0)
+                entry["classroom_available"] += float(r["max_points"] or 0)
+
+        entry["by_assignment"].append({
+            "coursework_id": r.get("coursework_id"),
+            "title": (titles.get(str(r.get("coursework_id")) or "") or {})
+                     .get("title"),
+            "status": r.get("status"),
+            "status_label": r.get("status_label"),
+            "late": bool(r.get("late")),
+            "assigned_grade": r.get("assigned_grade"),
+            "max_points": r.get("max_points"),
+            "classroom_graded": bool(r.get("classroom_graded")),
+            "classroom_percentage": r.get("classroom_percentage"),
+            "mc_status": r.get("mc_status"),
+            "mc_earned": r.get("mc_earned"),
+            "mc_available": r.get("mc_available"),
+            "mc_percentage": r.get("mc_percentage"),
+        })
+
+    student_list: list[dict] = []
+    for entry in students.values():
+        entry["percentage"] = _weighted(entry["earned"], entry["available"])
+        entry["classroom_percentage"] = _weighted(
+            entry["classroom_earned"], entry["classroom_available"])
+        entry["by_assignment"].sort(
+            key=lambda a: ids.index(str(a["coursework_id"]))
+            if str(a["coursework_id"]) in ids else len(ids))
+        student_list.append(entry)
+
+    def _sort_key(e: dict) -> tuple:
+        label = e.get("class_label") or _UNASSIGNED
+        return (label.lower() == _UNASSIGNED.lower(), label.lower(),
+                (e.get("display_name") or "").lower())
+
+    student_list.sort(key=_sort_key)
+
+    groups: list[dict] = []
+    index: dict[str, dict] = {}
+    for entry in student_list:
+        key = entry.get("class_name") or _UNASSIGNED
+        group = index.get(key)
+        if group is None:
+            group = {"class_name": entry.get("class_name"),
+                     "class_label": entry.get("class_label") or _UNASSIGNED,
+                     "students": []}
+            index[key] = group
+            groups.append(group)
+        group["students"].append(entry)
+
+    # ---- per assignment --------------------------------------------------
+    assignments: list[dict] = []
+    for cw in chosen:
+        cid = str(cw["id"])
+        a_rows = [r for r in rows if str(r.get("coursework_id") or "") == cid]
+        course = courses.get(str(cw.get("course_id")), {})
+        assignments.append({
+            "id": cid,
+            "title": cw.get("title"),
+            "course_id": cw.get("course_id"),
+            "course_name": course.get("name"),
+            "course_section": course.get("section"),
+            "due_date": cw.get("due_date"),
+            "max_points": cw.get("max_points"),
+            "state": cw.get("state"),
+            "stats": _stats(a_rows),
+        })
+
+    # ---- combined totals -------------------------------------------------
+    cells = len(rows)
+    corrected_rows = [r for r in rows if r["mc_status"] == "CORRECTED"]
+    earned = sum(float(r.get("mc_earned") or 0) for r in corrected_rows)
+    available = sum(float(r.get("mc_available") or 0) for r in corrected_rows)
+    graded_rows = [r for r in rows
+                   if r.get("classroom_graded") and r.get("max_points")]
+    classroom_earned = sum(float(r.get("assigned_grade") or 0) for r in graded_rows)
+    classroom_available = sum(float(r.get("max_points") or 0) for r in graded_rows)
+
+    single_course = (courses.get(course_id) if course_id
+                     else (courses.get(str(chosen[0].get("course_id")))
+                           if len({str(a.get("course_id")) for a in chosen}) == 1
+                           else None))
+
+    return {
+        "generated_at": time.time(),
+        "is_multi": True,
+        "class": ({"course_id": single_course.get("id"),
+                   "name": single_course.get("name"),
+                   "section": single_course.get("section"),
+                   "teacher": account_email(),
+                   "connected": auth_state().connected}
+                  if single_course else None),
+        "assignments": assignments,
+        "students": student_list,
+        "groups": groups,
+        "stats": {
+            "students": len(student_list),
+            "assignments": len(assignments),
+            "cells": cells,
+            "submitted": sum(1 for r in rows if r["status"] not in _NOT_SUBMITTED),
+            "missing": sum(1 for r in rows if r["status"] in _NOT_SUBMITTED),
+            "late": sum(1 for r in rows if r.get("late")),
+            "corrected": len(corrected_rows),
+            "incomplete": sum(1 for r in rows if r["mc_status"] == "INCOMPLETE"),
+            "failed": sum(1 for r in rows if r["mc_status"] == "FAILED"),
+            "zero_marks": sum(1 for r in corrected_rows if not r.get("mc_earned")),
+            "graded_in_classroom": len(graded_rows),
+            "earned": earned,
+            "available": available,
+            # The combined figure is a mark fraction, never a mean of means.
+            "percentage": _weighted(earned, available),
+            "classroom_earned": classroom_earned,
+            "classroom_available": classroom_available,
+            "classroom_percentage": _weighted(classroom_earned,
+                                              classroom_available),
+        },
+        "filters": {
+            "ids": [str(a["id"]) for a in chosen],
+            "class_label": class_label or None,
+            "course_id": course_id or None,
+            "student": student or None,
+            "ignored_ids": unknown,
+        },
+    }
+
+
+@router.get("/reports/assignments")
+def assignments_report(ids: str = "", class_label: str | None = None,
+                       course_id: str | None = None,
+                       student: str | None = None):
+    """One report over SEVERAL chosen assignments (weighted combined mark)."""
+    return _multi_report(ids, class_label, course_id, student)
+
+
 @router.get("/reports/assignment/{coursework_id}")
 def assignment_report(coursework_id: str):
     cw = _assignment(coursework_id)
@@ -1210,6 +1476,204 @@ def export_class_report(course_id: str, format: str = "pdf"):
         buf, media_type="application/pdf",
         headers={"Content-Disposition":
                  attachment_header(f"class_{title or course_id}_{stamp}.pdf")})
+
+
+def _multi_pdf(data: dict) -> io.BytesIO:
+    """Multi-assignment report as an A4 PDF, in the shared design language."""
+    from ..reporting import design as D
+
+    st = data["stats"]
+    brand = D.load_branding()
+    theme = D.make_theme(accent=brand.accent or None, label="class")
+    styles = D.build_styles(theme)
+    story: list = []
+
+    D.add(story, D.stat_strip(theme, styles, [
+        ("Assignments", str(st["assignments"])),
+        ("Students", str(st["students"])),
+        ("Math Correct", D.fmt_pct(st["percentage"])),
+        ("Classroom", D.fmt_pct(st["classroom_percentage"])),
+        ("Not submitted", str(st["missing"])),
+    ], tone="accent", bar_for=2))
+
+    if st["incomplete"] or st["failed"] or st["missing"]:
+        lines = []
+        if st["missing"]:
+            lines.append(f"{_count(st['missing'], 'submission')} "
+                         f"{_verb(st['missing'], 'was', 'were')} never handed in.")
+        if st["incomplete"]:
+            lines.append(f"{_count(st['incomplete'], 'correction')} "
+                         f"{_verb(st['incomplete'], 'is', 'are')} incomplete and "
+                         "excluded from the combined mark.")
+        if st["failed"]:
+            lines.append(f"{_count(st['failed'], 'correction')} failed.")
+        D.add(story, D.Spacer(1, 4))
+        D.add(story, D.callout(theme, styles, "Needs attention", lines,
+                               tone="warn"))
+
+    D.add(story, D.Spacer(1, 5))
+    D.add(story, D.section(
+        theme, styles, "Assignments included",
+        subtitle="Combined mark = total marks earned / total marks available."))
+    rows = []
+    for a in data["assignments"]:
+        s = a["stats"]
+        rows.append([
+            a.get("title") or "Untitled",
+            " - ".join(x for x in (a.get("course_name"), a.get("course_section"))
+                       if x) or "Not available",
+            (D.fmt_num(a["max_points"]) if a.get("max_points") is not None
+             else "—"),
+            str(s["total_students"]),
+            str(s["submission"]["submitted"]),
+            D.fmt_pct(s["math_checker"]["average"]),
+            D.fmt_pct(s["classroom_grading"]["average"]),
+        ])
+    D.add(story, D.data_table(
+        theme, styles,
+        ["Assignment", "Class", "Max", "Students", "Submitted",
+         "Math Correct avg", "Classroom avg"], rows,
+        widths=D.fit_widths(theme, [30, 21, 6, 8, 9, 13, 13]),
+        aligns=["left", "left", "right", "right", "right", "right", "right"]))
+
+    D.add(story, D.Spacer(1, 5))
+    D.add(story, D.section(
+        theme, styles, "Students",
+        subtitle="Grouped by the class the teacher assigned."))
+    for index, group in enumerate(data["groups"] or []):
+        if index:
+            D.add(story, D.Spacer(1, 3))
+        D.add(story, D.group_divider(
+            theme, styles, group["class_label"],
+            meta=_count(len(group["students"]), "student")))
+        body = []
+        for s in group["students"]:
+            body.append([
+                s.get("display_name") or "—",
+                str(s["assignments"]), str(s["submitted"]), str(s["missing"]),
+                D.fmt_score(s["earned"] if s["corrected"] else None,
+                            s["available"] if s["corrected"] else None),
+                D.fmt_pct(s["percentage"]),
+                D.fmt_score(s["classroom_earned"] if s["graded_in_classroom"] else None,
+                            s["classroom_available"] if s["graded_in_classroom"] else None),
+                D.fmt_pct(s["classroom_percentage"]),
+            ])
+        D.add(story, D.data_table(
+            theme, styles,
+            ["Student", "Assignments", "Submitted", "Not submitted",
+             "Math Correct", "MC %", "Classroom", "Classroom %"], body,
+            widths=D.fit_widths(theme, [26, 9, 9, 10, 12, 7, 12, 10]),
+            aligns=["left"] + ["right"] * 7, emphasis=[4, 6]))
+
+    # Every selected assignment keeps its own detail table, so the combined
+    # figure can never hide one bad paper.
+    if data["assignments"]:
+        D.add(story, D.Spacer(1, 5))
+        D.add(story, D.section(theme, styles, "By assignment"))
+    for a in data["assignments"]:
+        detail = []
+        for s in data["students"]:
+            cell = next((c for c in s["by_assignment"]
+                         if str(c["coursework_id"]) == str(a["id"])), None)
+            if cell is None:
+                continue
+            detail.append([
+                s.get("display_name") or "—",
+                s.get("class_label") or _UNASSIGNED,
+                _grade_text(cell.get("assigned_grade"),
+                            cell.get("max_points")),
+                D.fmt_pct(cell.get("mc_percentage")),
+                D.fmt_score(cell.get("mc_earned"), cell.get("mc_available")),
+                cell.get("status_label") or "—",
+            ])
+        D.add(story, D.Spacer(1, 3))
+        D.add(story, D.subsection(theme, styles, a.get("title") or "Untitled"))
+        if not detail:
+            D.add(story, D.note(theme, styles, "No students in this report."))
+            continue
+        D.add(story, D.data_table(
+            theme, styles,
+            ["Student", "Class", "Classroom grade", "MC %", "Math Correct",
+             "Submission"], detail,
+            widths=D.fit_widths(theme, [26, 10, 16, 8, 16, 18]),
+            aligns=["left", "left", "right", "right", "right", "left"],
+            emphasis=[4]))
+
+    context = (data["class"]["name"] if data.get("class")
+               else _count(st["assignments"], "assignment"))
+    return _build_report(theme, brand, "Multi-Assignment Performance Report",
+                         context, story, data.get("generated_at"),
+                         label="TEACHER COPY",
+                         doc_id=",".join(a["id"] for a in data["assignments"])[:40])
+
+
+def _multi_csv(data: dict) -> str:
+    """One row per student x assignment, plus a per-student combined row."""
+    import csv
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["student", "class", "course", "assignment", "status",
+                     "submitted", "late", "classroom_grade", "max_points",
+                     "classroom_percentage", "mc_earned", "mc_available",
+                     "mc_percentage", "combined"])
+    courses = {str(a["id"]): " - ".join(
+        x for x in (a.get("course_name"), a.get("course_section")) if x)
+        for a in data["assignments"]}
+    for s in data["students"]:
+        for cell in s["by_assignment"]:
+            writer.writerow([
+                s.get("display_name") or "", s.get("class_label") or "",
+                courses.get(str(cell["coursework_id"]), ""),
+                cell.get("title") or "", cell.get("status_label") or "",
+                "yes" if cell.get("status") not in _NOT_SUBMITTED else "no",
+                "yes" if cell.get("late") else "no",
+                "" if cell.get("assigned_grade") is None else cell["assigned_grade"],
+                "" if cell.get("max_points") is None else cell["max_points"],
+                "" if cell.get("classroom_percentage") is None else cell["classroom_percentage"],
+                "" if cell.get("mc_earned") is None else cell["mc_earned"],
+                "" if cell.get("mc_available") is None else cell["mc_available"],
+                "" if cell.get("mc_percentage") is None else cell["mc_percentage"],
+                "",
+            ])
+        writer.writerow([
+            s.get("display_name") or "", s.get("class_label") or "", "",
+            "COMBINED", "", "", "", "", "",
+            "" if s["classroom_percentage"] is None else s["classroom_percentage"],
+            s["earned"], s["available"],
+            "" if s["percentage"] is None else s["percentage"], "yes",
+        ])
+    return buf.getvalue()
+
+
+@router.get("/reports/assignments/export")
+def export_assignments_report(ids: str = "", class_label: str | None = None,
+                              course_id: str | None = None,
+                              student: str | None = None,
+                              format: str = "pdf"):
+    """Export the multi-assignment report as PDF or CSV."""
+    data = _multi_report(ids, class_label, course_id, student)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    fmt = (format or "pdf").lower()
+
+    if fmt == "csv":
+        log_event("reports", "multi-assignment report exported",
+                  assignments=len(data["assignments"]), format="csv")
+        return StreamingResponse(
+            iter([_multi_csv(data)]), media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition":
+                     attachment_header(f"assignments_{stamp}.csv")})
+    if fmt != "pdf":
+        raise AppError("Only pdf and csv export are available for this report.",
+                       status=400, code="bad_report_format")
+
+    buf = _multi_pdf(data)
+    log_event("reports", "multi-assignment report exported",
+              assignments=len(data["assignments"]), format="pdf")
+    return StreamingResponse(
+        buf, media_type="application/pdf",
+        headers={"Content-Disposition":
+                 attachment_header(f"assignments_{stamp}.pdf")})
 
 
 # ---------------------------------------------------------------- class-report

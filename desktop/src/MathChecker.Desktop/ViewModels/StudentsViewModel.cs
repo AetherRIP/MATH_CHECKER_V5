@@ -34,6 +34,9 @@ public sealed class StudentsViewModel : PageViewModel
         OpenResultsCommand = new RelayCommand(() => Session.GoTo("results"));
     }
 
+    /// <summary>People are the Classroom rosters, so this page syncs them.</summary>
+    public override bool SyncsFromClassroom => true;
+
     public ObservableCollection<StudentDto> Items { get; } = new();
     public ObservableCollection<string> ClassFilters { get; } = new() { AllClasses };
 
@@ -151,11 +154,53 @@ public sealed class StudentsViewModel : PageViewModel
         _all.Clear();
         _all.AddRange(students.Students);
 
+        LastSync = students.LastSync;
+        EmailSource = students.Source?.EmailText ?? "source not reported";
+
         var previousClassFilter = ClassFilter;
         RebuildClassFilters(previousClassFilter);
         ApplyFilter();
+        RaiseFacts();
         Summary = $"{_all.Count} students known from Classroom, local corrections and results.";
     }
+
+    /// <summary>The headline facts are computed from the loaded roster, so they
+    /// are refreshed explicitly once a load (or a filter) changes it.</summary>
+    private void RaiseFacts()
+    {
+        OnPropertyChanged(nameof(StudentsCountText));
+        OnPropertyChanged(nameof(ClassesCountText));
+        OnPropertyChanged(nameof(CorrectionsCountText));
+        OnPropertyChanged(nameof(InProgressCountText));
+        OnPropertyChanged(nameof(LastSyncText));
+        OnPropertyChanged(nameof(EmailSource));
+        OnPropertyChanged(nameof(ShownText));
+    }
+
+    /// <summary>When Classroom last delivered this roster, as the backend
+    /// recorded it. Stated in the page header so a stale list is obvious.</summary>
+    public double? LastSync { get; private set; }
+
+    public string EmailSource { get; private set; } = "source not reported";
+
+    public string StudentsCountText => _all.Count.ToString();
+
+    public string ClassesCountText => _all
+        .Select(s => s.ClassLabel ?? string.Empty)
+        .Where(label => label.Length > 0)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Count()
+        .ToString();
+
+    public string CorrectionsCountText => _all.Sum(s => s.Corrections).ToString();
+
+    public string InProgressCountText => _all.Sum(s => s.Pending).ToString();
+
+    public string ShownText => Items.Count == 1 ? "1 shown" : $"{Items.Count} shown";
+
+    public string LastSyncText => LastSync is > 0
+        ? "Roster synced " + EpochTime.Format(LastSync, "never")
+        : "Roster never synced";
 
     /// <summary>Opens (or re-opens) a student's profile. Safe to await in tests;
     /// the roster selection calls it after a short settle window.</summary>
@@ -314,8 +359,10 @@ public sealed class StudentsViewModel : PageViewModel
             var students = await Session.Api.StudentsAsync().ConfigureAwait(true);
             _all.Clear();
             _all.AddRange(students.Students);
+            LastSync = students.LastSync;
             RebuildClassFilters(ClassFilter);
             ApplyFilter();
+            RaiseFacts();
         }
         catch (Exception ex)
         {
@@ -343,19 +390,38 @@ public sealed class StudentsViewModel : PageViewModel
 
     private void RebuildClassFilters(string previous)
     {
-        ClassFilters.Clear();
-        ClassFilters.Add(AllClasses);
-        foreach (var label in _all.Select(s => s.ClassLabel ?? "Not assigned").Distinct().OrderBy(x => x))
+        var wanted = new List<string> { AllClasses };
+        wanted.AddRange(_all.Select(s => s.ClassLabel ?? "Not assigned")
+            .Distinct()
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+
+        // Reconcile in place instead of Clear + Add. Emptying the list makes a
+        // bound ComboBox drop its own selection, and WPF then leaves the box
+        // blank even after the same value is restored.
+        for (var i = ClassFilters.Count - 1; i >= 0; i--)
         {
-            ClassFilters.Add(label);
+            if (!wanted.Contains(ClassFilters[i]))
+            {
+                ClassFilters.RemoveAt(i);
+            }
         }
 
-        // Restore the selection explicitly: clearing the list left the ComboBox
-        // with no selection, which used to hide every student. The explicit
-        // notification matters when the restored value is already the current
-        // one — otherwise the ComboBox stays blank after its items are rebuilt.
-        ClassFilter = ClassFilters.Contains(previous) ? previous : AllClasses;
-        OnPropertyChanged(nameof(ClassFilter));
+        for (var i = 0; i < wanted.Count; i++)
+        {
+            if (i >= ClassFilters.Count)
+            {
+                ClassFilters.Add(wanted[i]);
+            }
+            else if (!string.Equals(ClassFilters[i], wanted[i], StringComparison.Ordinal))
+            {
+                ClassFilters.Insert(i, wanted[i]);
+            }
+        }
+
+        // Restore the selection explicitly. The notification matters when the
+        // restored value already equals the current one — otherwise the
+        // ComboBox is never told to show it.
+        RestoreClassFilterSelection(previous);
     }
 
     private void ApplyFilter()
@@ -380,6 +446,23 @@ public sealed class StudentsViewModel : PageViewModel
 
             Items.Add(student);
         }
+
+        OnPropertyChanged(nameof(ShownText));
+    }
+
+    /// <summary>The class filter is a plain string list. WPF clears its own
+    /// selection when that list is rebuilt, and a null write comes back through
+    /// the two-way binding; re-announcing the restored value puts the selected
+    /// class back on screen instead of leaving an empty box.</summary>
+    private void RestoreClassFilterSelection(string previous)
+    {
+        var restored = ClassFilters.Contains(previous) ? previous : AllClasses;
+        if (!string.Equals(_classFilter, restored, StringComparison.Ordinal))
+        {
+            _classFilter = restored;
+        }
+
+        OnPropertyChanged(nameof(ClassFilter));
     }
 
 }

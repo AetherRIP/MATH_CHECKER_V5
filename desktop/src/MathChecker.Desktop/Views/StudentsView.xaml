@@ -3,9 +3,61 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI"
              xmlns:views="clr-namespace:MathChecker.Desktop.Views">
+    <UserControl.Resources>
+        <!-- One roster row: a real list item, so keyboard selection, hover and
+             the automation tree behave; the template only decides the layout. -->
+        <Style x:Key="PersonRow" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Row" Background="Transparent"
+                                BorderBrush="{DynamicResource RowHairlineBrush}"
+                                BorderThickness="0,0,0,1" Padding="14,10">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource SurfaceHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource SurfaceSelectedBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The theme wraps every TextBlock by default, which defeats
+             trimming; these cells must stay on one line. -->
+        <Style x:Key="FactLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <Style x:Key="FactValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+        </Style>
+    </UserControl.Resources>
+
     <ui:PageFrame Eyebrow="{Binding HeaderEyebrow}" Title="{Binding HeaderTitle}"
                   Description="{Binding HeaderDescription}"
                   StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
+                  Sync="{Binding SyncService}"
                   BodyPadding="0,14,0,0">
         <ui:PageFrame.Actions>
             <Grid>
@@ -34,59 +86,213 @@
             <Grid Visibility="{Binding IsProfileClosed, Converter={StaticResource BoolToVis}}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0" Style="{StaticResource FilterBar}">
-                    <WrapPanel>
-                        <TextBlock Text="Search" Style="{StaticResource FieldLabel}" />
-                        <TextBox Width="220" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"
-                                 AutomationProperties.Name="Search students" />
-                        <TextBlock Text="Class" Style="{StaticResource FieldLabel}" Margin="10,0,6,0" />
-                        <ComboBox Width="220" ItemsSource="{Binding ClassFilters}"
-                                  SelectedItem="{Binding ClassFilter}" />
-                        <Border Style="{StaticResource Chip}" Padding="9,3" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding Items.Count, StringFormat={}{0} students}"
-                                       FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" />
-                        </Border>
-                        <TextBlock Text="Select a student to open their profile."
-                                   FontSize="10.5" VerticalAlignment="Center" Margin="12,0,0,0"
-                                   Foreground="{StaticResource TextMutedBrush}" />
-                    </WrapPanel>
+                <!-- Headline facts, one strip, no wrapping: the numbers line up
+                     because each sits in its own column instead of a WrapPanel. -->
+                <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,10" Padding="16,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel>
+                            <TextBlock Text="STUDENTS" Style="{StaticResource FactLabel}" />
+                            <TextBlock Text="{Binding StudentsCountText}" Style="{StaticResource FactValue}"
+                                       FontSize="17" FontWeight="SemiBold" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="CLASSES" Style="{StaticResource FactLabel}" />
+                            <TextBlock Text="{Binding ClassesCountText}" Style="{StaticResource FactValue}"
+                                       FontSize="17" FontWeight="SemiBold" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="CORRECTIONS" Style="{StaticResource FactLabel}" />
+                            <TextBlock Text="{Binding CorrectionsCountText}" Style="{StaticResource FactValue}"
+                                       FontSize="17" FontWeight="SemiBold" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="3">
+                            <TextBlock Text="IN PROGRESS" Style="{StaticResource FactLabel}" />
+                            <TextBlock Text="{Binding InProgressCountText}" Style="{StaticResource FactValue}"
+                                       FontSize="17" FontWeight="SemiBold" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4" VerticalAlignment="Center"
+                                    HorizontalAlignment="Right">
+                            <TextBlock Text="{Binding LastSyncText}" FontSize="10.5"
+                                       HorizontalAlignment="Right"
+                                       Foreground="{DynamicResource TextMutedBrush}" />
+                            <!-- Google does return addresses for every account type,
+                                 so the page says where they came from. -->
+                            <TextBlock Text="{Binding EmailSource, StringFormat=Email source: {0}}"
+                                       FontSize="10.5" HorizontalAlignment="Right"
+                                       Foreground="{DynamicResource TextMutedBrush}" />
+                        </StackPanel>
+                    </Grid>
                 </Border>
 
-                <Border Grid.Row="1" Style="{StaticResource TableCard}">
+                <Border Grid.Row="1" Style="{StaticResource FilterBar}" Margin="0,0,0,10">
                     <Grid>
-                        <DataGrid Style="{StaticResource DataTable}" ui:TableLayout.FillColumn="2"
-                                  ItemsSource="{Binding Items}"
-                                  SelectedItem="{Binding Selected}"
-                                  AutomationProperties.Name="Students">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="180" />
-                                <DataGridTextColumn Header="Class" Binding="{Binding ClassLabel}" Width="236"
-                                                    ui:TableLayout.Priority="1" />
-                                <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="*" MinWidth="190" />
-                                <DataGridTextColumn Header="Submitted" Binding="{Binding Submitted}" Width="94"
-                                                    ui:TableLayout.Priority="2" />
-                                <DataGridTextColumn Header="Corrections" Binding="{Binding Corrections}" Width="100"
-                                                    ui:TableLayout.Priority="2" />
-                                <DataGridTextColumn Header="Total" Binding="{Binding TotalText}" Width="140"
-                                                    ui:TableLayout.Priority="3" />
-                                <DataGridTextColumn Header="Pending" Binding="{Binding Pending}" Width="84"
-                                                    ui:TableLayout.Priority="2" />
-                            </DataGrid.Columns>
-                        </DataGrid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="240" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" MinWidth="80" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                        <Border Style="{StaticResource EmptyState}" MaxWidth="360"
-                                HorizontalAlignment="Center" VerticalAlignment="Center"
-                                Visibility="{Binding Items.Count, Converter={StaticResource ZeroToVis}}">
-                            <StackPanel>
-                                <TextBlock Text="No students match" Style="{StaticResource EmptyTitle}" />
-                                <TextBlock Text="Clear the search or pick another class. If the roster is empty, sync a class in Classroom first."
-                                           Style="{StaticResource EmptyText}" TextWrapping="Wrap" />
-                            </StackPanel>
+                        <TextBlock Text="Search" Style="{StaticResource FieldLabel}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Search students" />
+
+                        <TextBlock Grid.Column="2" Text="Class" Style="{StaticResource FieldLabel}"
+                                   VerticalAlignment="Center" Margin="14,0,8,0" />
+                        <ComboBox Grid.Column="3" ItemsSource="{Binding ClassFilters}"
+                                  SelectedItem="{Binding ClassFilter}"
+                                  AutomationProperties.Name="Class filter" />
+
+                        <TextBlock Grid.Column="4" Text="Select a student to open the full profile."
+                                   FontSize="10.5" VerticalAlignment="Center" Margin="14,0,10,0"
+                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource TextMutedBrush}" />
+
+                        <Border Grid.Column="5" Style="{StaticResource Chip}" Padding="9,3"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ShownText}"
+                                       FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Border>
                     </Grid>
+                </Border>
+
+                <Border Grid.Row="2" Style="{StaticResource TableCard}">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="240" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="290" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Student" Style="{StaticResource SectionLabel}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1"
+                                           Text="Latest activity"
+                                           Style="{StaticResource SectionLabel}"
+                                           VerticalAlignment="Center" Margin="14,0,14,0"
+                                           TextWrapping="NoWrap" />
+                                <TextBlock Grid.Column="2" Text="Records"
+                                           Style="{StaticResource SectionLabel}"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+
+                        <Grid>
+                            <ListBox ItemsSource="{Binding Items}"
+                                     SelectedItem="{Binding Selected}"
+                                     ItemContainerStyle="{StaticResource PersonRow}"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     AutomationProperties.Name="Students">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="240" />
+                                                <ColumnDefinition Width="*" MinWidth="120" />
+                                                <ColumnDefinition Width="290" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Identity: long names and addresses
+                                                 ellipsize instead of pushing the
+                                                 facts off the row. -->
+                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                <TextBlock Text="{Binding Name}" FontSize="13"
+                                                           FontWeight="SemiBold"
+                                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding CoursesText}"
+                                                           Foreground="{DynamicResource TextBrush}" />
+                                                <TextBlock Text="{Binding SummaryLine}" FontSize="10.5"
+                                                           Margin="0,2,0,0"
+                                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding CoursesText}"
+                                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                                <TextBlock Text="{Binding EmailText}" FontSize="10.5"
+                                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                            </StackPanel>
+
+                                            <!-- Three labelled facts, each from a
+                                                 different source, so a Classroom
+                                                 grade is never read as a score. -->
+                                            <StackPanel Grid.Column="1" Margin="0,0,12,0"
+                                                        VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding LatestSubmissionText}"
+                                                           FontSize="11.5"
+                                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding CorrectionText}"
+                                                           FontSize="11.5" Margin="0,3,0,0"
+                                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding ClassroomGradeText}"
+                                                           FontSize="11.5" Margin="0,3,0,0"
+                                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                            </StackPanel>
+
+                                            <!-- Numbers stay in their own cells so a
+                                                 long name can never collide. -->
+                                            <UniformGrid Grid.Column="2" Columns="3"
+                                                         VerticalAlignment="Center">
+                                                <StackPanel>
+                                                    <TextBlock Text="SUBMITTED" Style="{StaticResource FactLabel}" />
+                                                    <TextBlock Text="{Binding SubmittedText}"
+                                                               Style="{StaticResource FactValue}" />
+                                                    <TextBlock Text="{Binding PendingText}" FontSize="10.5"
+                                                               Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
+                                                               Foreground="{DynamicResource TextMutedBrush}"
+                                                               Visibility="{Binding Pending,
+                                                                   Converter={StaticResource NonZeroToVis}}" />
+                                                </StackPanel>
+                                                <StackPanel Margin="8,0,0,0">
+                                                    <TextBlock Text="MATH CHECKER" Style="{StaticResource FactLabel}" />
+                                                    <TextBlock Text="{Binding TotalText}"
+                                                               Style="{StaticResource FactValue}" />
+                                                    <TextBlock Text="{Binding Corrections, StringFormat={}{0} corrections}"
+                                                               FontSize="10.5" Margin="0,2,0,0"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                </StackPanel>
+                                                <StackPanel Margin="8,0,0,0">
+                                                    <TextBlock Text="LAST SYNC" Style="{StaticResource FactLabel}" />
+                                                    <TextBlock Text="{Binding SyncText}"
+                                                               Style="{StaticResource FactValue}" />
+                                                </StackPanel>
+                                            </UniformGrid>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <Border Style="{StaticResource EmptyState}" MaxWidth="380"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Visibility="{Binding Items.Count, Converter={StaticResource ZeroToVis}}">
+                                <StackPanel>
+                                    <TextBlock Text="No students match" Style="{StaticResource EmptyTitle}" />
+                                    <TextBlock Text="Clear the search or pick another class. If the roster is empty, sync a class in Classroom first."
+                                               Style="{StaticResource EmptyText}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </DockPanel>
                 </Border>
             </Grid>
 
@@ -105,7 +311,7 @@
                     Style="{StaticResource Chip}" Padding="12,5"
                     Visibility="{Binding IsProfileLoading, Converter={StaticResource BoolToVis}}">
                 <TextBlock Text="Loading student profile…" FontSize="11"
-                           Foreground="{StaticResource TextSecondaryBrush}" />
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
             </Border>
         </Grid>
     </ui:PageFrame>

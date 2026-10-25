@@ -77,9 +77,74 @@ public class StudentsPageTests
         }
     }
 
-    private static async Task<(AppSession Session, StubHttpHandler Handler)> SessionAsync()
+    // The People row shows what the backend actually knows: Classroom's own
+    // grade, Math Checker's own correction, and when the roster last synced.
+    private const string EnrichedBody = """
+        {"students":[
+          {"student_id":"u1","official_name":"Ada Lovelace","class_label":"10A",
+           "email":"ada@demo.invalid","classroom_courses":["Mathematics — 10A"],
+           "assignments":15,"submitted":12,"tracking_available":true,
+           "corrections":12,"total_earned":240,"total_available":300,"pending":1,
+           "role":"student","latest_status":"SUBMITTED","latest_status_label":"Submitted",
+           "latest_assignment":"Algebra test","latest_correction":"Corrected",
+           "latest_result":"18/20 (90.0%)","latest_classroom_grade":"17/20 (85.0%)",
+           "graded_count":2,"last_synced_at":1790000000}
+        ],"last_sync":1790000000,
+        "source":{"identity":"classroom","submission_status":"classroom",
+                  "scores":"local","email":"not provided by Classroom"}}
+        """;
+
+    [Fact]
+    public async Task A_person_row_carries_the_classroom_grade_correction_and_sync_facts()
     {
-        var handler = new StubHttpHandler().Respond(HttpStatusCode.OK, StudentsBody);
+        var (session, handler) = await SessionAsync(EnrichedBody);
+        using (handler)
+        {
+            var page = new StudentsViewModel(session);
+            await page.LoadAsync();
+
+            var row = Assert.Single(page.Items);
+            Assert.Equal("Ada Lovelace", row.Name);
+            Assert.Equal("10A", row.ClassText);
+            Assert.Equal("Mathematics — 10A", row.CoursesText);
+            Assert.Equal("12 of 15", row.SubmittedText);
+            Assert.Equal("Corrected · 18/20 (90.0%)", row.CorrectionText);
+            // The Classroom grade is its own field, never folded into the score.
+            Assert.Equal("17/20 (85.0%)", row.ClassroomGradeText);
+            Assert.Equal("1 in progress", row.PendingText);
+            Assert.NotEqual("never", row.SyncText);
+
+            Assert.Contains("Roster synced", page.LastSyncText);
+            Assert.Equal("not provided by Classroom", page.EmailSource);
+            Assert.Equal("1", page.StudentsCountText);
+            Assert.Equal("1", page.ClassesCountText);
+            Assert.Equal("12", page.CorrectionsCountText);
+            Assert.Equal("1 shown", page.ShownText);
+        }
+    }
+
+    [Fact]
+    public async Task A_student_with_no_class_or_email_is_labelled_honestly()
+    {
+        var (session, handler) = await SessionAsync();
+        using (handler)
+        {
+            var page = new StudentsViewModel(session);
+            await page.LoadAsync();
+
+            var unknown = page.Items.Single(s => s.StudentId == "s5");
+            Assert.Equal("Not assigned", unknown.ClassText);
+            Assert.Equal("No Classroom course", unknown.CoursesText);
+            Assert.Equal("Not corrected", unknown.CorrectionText);
+            Assert.Equal("Not graded in Classroom", unknown.ClassroomGradeText);
+            Assert.Equal("Not tracked", unknown.SubmittedText);
+        }
+    }
+
+    private static async Task<(AppSession Session, StubHttpHandler Handler)> SessionAsync(
+        string body = StudentsBody)
+    {
+        var handler = new StubHttpHandler().Respond(HttpStatusCode.OK, body);
         var settings = new DesktopSettings { Port = 9, StartBackendAutomatically = false };
         var host = new BackendHost(settings, new MemoryLog(),
             starter: new UnusedStarter(), health: new AlwaysOurs());

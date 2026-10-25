@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import io
 import time
+from datetime import datetime
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -359,6 +360,100 @@ def register(app) -> None:
     app.include_router(router)
 
 
+def _row_when(row: dict) -> float:
+    """When a tracking row last changed, for "latest …" picks.
+
+    ``update_time`` is Classroom's own timestamp (an ISO string), so it is
+    parsed rather than compared as text; a row that only has a sync stamp
+    still sorts correctly against it.
+    """
+    stamp = 0.0
+    raw = row.get("update_time")
+    if raw:
+        try:
+            stamp = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+        except (TypeError, ValueError):
+            stamp = 0.0
+    return max(stamp, float(row.get("last_synced_at") or 0))
+
+
+def _student_latest(rows: list[dict], courses: dict[str, str]) -> dict:
+    """The headline facts a People row shows, each from the newest real row.
+
+    Nothing is inferred: a student with no Classroom grade gets None (the UI
+    prints "Not graded"), and a partial correction is reported as incomplete
+    instead of being read as a score.
+    """
+    latest = max(rows, key=_row_when) if rows else None
+    graded = [r for r in rows if r.get("assigned_grade") is not None]
+    latest_graded = max(graded, key=_row_when) if graded else None
+
+    # Math Checker's newest finished correction, walking back from the newest
+    # row so a freshly corrected paper wins over an older one.
+    latest_result = None
+    for row in sorted(rows, key=_row_when, reverse=True):
+        if row.get("result"):
+            latest_result = row
+            break
+    latest_job = None
+    for row in sorted(rows, key=_row_when, reverse=True):
+        if (row.get("job") or {}).get("status"):
+            latest_job = row
+            break
+
+    if latest_result is not None:
+        result = latest_result["result"] or {}
+        if result.get("partial"):
+            correction = "Incomplete"
+            score = None
+        else:
+            correction = "Corrected"
+            earned, available = result.get("earned"), result.get("available")
+            pct = result.get("percentage")
+            score = (f"{earned:g}/{available:g}" if earned is not None
+                     and available is not None else None)
+            if score and pct is not None:
+                score += f" ({pct:.1f}%)"
+    else:
+        status = (latest_job.get("job") or {}).get("status") if latest_job else None
+        correction = {"FAILED": "Failed", "CANCELLED": "Cancelled",
+                      "QUEUED": "Queued", "PREPARING": "Processing",
+                      "DOWNLOADING": "Processing", "UPLOADING": "Processing",
+                      "MARKING": "Processing", "VERIFYING": "Processing",
+                      "SAVING": "Processing", "WAITING_FOR_API": "Waiting",
+                      "RETRYING": "Retrying"}.get(status or "", "Not corrected")
+        score = None
+
+    classroom_score = None
+    if latest_graded is not None:
+        assigned = latest_graded.get("assigned_grade")
+        maximum = latest_graded.get("max_points")
+        classroom_score = f"{assigned:g}" if isinstance(assigned, (int, float)) else str(assigned)
+        if isinstance(assigned, (int, float)) and maximum:
+            classroom_score = f"{assigned:g}/{float(maximum):g} ({assigned / float(maximum) * 100:.1f}%)"
+
+    seen_courses: list[str] = []
+    for row in rows:
+        name = courses.get(str(row.get("course_id") or ""))
+        if name and name not in seen_courses:
+            seen_courses.append(name)
+
+    return {
+        "role": "student",
+        "classroom_courses": seen_courses,
+        "latest_status": latest.get("status") if latest else None,
+        "latest_status_label": latest.get("status_label") if latest else None,
+        "latest_status_at": latest.get("update_time") if latest else None,
+        "latest_assignment": latest.get("coursework_title") if latest else None,
+        "latest_correction": correction,
+        "latest_result": score,
+        "latest_classroom_grade": classroom_score,
+        "graded_count": len(graded),
+        "last_synced_at": max((float(r.get("last_synced_at") or 0) for r in rows),
+                              default=0) or None,
+    }
+
+
 @router.get("/students")
 def list_students():
     """All known students with headline numbers from their real sources.
@@ -372,6 +467,14 @@ def list_students():
         sid = r.get("student_id")
         if sid:
             by_student.setdefault(sid, []).append(r)
+
+    courses = {str(c["id"]): (c["name"] if not c["section"]
+                               else f"{c['name']} — {c['section']}")
+               for c in db.query("SELECT id, name, section FROM courses")}
+    from ..classroom import sync as classroom_sync
+    last_sync = classroom_sync.last_sync()
+    any_email = bool(db.query_one(
+        "SELECT 1 AS n FROM students WHERE email IS NOT NULL AND email != ''"))
 
     result_stats = {r["student_id"]: r for r in db.query(
         "SELECT student_id, COUNT(*) AS n, SUM(earned) AS e, "
@@ -404,10 +507,16 @@ def list_students():
             "total_earned": (stats["e"] or 0) if stats else 0,
             "total_available": (stats["a"] or 0) if stats else 0,
             "pending": pending_counts.get(student_id, 0),
+            **_student_latest(classroom_rows, courses),
         })
-    return {"students": out, "source": {
+    return {"students": out, "last_sync": last_sync, "source": {
         "identity": SOURCE_CLASSROOM, "submission_status": SOURCE_CLASSROOM,
-        "scores": SOURCE_LOCAL}}
+        "scores": SOURCE_LOCAL,
+        # Google only returns student e-mail addresses for some account types.
+        # Reported honestly so the UI can say "not provided" instead of
+        # printing a column of blanks as if it were the student's data.
+        "email": SOURCE_CLASSROOM if any_email else "not provided by Classroom",
+    }}
 
 
 @router.get("/students/classes")

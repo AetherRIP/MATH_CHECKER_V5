@@ -32,6 +32,32 @@ public static class EpochTime
 
     public static string Format(double? seconds, string empty = "—") =>
         ToLocal(seconds)?.ToString("yyyy-MM-dd HH:mm") ?? empty;
+
+    /// <summary>Local time of day, for a stage that happened minutes ago.</summary>
+    public static string Clock(double? seconds, string empty = "—") =>
+        ToLocal(seconds)?.ToString("HH:mm:ss") ?? empty;
+}
+
+/// <summary>Byte counts in the unit a person would say out loud.</summary>
+public static class SizeText
+{
+    public static string Of(long bytes)
+    {
+        if (bytes < 0)
+        {
+            return "—";
+        }
+
+        if (bytes < 1024)
+        {
+            return $"{bytes} B";
+        }
+
+        var kilobytes = bytes / 1024d;
+        return kilobytes < 1024
+            ? $"{kilobytes:0.#} KB"
+            : $"{kilobytes / 1024d:0.##} MB";
+    }
 }
 
 public sealed class HealthDto
@@ -114,6 +140,8 @@ public sealed class JobDto
     public string? CourseId { get; set; }
     public string? StudentId { get; set; }
     public string? StudentName { get; set; }
+    /// <summary>Canonical nickname (or Classroom name) resolved by the backend.</summary>
+    public string? DisplayName { get; set; }
     public string? Status { get; set; }
     public string? StageDetail { get; set; }
     public double Progress { get; set; }
@@ -128,13 +156,137 @@ public sealed class JobDto
     public double? FinishedAt { get; set; }
     public double? UpdatedAt { get; set; }
     public string? ResultId { get; set; }
+
+    /// <summary>The uploaded paper's own filename and page count, as the
+    /// backend recorded them when the job was queued (null when unknown: the
+    /// UI must then say "Not available" rather than guess).</summary>
+    public string? PaperName { get; set; }
+    public int? PageCount { get; set; }
+
+    /// <summary>Stages the backend actually reported, oldest first (detail
+    /// endpoint only).</summary>
+    public List<StageEventDto> StageHistory { get; set; } = new();
+
+    /// <summary>The stored correction (detail endpoint, completed jobs only).
+    /// Read for the final marks; never used before the job finished.</summary>
+    public JsonElement? Result { get; set; }
+
     public JsonElement? Bandwidth { get; set; }
 
+    /// <summary>"75 / 103 · 72.8%" for a completed job whose result is loaded,
+    /// otherwise empty. Marks are never shown from a job that has not
+    /// finished marking and validating.</summary>
+    public string MarksText
+    {
+        get
+        {
+            if (!IsCompleted || Result is null || Result.Value.ValueKind != JsonValueKind.Object)
+            {
+                return string.Empty;
+            }
+
+            var element = Result.Value;
+            var earned = Number(element, "earned");
+            var available = Number(element, "available");
+            var percentage = Number(element, "percentage");
+            if (earned is null || available is null)
+            {
+                return string.Empty;
+            }
+
+            var marks = $"{earned:0.#} / {available:0.#}";
+            return percentage is null ? marks : $"{marks} · {percentage:0.#}%";
+        }
+    }
+
+    private static double? Number(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.Number
+        && value.TryGetDouble(out var parsed)
+            ? parsed
+            : null;
+
     public string CreatedText => EpochTime.Format(CreatedAt);
-    public string StageText => string.IsNullOrWhiteSpace(StageDetail) ? (Status ?? "") : StageDetail!;
+
+    /// <summary>The job state written for a person, never the raw enum.</summary>
+    public string StatusText => Core.UI.PayloadFacts.StatusLabel(Status);
+
+    public string StageText => string.IsNullOrWhiteSpace(StageDetail) ? StatusText : StageDetail!;
+
+    public string PaperText => string.IsNullOrWhiteSpace(PaperName) ? "Not available" : PaperName!;
+
+    public string PagesText => PageCount is null or <= 0
+        ? "Not available"
+        : PageCount == 1 ? "1 page" : $"{PageCount} pages";
+
+    /// <summary>What the pipeline is doing, in the words of its own status.
+    /// A queued job says it is waiting; it never looks like it is marking.</summary>
+    public string PhaseText => Status switch
+    {
+        "QUEUED" => "Waiting for a worker",
+        "STARTING" => "Starting on a worker",
+        "PREPARING" => "Preparing PDF",
+        "DOWNLOADING" => "Downloading the paper",
+        "UPLOADING" => "Sending document to Gemini",
+        "MARKING" => "Evaluating student answers",
+        "VERIFYING" => "Validating awarded marks",
+        "SAVING" => "Saving results",
+        "WAITING_FOR_API" => "Waiting for API capacity",
+        "RETRYING" => "Retrying after a failure",
+        "COMPLETED" => "Correction completed",
+        "FAILED" => "Correction failed",
+        "CANCELLED" => "Correction cancelled",
+        _ => StatusText,
+    };
+
+    public bool IsCompleted => Status == "COMPLETED";
+    public bool IsFailed => Status == "FAILED";
+    public bool IsCancelled => Status == "CANCELLED";
+    public bool IsQueued => Status == "QUEUED";
+    public bool IsWaitingForApi => Status == "WAITING_FOR_API";
+
+    public string StudentLabel => !string.IsNullOrWhiteSpace(DisplayName) ? DisplayName!
+        : !string.IsNullOrWhiteSpace(StudentName) ? StudentName!
+        : !string.IsNullOrWhiteSpace(StudentId) ? StudentId! : "Not available";
+
+    /// <summary>False only after the backend recorded a terminal state. A job
+    /// that is still being worked on must never be presented as finished.</summary>
+    public bool IsTerminal => Status is "COMPLETED" or "FAILED" or "CANCELLED";
+
+    public bool IsActive => !IsTerminal;
+
+    /// <summary>True until the backend measured real work (a queued or just
+    /// started job). The bar must show an indeterminate state then, not 0%.</summary>
+    public bool IsProgressIndeterminate => IsActive && Progress <= 0.0001;
+
+    /// <summary>The percentage, a word while nothing measurable has finished,
+    /// or a dash for a job that ended without completing.</summary>
+    public string ProgressText => IsActive && Progress <= 0.0001
+        ? "working"
+        : Status != "COMPLETED" && !IsActive
+            ? "—"
+            : $"{Progress * 100:0}%";
+
     public bool CanCancel => Status is "QUEUED" or "PREPARING" or "DOWNLOADING" or "UPLOADING"
-        or "MARKING" or "VERIFYING" or "SAVING" or "WAITING_FOR_API" or "RETRYING";
+        or "MARKING" or "VERIFYING" or "SAVING" or "WAITING_FOR_API" or "RETRYING"
+        or "STARTING";
     public bool CanRetry => Status is "FAILED" or "CANCELLED";
+}
+
+/// <summary>One stage the backend recorded for a job, with the time it was
+/// seen. Rendered as the job's history; never synthesised in the client.</summary>
+public sealed class StageEventDto
+{
+    public string? Status { get; set; }
+    public string? Stage { get; set; }
+    public double? Progress { get; set; }
+    public double? At { get; set; }
+
+    public string StageText => string.IsNullOrWhiteSpace(Stage)
+        ? Core.UI.PayloadFacts.StatusLabel(Status)
+        : Stage!;
+
+    public string AtText => At is null ? "—" : EpochTime.Clock(At.Value);
 }
 
 public sealed class JobListDto
@@ -362,6 +514,14 @@ public sealed class ReviewItemDto
     public string ScoreText => $"{Earned?.ToString("0.#") ?? "—"} / {Available?.ToString("0.#") ?? "—"}";
     public string CreatedText => EpochTime.Format(CreatedAt);
     public string ReasonsText => Json.Flatten(ConfidenceReasons);
+
+    /// <summary>"HIGH" is an engine token; a person reads "High confidence".</summary>
+    public string ConfidenceText => string.IsNullOrWhiteSpace(Confidence)
+        ? "Not reported"
+        : Core.UI.PayloadFacts.StatusLabel(Confidence) + " confidence";
+
+    /// <summary>The stored flag is 0/1; the panel says Yes or No.</summary>
+    public string ReviewRequiredText => ReviewRequired != 0 ? "Yes" : "No";
 }
 
 public sealed class ClassDto
@@ -457,17 +617,106 @@ public sealed class StudentDto
     public double TotalAvailable { get; set; }
     public int Pending { get; set; }
 
+    // ---- headline facts the backend derives from the real rows -------------
+    public string? Role { get; set; }
+    public List<string> ClassroomCourses { get; set; } = new();
+    public string? LatestStatus { get; set; }
+    public string? LatestStatusLabel { get; set; }
+    public string? LatestStatusAt { get; set; }
+    public string? LatestAssignment { get; set; }
+    public string? LatestCorrection { get; set; }
+    public string? LatestResult { get; set; }
+    public string? LatestClassroomGrade { get; set; }
+    public int GradedCount { get; set; }
+    public double? LastSyncedAt { get; set; }
+
     public string Name => !string.IsNullOrWhiteSpace(DisplayName) ? DisplayName!
         : !string.IsNullOrWhiteSpace(OfficialName) ? OfficialName! : StudentId;
 
     public string TotalText => TotalAvailable > 0
         ? $"{TotalEarned:0.#} / {TotalAvailable:0.#} ({TotalEarned / TotalAvailable * 100:0.#}%)"
         : "—";
+
+    /// <summary>The teacher's own class, or an honest "not assigned".</summary>
+    public string ClassText => string.IsNullOrWhiteSpace(ClassLabel) ? "Not assigned" : ClassLabel!;
+
+    /// <summary>Google Classroom courses this student belongs to (real names).</summary>
+    public string CoursesText => ClassroomCourses.Count == 0
+        ? "No Classroom course"
+        : string.Join(" · ", ClassroomCourses);
+
+    /// <summary>Classroom does not return an address for every account type.</summary>
+    public string EmailText => string.IsNullOrWhiteSpace(Email) ? "No email provided" : Email!;
+
+    public string SubmittedText => TrackingAvailable
+        ? $"{Submitted} of {Assignments}"
+        : "Not tracked";
+
+    public string LatestSubmissionText
+    {
+        get
+        {
+            var label = LatestStatusLabel ?? Core.UI.PayloadFacts.StatusLabel(LatestStatus);
+            if (string.IsNullOrWhiteSpace(label) || label == "—")
+            {
+                return "No submission yet";
+            }
+
+            return string.IsNullOrWhiteSpace(LatestAssignment)
+                ? label!
+                : $"{label} · {LatestAssignment}";
+        }
+    }
+
+    /// <summary>Math Checker's newest correction, in the backend's own words.</summary>
+    public string CorrectionText => string.IsNullOrWhiteSpace(LatestCorrection)
+        ? "Not corrected"
+        : LatestResult is null ? LatestCorrection! : $"{LatestCorrection} · {LatestResult}";
+
+    public string ClassroomGradeText => string.IsNullOrWhiteSpace(LatestClassroomGrade)
+        ? (GradedCount > 0 ? "Graded, score not recorded" : "Not graded in Classroom")
+        : LatestClassroomGrade!;
+
+    public string PendingText => Pending > 0 ? $"{Pending} in progress" : "None";
+
+    /// <summary>Short enough for a row cell: a full timestamp truncated to
+    /// "2026-10-…" tells nobody anything.</summary>
+    public string SyncText => EpochTime.ToLocal(LastSyncedAt)?.ToString("dd MMM HH:mm") ?? "never";
+
+    /// <summary>One line for the row's detail pane, without inventing data.</summary>
+    public string SummaryLine
+    {
+        get
+        {
+            var parts = new List<string> { ClassText };
+            if (ClassroomCourses.Count > 0)
+            {
+                parts.Add(string.Join(" · ", ClassroomCourses));
+            }
+
+            return string.Join("  ·  ", parts);
+        }
+    }
 }
 
 public sealed class StudentListDto
 {
     public List<StudentDto> Students { get; set; } = new();
+    public double? LastSync { get; set; }
+    public StudentSourceDto? Source { get; set; }
+}
+
+/// <summary>Where each part of a People row comes from, stated by the backend.</summary>
+public sealed class StudentSourceDto
+{
+    public string? Identity { get; set; }
+    public string? SubmissionStatus { get; set; }
+    public string? Scores { get; set; }
+    public string? Email { get; set; }
+
+    public string EmailText => string.IsNullOrWhiteSpace(Email)
+        ? "source not reported"
+        : Email!;
 }
 
 public sealed class StudentClassesDto
@@ -539,6 +788,13 @@ public sealed class ClassroomSubmissionDto
 
     public string TitleText => StudentName ?? UserId ?? Id;
     public string GradeText => string.IsNullOrWhiteSpace(Grade) ? "—" : Grade!;
+
+    /// <summary>Google returns TURNED_IN / RETURNED; read them as words.</summary>
+    public string StateText => Core.UI.PayloadFacts.StatusLabel(State);
+
+    public string LateText => string.IsNullOrWhiteSpace(Late)
+        ? "—"
+        : string.Equals(Late, "true", StringComparison.OrdinalIgnoreCase) ? "Handed in late" : "On time";
 }
 
 public sealed class ClassroomSubmissionListDto
@@ -621,7 +877,7 @@ public sealed class KeyStatusDto
     public int Requests { get; set; }
     public int Successes { get; set; }
 
-    public string StatusText => string.IsNullOrWhiteSpace(Status) ? "—" : Status!;
+    public string StatusText => Core.UI.PayloadFacts.StatusLabel(Status);
     public string CooldownText => CooldownRemaining is > 0
         ? TimeSpan.FromSeconds(CooldownRemaining.Value).ToString(@"mm\:ss")
         : "—";
@@ -655,7 +911,35 @@ public sealed class WorkerStateDto
     public int Running { get; set; }
     public int Recommended { get; set; }
 
+    /// <summary>The provider circuit state the backend reports (a model that is
+    /// cooling down after high demand pauses the queue; the dashboard says so
+    /// instead of leaving a queued card looking stuck for no reason).</summary>
+    public JsonElement? Provider { get; set; }
+
     public string Summary => $"Running {Running} of {Requested} requested (recommended {Recommended})";
+
+    public bool ProviderPaused => Provider is { ValueKind: JsonValueKind.Object } provider
+        && provider.TryGetProperty("available", out var available)
+        && available.ValueKind == JsonValueKind.False;
+
+    public string ProviderText
+    {
+        get
+        {
+            if (!ProviderPaused)
+            {
+                return string.Empty;
+            }
+
+            var seconds = Provider!.Value.TryGetProperty("cooldown_remaining", out var value)
+                          && value.TryGetDouble(out var parsed)
+                ? (int)Math.Ceiling(parsed)
+                : 0;
+            return seconds > 0
+                ? $"Gemini cooling down ~{seconds}s — queued jobs are paused"
+                : "Gemini is cooling down — queued jobs are paused";
+        }
+    }
 }
 
 public sealed class UsageDto
@@ -697,7 +981,12 @@ public sealed class UsageHistoryDto
     public long Up { get; set; }
     public long Down { get; set; }
     public double Megabytes => (Up + Down) / 1024d / 1024d;
-    public string BucketText => EpochTime.ToLocal(Bucket)?.ToString("MM-dd HH:mm") ?? "—";
+    public string BucketText => EpochTime.ToLocal(Bucket)?.ToString("dd MMM, HH:mm") ?? "—";
+
+    /// <summary>Byte counts written the way a person reads them.</summary>
+    public string UpText => SizeText.Of(Up);
+    public string DownText => SizeText.Of(Down);
+    public string TotalText => SizeText.Of(Up + Down);
 }
 
 public sealed class ApiUsageDto

@@ -696,11 +696,15 @@ public sealed partial class MathCheckerApiClient : IDisposable
         return document.RootElement.Clone();
     }
 
-    public Task<JsonElement> ClassroomSyncStatusAsync(CancellationToken cancellationToken = default) =>
-        GetJsonAsync("classroom/sync", cancellationToken);
-
-    public Task<JsonElement> StartClassroomSyncAsync(CancellationToken cancellationToken = default) =>
-        SendJsonRawAsync(HttpMethod.Post, "classroom/sync/start", new { }, cancellationToken);
+    /// <summary>Starts a sync in the background; progress is polled through
+    /// <see cref="ClassroomSyncProgressAsync"/>. With both ids it is scoped to
+    /// ONE assignment (used to retry just the parts a run failed on), with
+    /// neither it is the full class sync.</summary>
+    public Task<JsonElement> StartClassroomSyncAsync(string? courseId = null, string? courseworkId = null,
+        CancellationToken cancellationToken = default) =>
+        SendJsonRawAsync(HttpMethod.Post,
+            "classroom/sync/start" + Query(("course_id", courseId), ("coursework_id", courseworkId)),
+            new { }, cancellationToken);
 
     public Task<JsonElement> ClassroomSyncProgressAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync("classroom/sync/progress", cancellationToken);
@@ -726,6 +730,26 @@ public sealed partial class MathCheckerApiClient : IDisposable
 
     public Task<JsonElement> ClassReportAsync(string courseId, CancellationToken cancellationToken = default) =>
         GetJsonAsync($"reports/class/{Uri.EscapeDataString(courseId)}", cancellationToken);
+
+    /// <summary>One report over several chosen assignments. The combined figure
+    /// is the backend's mark fraction (sum earned / sum available), never an
+    /// average of per-assignment percentages.</summary>
+    public Task<JsonElement> MultiAssignmentReportAsync(IEnumerable<string> courseworkIds,
+        string? classLabel = null, string? courseId = null, string? student = null,
+        CancellationToken cancellationToken = default) =>
+        GetJsonAsync("reports/assignments" + Query(
+            ("ids", string.Join(",", courseworkIds)),
+            ("class_label", classLabel), ("course_id", courseId), ("student", student)),
+            cancellationToken);
+
+    public Task<DownloadFile> ExportMultiAssignmentReportAsync(IEnumerable<string> courseworkIds,
+        string format = "pdf", string? classLabel = null, string? courseId = null,
+        string? student = null, CancellationToken cancellationToken = default) =>
+        DownloadAsync("reports/assignments/export" + Query(
+                ("ids", string.Join(",", courseworkIds)),
+                ("class_label", classLabel), ("course_id", courseId),
+                ("student", student), ("format", format)),
+            $"assignments-report.{format}", cancellationToken);
 
     public Task<JsonElement> ClassReportFilteredAsync(string? classLabel, string? courseId,
         CancellationToken cancellationToken = default) =>
