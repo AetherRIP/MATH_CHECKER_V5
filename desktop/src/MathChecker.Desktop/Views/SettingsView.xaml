@@ -121,15 +121,33 @@
                         <CheckBox Content="Google Classroom enabled" IsChecked="{Binding ClassroomEnabled}" />
                         <CheckBox Content="Write draft grades back to Classroom"
                                   IsChecked="{Binding WriteDraftGrades}" />
+
+                        <TextBlock Text="APPEARANCE" Style="{StaticResource SectionTitle}" Margin="0,16,0,6" />
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton Content="Light" GroupName="appearance"
+                                         Style="{StaticResource SegmentToggle}"
+                                         IsChecked="{Binding IsLightTheme, Mode=OneWay}"
+                                         Command="{Binding LightThemeCommand}"
+                                         AutomationProperties.Name="Light appearance" />
+                            <RadioButton Content="Dark" GroupName="appearance"
+                                         Style="{StaticResource SegmentToggle}"
+                                         IsChecked="{Binding IsDarkTheme, Mode=OneWay}"
+                                         Command="{Binding DarkThemeCommand}"
+                                         AutomationProperties.Name="Dark appearance" />
+                        </StackPanel>
+                        <TextBlock Text="Applies immediately and is remembered for the next launch."
+                                   Style="{StaticResource CardSubtitle}" Margin="0,6,0,0" />
                     </StackPanel>
                 </Border>
 
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
-                        <TextBlock Text="READ-ONLY BACKEND FACTS" Style="{StaticResource SectionLabel}"
-                                   Margin="0,0,0,8" />
-                        <TextBox Style="{StaticResource JsonBox}" Text="{Binding ReadOnlyText, Mode=OneWay}"
-                                 Height="96" Margin="0" />
+                        <TextBlock Text="WHAT THE BACKEND REPORTS" Style="{StaticResource SectionLabel}"
+                                   Margin="0,0,0,6" />
+                        <TextBlock Text="Read-only facts gathered by the backend at startup."
+                                   Style="{StaticResource CardSubtitle}" Margin="0,0,0,6" />
+                        <ItemsControl ItemsSource="{Binding ReadOnlyFacts}"
+                                      ItemTemplate="{StaticResource FactRowTemplate}" />
                     </StackPanel>
                 </Border>
             </StackPanel>

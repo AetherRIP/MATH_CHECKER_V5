@@ -32,7 +32,7 @@
                         <CheckBox Content="Return work" IsChecked="{Binding ReturnWork}" />
                     </WrapPanel>
 
-                    <Border Height="1" Background="{StaticResource HairlineBrush}" Margin="0,10,0,10" />
+                    <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,10,0,10" />
 
                     <WrapPanel>
                         <TextBlock Text="Interval (min)" Style="{StaticResource FieldLabel}" />
@@ -40,12 +40,14 @@
                                   SelectedItem="{Binding IntervalMinutes}" />
                         <TextBlock Text="Report detail" Style="{StaticResource FieldLabel}" Margin="10,0,6,0" />
                         <ComboBox Width="120" ItemsSource="{Binding ReportDetails}"
-                                  SelectedItem="{Binding ReportDetail}" />
+                                  SelectedValuePath="Value" SelectedValue="{Binding ReportDetail}" />
                         <Button Content="Save settings" Style="{StaticResource PrimaryButton}"
                                 Command="{Binding SaveSettingsCommand}" Height="34" Padding="14,4" />
                         <Button Content="Approve selected" Command="{Binding ApproveCommand}"
-                                Height="34" Padding="12,4" />
+                                Height="34" Padding="12,4" IsEnabled="{Binding HasSelection}"
+                                ToolTip="Select a job row first" />
                         <Button Content="Retry selected" Command="{Binding RetryCommand}"
+                                IsEnabled="{Binding HasSelection}" ToolTip="Select a job row first"
                                 Height="34" Padding="12,4" Margin="0" />
                     </WrapPanel>
                 </StackPanel>
@@ -88,16 +90,32 @@
                 </DockPanel>
             </Border>
 
-            <Border Style="{StaticResource Card}" Margin="0,12,0,0" Height="170" Padding="12">
-                <DockPanel>
-                    <DockPanel DockPanel.Dock="Top" Margin="2,0,0,6">
-                        <TextBlock Text="AUTOMATION LOG" Style="{StaticResource SectionLabel}"
+            <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock Text="AUTOMATION ACTIVITY" Style="{StaticResource SectionLabel}"
                                    VerticalAlignment="Center" />
                         <Button DockPanel.Dock="Right" Content="Clear log" Command="{Binding ClearLogCommand}"
                                 Height="26" Padding="9,2" HorizontalAlignment="Right" />
                     </DockPanel>
-                    <TextBox Style="{StaticResource JsonBox}" Text="{Binding LogText, Mode=OneWay}" Margin="0" />
-                </DockPanel>
+                    <ScrollViewer MaxHeight="170" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding LogLines}" AutomationProperties.Name="Automation log">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="12" Margin="0,2"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <Expander Header="Technical details" Margin="0,10,0,0"
+                              Visibility="{Binding HasLogRaw, Converter={StaticResource BoolToVis}}">
+                        <TextBox Style="{StaticResource JsonBox}" Text="{Binding LogRaw, Mode=OneWay}"
+                                 Margin="0,4,0,0" MinHeight="110" MaxHeight="240" />
+                    </Expander>
+                </StackPanel>
             </Border>
         </StackPanel>
         </ScrollViewer>

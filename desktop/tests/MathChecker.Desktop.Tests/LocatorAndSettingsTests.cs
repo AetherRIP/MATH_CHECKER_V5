@@ -55,6 +55,23 @@ public class LocatorAndSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Reports_nothing_when_the_install_has_no_backend_folder()
+    {
+        // The installed-but-broken case: discovery must come back empty so the
+        // shell can say "the backend was not found" (BackendHost failure
+        // status) instead of guessing a path and starting something else.
+        var empty = Directory.CreateTempSubdirectory("mc5-nobackend-").FullName;
+        try
+        {
+            Assert.Null(BackendLocator.FindBackendDirectory("", empty, empty));
+        }
+        finally
+        {
+            try { Directory.Delete(empty, true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
     public void An_explicit_setting_wins_and_an_invalid_one_falls_back()
     {
         var checkout = MakeCheckout();

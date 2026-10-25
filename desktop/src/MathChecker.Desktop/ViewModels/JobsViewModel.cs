@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Threading;
 using MathChecker.Desktop.Core;
+using MathChecker.Desktop.Core.UI;
 using MathChecker.Desktop.Models;
 
 namespace MathChecker.Desktop.ViewModels;
@@ -10,9 +11,14 @@ public sealed class JobsViewModel : PageViewModel
 {
     private readonly bool _showWorkers;
     private readonly DispatcherTimer _timer;
-    private readonly List<string> _statusFilters = new()
+    private readonly List<ChoiceOption> _statusFilters = new()
     {
-        "all", "QUEUED", "MARKING", "COMPLETED", "FAILED", "CANCELLED",
+        new("All jobs", "all"),
+        new("Queued", "QUEUED"),
+        new("Marking", "MARKING"),
+        new("Completed", "COMPLETED"),
+        new("Failed", "FAILED"),
+        new("Cancelled", "CANCELLED"),
     };
 
     private JobDto? _selected;
@@ -32,7 +38,7 @@ public sealed class JobsViewModel : PageViewModel
     }
 
     public ObservableCollection<JobDto> Items { get; } = new();
-    public ObservableCollection<string> StatusFilters => new(_statusFilters);
+    public ObservableCollection<ChoiceOption> StatusFilters => new(_statusFilters);
 
     public bool ShowWorkers => _showWorkers;
 
@@ -43,23 +49,46 @@ public sealed class JobsViewModel : PageViewModel
         {
             if (SetProperty(ref _selected, value))
             {
-                OnPropertyChanged(nameof(SelectedDetail));
                 OnPropertyChanged(nameof(HasSelection));
+                RefreshSelectedFacts();
             }
         }
     }
 
     public bool HasSelection => Selected is not null;
 
-    public string SelectedDetail => Selected is null
-        ? "Select a job to see its stage, attempts and error."
-        : $"Job {Selected.Id}\n"
-          + $"Status: {Selected.Status} · attempt {Selected.Attempts}/{Selected.MaxAttempts}\n"
-          + $"Student: {Selected.StudentName ?? Selected.StudentId ?? "—"}\n"
-          + $"Created: {Selected.CreatedText} · finished: {EpochTime.Format(Selected.FinishedAt)}\n"
-          + $"Stage: {Selected.StageText}\n"
-          + (string.IsNullOrWhiteSpace(Selected.Error) ? string.Empty : $"Error: {Selected.Error}\n")
-          + (string.IsNullOrWhiteSpace(Selected.ResultId) ? string.Empty : $"Result: {Selected.ResultId}");
+    /// <summary>The selected job as labelled facts. It used to be one
+    /// concatenated string in a monospace box, which read like debug output.</summary>
+    public ObservableCollection<FactRow> SelectedFacts { get; } = new();
+
+    private void RefreshSelectedFacts()
+    {
+        SelectedFacts.Clear();
+        var job = Selected;
+        if (job is null)
+        {
+            return;
+        }
+
+        SelectedFacts.Add(new FactRow("Status", PayloadFacts.StatusLabel(job.Status)));
+        SelectedFacts.Add(new FactRow("Stage", string.IsNullOrWhiteSpace(job.StageText)
+            ? "Waiting for the worker"
+            : job.StageText));
+        SelectedFacts.Add(new FactRow("Student", job.StudentName ?? job.StudentId ?? "—"));
+        SelectedFacts.Add(new FactRow("Attempt", $"{job.Attempts} of {job.MaxAttempts}"));
+        SelectedFacts.Add(new FactRow("Progress", $"{job.Progress * 100:0}%"));
+        SelectedFacts.Add(new FactRow("Created", job.CreatedText));
+        SelectedFacts.Add(new FactRow("Finished", EpochTime.Format(job.FinishedAt)));
+        if (!string.IsNullOrWhiteSpace(job.Error))
+        {
+            SelectedFacts.Add(new FactRow("Error", job.Error!));
+        }
+
+        if (!string.IsNullOrWhiteSpace(job.ResultId))
+        {
+            SelectedFacts.Add(new FactRow("Result ID", job.ResultId!));
+        }
+    }
 
     public string StatusFilter
     {
@@ -94,7 +123,8 @@ public sealed class JobsViewModel : PageViewModel
             return;
         }
 
-        if (!Session.Dialogs.Confirm("Cancel job", $"Cancel job {Selected.Id}?"))
+        var who = string.IsNullOrWhiteSpace(Selected.StudentName) ? "this paper" : Selected.StudentName;
+        if (!Session.Dialogs.Confirm("Cancel job", $"Cancel the correction of {who}?"))
         {
             return;
         }
@@ -147,7 +177,7 @@ public sealed class JobsViewModel : PageViewModel
         }
 
         Selected = previousId is null ? null : Items.FirstOrDefault(j => j.Id == previousId);
-        OnPropertyChanged(nameof(SelectedDetail));
+        RefreshSelectedFacts();
         OnPropertyChanged(nameof(IsEmpty));
 
         if (_showWorkers)
@@ -205,7 +235,7 @@ public sealed class JobsViewModel : PageViewModel
         if (selectedId is not null)
         {
             Selected = Items.FirstOrDefault(i => i.Id == selectedId);
-            OnPropertyChanged(nameof(SelectedDetail));
+            RefreshSelectedFacts();
         }
 
         OnPropertyChanged(nameof(IsEmpty));

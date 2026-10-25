@@ -5,6 +5,7 @@ using MathChecker.Desktop.Core.Api;
 using MathChecker.Desktop.Core.Backend;
 using MathChecker.Desktop.Core.Configuration;
 using MathChecker.Desktop.Core.Diagnostics;
+using MathChecker.Desktop.Core.UI;
 
 namespace MathChecker.Desktop;
 
@@ -36,6 +37,7 @@ public partial class App : Application
         }
 
         var settings = DesktopSettings.Load();
+        ThemeManager.ApplySaved(settings.Appearance);
         _log = new FileLog();
         _log.Info($"desktop starting (base: {AppContext.BaseDirectory})");
 

@@ -7,13 +7,15 @@ namespace MathChecker.Desktop.Core.UI;
 /// <summary>
 /// WPF keeps the native frame, so the title bar is painted by DWM. Both the
 /// current and pre-20H1 attribute numbers are tried; failure is harmless.
+/// The title bar follows ThemeManager, so a light shell never keeps a
+/// black caption and a dark shell never keeps a white one.
 /// </summary>
 public static class WindowTheme
 {
     private const int UseImmersiveDarkMode = 20;
     private const int UseImmersiveDarkModeBefore20H1 = 19;
 
-    public static void ApplyDarkTitleBar(Window window)
+    public static void ApplyTitleBar(Window window)
     {
         if (new WindowInteropHelper(window).Handle != IntPtr.Zero)
         {
@@ -23,6 +25,9 @@ public static class WindowTheme
 
         window.SourceInitialized += (_, _) => Apply(window);
     }
+
+    /// <summary>Repaint the caption after a live appearance switch.</summary>
+    public static void Refresh(Window window) => Apply(window);
 
     private static void Apply(Window window)
     {
@@ -34,7 +39,7 @@ public static class WindowTheme
                 return;
             }
 
-            var enabled = 1;
+            var enabled = ThemeManager.Current == AppAppearance.Dark ? 1 : 0;
             if (DwmSetWindowAttribute(handle, UseImmersiveDarkMode, ref enabled,
                     sizeof(int)) != 0)
             {

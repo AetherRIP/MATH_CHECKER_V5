@@ -51,6 +51,9 @@ public sealed class DesktopSettings
     /// <summary>True when the navigation rail is the 72 DIP icon rail.</summary>
     public bool RailCollapsed { get; set; }
 
+    /// <summary>"light" or "dark"; the shell's appearance.</summary>
+    public string Appearance { get; set; } = "light";
+
     public static string DefaultDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "MathCheckerDesktop");
@@ -94,6 +97,9 @@ public sealed class DesktopSettings
         StartupTimeoutSeconds = Math.Clamp(StartupTimeoutSeconds, 5, 600);
         WindowWidth = Math.Clamp(WindowWidth, 900, 10000);
         WindowHeight = Math.Clamp(WindowHeight, 600, 10000);
+        Appearance = string.Equals(Appearance, "dark", StringComparison.OrdinalIgnoreCase)
+            ? "dark"
+            : "light";
         return this;
     }
 

@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using MathChecker.Desktop.Core;
+using MathChecker.Desktop.Core.UI;
 using MathChecker.Desktop.Models;
 
 namespace MathChecker.Desktop.ViewModels;
@@ -20,7 +22,6 @@ public sealed class SettingsViewModel : PageViewModel
     private bool _debug;
     private bool _classroomEnabled;
     private bool _writeDraftGrades;
-    private string _readOnlyText = string.Empty;
 
     public SettingsViewModel(AppSession session)
         : base(session, "settings", "Settings")
@@ -43,10 +44,35 @@ public sealed class SettingsViewModel : PageViewModel
     public bool ClassroomEnabled { get => _classroomEnabled; set => SetProperty(ref _classroomEnabled, value); }
     public bool WriteDraftGrades { get => _writeDraftGrades; set => SetProperty(ref _writeDraftGrades, value); }
 
-    public string ReadOnlyText
+    /// <summary>Facts the backend owns (role, key count, access mode) shown as
+    /// labelled values instead of a sentence with slashes and colons.</summary>
+    public ObservableCollection<FactRow> ReadOnlyFacts { get; } = new();
+
+    /// <summary>Which appearance pill is active. Switching is immediate: every
+    /// colour in the shell is a DynamicResource, so no page is rebuilt.</summary>
+    public bool IsLightTheme => ThemeManager.Current == AppAppearance.Light;
+
+    public bool IsDarkTheme => ThemeManager.Current == AppAppearance.Dark;
+
+    public RelayCommand LightThemeCommand => Sync(() => SetAppearance(AppAppearance.Light));
+
+    public RelayCommand DarkThemeCommand => Sync(() => SetAppearance(AppAppearance.Dark));
+
+    private void SetAppearance(AppAppearance appearance)
     {
-        get => _readOnlyText;
-        private set => SetProperty(ref _readOnlyText, value);
+        if (ThemeManager.Current == appearance)
+        {
+            return;
+        }
+
+        ThemeManager.Apply(appearance);
+        Session.Settings.Appearance = ThemeManager.Serialize(appearance);
+        Session.Settings.Save();
+        OnPropertyChanged(nameof(IsLightTheme));
+        OnPropertyChanged(nameof(IsDarkTheme));
+        Status = appearance == AppAppearance.Dark
+            ? "Dark appearance applied and saved."
+            : "Light appearance applied and saved.";
     }
 
     public AsyncCommand SaveCommand => Command(async () =>
@@ -99,12 +125,16 @@ public sealed class SettingsViewModel : PageViewModel
         ClassroomEnabled = settings.Classroom?.Enabled ?? false;
         WriteDraftGrades = settings.Classroom?.WriteDraftGrades ?? false;
 
-        var models = string.Join(", ", settings.Gemini?.PrimaryModels ?? new List<string>());
-        ReadOnlyText =
-            $"Role: {settings.Role ?? "—"} · Gemini keys: {settings.GeminiKeyCount} · "
-            + $"OAuth client: {(settings.HasOauthClient ? "present" : "missing")}\n"
-            + $"Models: {models}\n"
-            + $"Network: {settings.Network?.AccessMode ?? "—"} on port {settings.Network?.Port} · "
-            + $"lifecycle supervisor {(settings.Lifecycle?.Supervisor == true ? "on" : "off")}";
+        var models = settings.Gemini?.PrimaryModels ?? new List<string>();
+        ReadOnlyFacts.Clear();
+        ReadOnlyFacts.Add(new FactRow("Signed-in role", PayloadFacts.StatusLabel(settings.Role)));
+        ReadOnlyFacts.Add(new FactRow("AI keys", settings.GeminiKeyCount.ToString()));
+        ReadOnlyFacts.Add(new FactRow("Google OAuth client",
+            settings.HasOauthClient ? "Configured" : "Not configured"));
+        ReadOnlyFacts.Add(new FactRow("Models", models.Count == 0 ? "None reported" : string.Join(", ", models)));
+        ReadOnlyFacts.Add(new FactRow("Access", $"{PayloadFacts.StatusLabel(settings.Network?.AccessMode)} · "
+                                                   + $"port {settings.Network?.Port ?? 0}"));
+        ReadOnlyFacts.Add(new FactRow("Lifecycle supervisor",
+            settings.Lifecycle?.Supervisor == true ? "On" : "Off"));
     }
 }

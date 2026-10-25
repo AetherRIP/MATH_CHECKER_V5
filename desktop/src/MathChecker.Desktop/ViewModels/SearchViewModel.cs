@@ -17,6 +17,7 @@ public sealed class SearchViewModel : PageViewModel
 {
     private string _query = string.Empty;
     private string _summary = "Type a student, class, assignment or result id.";
+    private bool _hasSearched;
 
     public SearchViewModel(AppSession session)
         : base(session, "search", "Search")
@@ -31,6 +32,25 @@ public sealed class SearchViewModel : PageViewModel
 
     public ObservableCollection<SearchHit> Hits { get; } = new();
 
+    /// <summary>False before the first search. The page must not open on
+    /// "Nothing found", which reads like a search that failed.</summary>
+    public bool HasSearched
+    {
+        get => _hasSearched;
+        private set
+        {
+            if (SetProperty(ref _hasSearched, value))
+            {
+                OnPropertyChanged(nameof(ShowNoResults));
+                OnPropertyChanged(nameof(ShowInitialHint));
+            }
+        }
+    }
+
+    public bool ShowNoResults => HasSearched && Hits.Count == 0;
+
+    public bool ShowInitialHint => !HasSearched;
+
     public string Summary
     {
         get => _summary;
@@ -40,11 +60,14 @@ public sealed class SearchViewModel : PageViewModel
     public AsyncCommand SearchCommand => Command(async () =>
     {
         Hits.Clear();
+        OnPropertyChanged(nameof(ShowNoResults));
         if (string.IsNullOrWhiteSpace(Query))
         {
             Summary = "Type a student, class, assignment or result id.";
             return;
         }
+
+        HasSearched = true;
 
         var payload = await Session.Api.SearchAsync(Query);
         foreach (var group in payload.GetProperty("groups").EnumerateArray())
@@ -72,6 +95,7 @@ public sealed class SearchViewModel : PageViewModel
         Summary = payload.TryGetProperty("total", out var total)
             ? $"{total.GetInt32()} matches"
             : $"{Hits.Count} matches";
+        OnPropertyChanged(nameof(ShowNoResults));
     });
 
     protected override Task LoadCoreAsync() => Task.CompletedTask;

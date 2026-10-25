@@ -1,6 +1,9 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
+using System.Text.Json;
 using System.Windows.Threading;
 using MathChecker.Desktop.Core;
+using MathChecker.Desktop.Core.UI;
 using MathChecker.Desktop.Models;
 
 namespace MathChecker.Desktop.ViewModels;
@@ -10,7 +13,7 @@ public sealed class AutomationViewModel : PageViewModel
     private readonly DispatcherTimer _timer;
     private AutomationStatusDto? _status;
     private AutomationJobDto? _selected;
-    private string _logText = string.Empty;
+    private string _logRaw = string.Empty;
 
     private bool _enabled;
     private int _intervalMinutes = 10;
@@ -36,7 +39,12 @@ public sealed class AutomationViewModel : PageViewModel
 
     public ObservableCollection<AutomationJobDto> Items { get; } = new();
     public ObservableCollection<int> Intervals { get; } = new() { 5, 10, 15, 30 };
-    public ObservableCollection<string> ReportDetails { get; } = new() { "summary", "standard", "detailed" };
+    public ObservableCollection<ChoiceOption> ReportDetails { get; } = new()
+    {
+        new("Summary", "summary"),
+        new("Standard", "standard"),
+        new("Detailed", "detailed"),
+    };
 
     public AutomationJobDto? Selected
     {
@@ -58,10 +66,26 @@ public sealed class AutomationViewModel : PageViewModel
         set => SetProperty(ref _enabled, value);
     }
 
-    public int IntervalMinutes
+    /// <summary>
+    /// The interval combo binds its SelectedItem here. A ComboBox writes null
+    /// back whenever its item list is rebuilt, and a non-nullable int rejects
+    /// that write as a conversion error: the control then showed a red border
+    /// and an empty box for the rest of the session. Nullable keeps that
+    /// transient write legal while the stored value stays a real interval.
+    /// </summary>
+    public int? IntervalMinutes
     {
         get => _intervalMinutes;
-        set => SetProperty(ref _intervalMinutes, value);
+        set
+        {
+            if (value is null || value <= 0 || value == _intervalMinutes)
+            {
+                return;
+            }
+
+            _intervalMinutes = value.Value;
+            OnPropertyChanged(nameof(IntervalMinutes));
+        }
     }
 
     public bool ReviewMode
@@ -107,16 +131,30 @@ public sealed class AutomationViewModel : PageViewModel
 
     public string CountsText => _status is null
         ? "—"
-        : $"pending {_status.PendingJobs} · active {_status.ActiveJobs} · enabled assignments {_status.AssignmentsEnabled}"
+        : $"Pending {_status.PendingJobs} · active {_status.ActiveJobs} · "
+          + $"assignments enabled {_status.AssignmentsEnabled}"
           + (_status.Counts.Count == 0
               ? string.Empty
-              : " · " + string.Join(" · ", _status.Counts.Select(p => $"{p.Key} {p.Value}")));
+              : " · " + string.Join(" · ", _status.Counts
+                  .Select(p => $"{PayloadFacts.KeyLabel(p.Key).ToLowerInvariant()} {p.Value}")));
 
-    public string LogText
+    /// <summary>The activity feed as readable lines (time · level · what
+    /// happened). The raw response is kept for technical details only.</summary>
+    public ObservableCollection<string> LogLines { get; } = new();
+
+    public string LogRaw
     {
-        get => _logText;
-        private set => SetProperty(ref _logText, value);
+        get => _logRaw;
+        private set
+        {
+            if (SetProperty(ref _logRaw, value))
+            {
+                OnPropertyChanged(nameof(HasLogRaw));
+            }
+        }
     }
+
+    public bool HasLogRaw => !string.IsNullOrWhiteSpace(LogRaw);
 
     public AsyncCommand ToggleWorkerCommand => Command(async () =>
     {
@@ -127,10 +165,16 @@ public sealed class AutomationViewModel : PageViewModel
 
     public AsyncCommand SaveSettingsCommand => Command(async () =>
     {
+        if (IntervalMinutes <= 0)
+        {
+            Error = "Choose an interval before saving: the backend will not accept 0 minutes.";
+            return;
+        }
+
         var payload = new
         {
             enabled = Enabled,
-            interval_minutes = IntervalMinutes,
+            interval_minutes = IntervalMinutes ?? 10,
             review_mode = ReviewMode,
             draft_only = DraftOnly,
             attach_report = AttachReport,
@@ -210,7 +254,6 @@ public sealed class AutomationViewModel : PageViewModel
         }
 
         Enabled = _status.Enabled;
-        IntervalMinutes = _status.IntervalMinutes;
         ReviewMode = _status.ReviewMode;
         DraftOnly = _status.DraftOnly;
         AttachReport = _status.AttachReport;
@@ -218,16 +261,82 @@ public sealed class AutomationViewModel : PageViewModel
         ReturnWork = _status.ReturnWork;
         ReportDetail = _status.ReportDetail ?? "detailed";
 
+        // The list has to exist BEFORE the value is applied. Clearing it makes
+        // the ComboBox write null back through SelectedItem, and re-adding the
+        // items afterwards does not restore the choice: the control stayed
+        // blank, and a later save would have posted interval 0.
         Intervals.Clear();
         foreach (var interval in _status.Intervals.Count > 0 ? _status.Intervals : new List<int> { 5, 10, 15, 30 })
         {
             Intervals.Add(interval);
         }
 
-        LogText = Json.Pretty(log);
+        if (_status.IntervalMinutes > 0 && !Intervals.Contains(_status.IntervalMinutes))
+        {
+            Intervals.Add(_status.IntervalMinutes);
+        }
+
+        IntervalMinutes = _status.IntervalMinutes;
+        // Re-read even when the value did not change: the combo lost its
+        // selection while the list was rebuilt.
+        OnPropertyChanged(nameof(IntervalMinutes));
+
+        FillLog(log);
         OnPropertyChanged(nameof(WorkerText));
         OnPropertyChanged(nameof(CountsText));
         OnPropertyChanged(nameof(IsEmpty));
+    }
+
+    private void FillLog(JsonElement log)
+    {
+        LogLines.Clear();
+        LogRaw = PayloadFacts.Raw(log);
+
+        if (!log.TryGetProperty("entries", out var entries) || entries.ValueKind != JsonValueKind.Array)
+        {
+            LogLines.Add("The backend returned no activity entries.");
+            return;
+        }
+
+        foreach (var entry in entries.EnumerateArray())
+        {
+            var message = Text(entry, "message") ?? Text(entry, "event") ?? "Activity recorded";
+            var level = PayloadFacts.StatusLabel(Text(entry, "level"));
+            var stamp = Text(entry, "created_at") ?? Text(entry, "timestamp") ?? Text(entry, "ts");
+
+            var when = string.Empty;
+            if (!string.IsNullOrWhiteSpace(stamp))
+            {
+                when = PayloadFacts.TryFormatTimestamp(stamp!, out var formatted)
+                    ? formatted
+                    : stamp!;
+            }
+
+            LogLines.Add(string.Join("  ·  ", new[] { when, level, message }
+                .Where(part => !string.IsNullOrWhiteSpace(part))));
+        }
+
+        if (LogLines.Count == 0)
+        {
+            LogLines.Add("No automation activity yet. Runs appear here once the worker checks for work.");
+        }
+    }
+
+    private static string? Text(JsonElement element, string property)
+    {
+        if (!element.TryGetProperty(property, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number => value.ToString(),
+            JsonValueKind.True => "On",
+            JsonValueKind.False => "Off",
+            _ => null,
+        };
     }
 
     public override void OnActivated() => _timer.Start();

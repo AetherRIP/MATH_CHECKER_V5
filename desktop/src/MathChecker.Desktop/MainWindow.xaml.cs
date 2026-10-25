@@ -18,7 +18,8 @@ public partial class MainWindow : Window
     public MainWindow(AppSession session)
     {
         InitializeComponent();
-        WindowTheme.ApplyDarkTitleBar(this);
+        WindowTheme.ApplyTitleBar(this);
+        ThemeManager.Changed += (_, _) => WindowTheme.Refresh(this);
         _session = session;
         _viewModel = new MainViewModel(session);
         DataContext = _viewModel;

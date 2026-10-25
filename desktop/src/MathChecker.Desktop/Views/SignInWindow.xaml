@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Sign in — Math Checker" Width="420" SizeToContent="Height"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False">
-    <StackPanel Margin="22" TextElement.Foreground="{StaticResource TextBrush}">
+    <StackPanel Margin="22" TextElement.Foreground="{DynamicResource TextBrush}">
         <TextBlock Text="Sign in" FontSize="18" FontWeight="SemiBold" />
         <TextBlock Text="This backend requires an account. The password is sent only to the local backend and is never stored by this application."
                    Style="{StaticResource Muted}" Margin="0,4,0,12" />

@@ -90,7 +90,10 @@ public class ApiClientTests
         Assert.Equal(400, error.Status);
         Assert.Equal("mark_scheme_missing", error.Code);
         Assert.Equal("Upload the mark scheme first.", error.Message);
-        Assert.Contains("mark_scheme_missing", error.Display);
+        // The code is machine detail: the sentence is what the user reads,
+        // and the code travels in Technical for logs and the details panel.
+        Assert.Equal("Upload the mark scheme first.", error.Display);
+        Assert.Contains("mark_scheme_missing", error.Technical);
     }
 
     [Fact]

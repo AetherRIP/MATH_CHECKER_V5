@@ -108,7 +108,7 @@ public class DeskCommandTests
         Assert.Equal(2, question.Awarded);
         Assert.Equal(1, question.Draft);
         Assert.Equal("1", desk.ActiveQuestion!.Number);
-        Assert.Contains("backend_error", question.Error);
+        Assert.Contains("The marking backend is unavailable.", question.Error);
         Assert.True(desk.HasQuestionError);
         Assert.Single(handler.MarkBodies);
         Assert.Equal("10 / 16", desk.ScoreText);

@@ -1,9 +1,28 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using MathChecker.Desktop.Core;
+using MathChecker.Desktop.Core.UI;
 using MathChecker.Desktop.Models;
 
 namespace MathChecker.Desktop.ViewModels;
+
+/// <summary>One in-page section of Classroom. The tabs share a single view
+/// model, so switching a tab never re-fetches or loses the chosen course.</summary>
+public sealed class ClassroomTabVm
+{
+    public ClassroomTabVm(string key, string title, string detail)
+    {
+        Key = key;
+        Title = title;
+        Detail = detail;
+    }
+
+    public string Key { get; }
+    public string Title { get; }
+    public string Detail { get; }
+
+    public override string ToString() => Title;
+}
 
 public sealed class ClassroomViewModel : PageViewModel
 {
@@ -11,13 +30,51 @@ public sealed class ClassroomViewModel : PageViewModel
     private ClassroomCourseDto? _selectedCourse;
     private ClassroomAssignmentDto? _selectedAssignment;
     private ClassroomSubmissionDto? _selectedSubmission;
-    private string _detailText = string.Empty;
-    private string _syncText = string.Empty;
+    private string _detailNote = string.Empty;
+    private string _detailRaw = string.Empty;
+
+    /// <summary>Set while a load restores a selection by id, so assigning the
+    /// restored item does not start a second, duplicate fetch.</summary>
+    private bool _restoringSelection;
+
+    private ClassroomTabVm _selectedTab;
 
     public ClassroomViewModel(AppSession session)
         : base(session, "classroom", "Classroom")
     {
+        Tabs = new ObservableCollection<ClassroomTabVm>
+        {
+            new("connection", "Connection", "Account, sync and the backend's last answer"),
+            new("assignments", "Assignments", "Allow-list, mark scheme and bulk correction"),
+            new("submissions", "Submissions", "Every paper in the chosen assignment"),
+            new("grades", "Grades", "Write draft marks back to Google Classroom"),
+        };
+        _selectedTab = Tabs[0];
     }
+
+    public ObservableCollection<ClassroomTabVm> Tabs { get; }
+
+    public ClassroomTabVm SelectedTab
+    {
+        get => _selectedTab;
+        set
+        {
+            if (value is null || !SetProperty(ref _selectedTab, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(ShowConnection));
+            OnPropertyChanged(nameof(ShowAssignments));
+            OnPropertyChanged(nameof(ShowSubmissions));
+            OnPropertyChanged(nameof(ShowGrades));
+        }
+    }
+
+    public bool ShowConnection => _selectedTab.Key == "connection";
+    public bool ShowAssignments => _selectedTab.Key == "assignments";
+    public bool ShowSubmissions => _selectedTab.Key == "submissions";
+    public bool ShowGrades => _selectedTab.Key == "grades";
 
     public ObservableCollection<ClassroomCourseDto> Courses { get; } = new();
     public ObservableCollection<ClassroomAssignmentDto> Assignments { get; } = new();
@@ -26,14 +83,119 @@ public sealed class ClassroomViewModel : PageViewModel
     public string StatusText => _status?.StateText ?? "—";
     public string ProblemText => _status?.Problem ?? string.Empty;
     public bool IsConnected => _status?.Connected ?? false;
+
+    public bool IsDisconnected => !IsConnected;
+
+    /// <summary>Every Classroom action below needs an assignment; correcting a
+    /// single paper additionally needs a submission. Without these the buttons
+    /// stay disabled rather than running into a "select something" error.</summary>
+    public bool HasCourse => SelectedCourse is not null;
+
+    public bool HasAssignmentTarget => SelectedCourse is not null && SelectedAssignment is not null;
+
+    public bool HasSubmissionTarget => HasAssignmentTarget && SelectedSubmission is not null;
     public string LastSyncText => _status is null ? "—" : EpochTime.Format(_status.LastSync, "never");
+
+    /// <summary>Short state for the connection panel: connected, or the honest
+    /// reason the account is not (no client, or never signed in).</summary>
+    public string StateTitle => _status is null ? "Checking…"
+        : _status.Connected ? "Connected"
+        : _status.ClientConfigured ? "Not connected" : "OAuth client missing";
+
+    public string StateDetail => _status is null ? string.Empty
+        : _status.Connected ? _status.Email ?? "Google account"
+        : _status.ClientConfigured
+            ? "Sign in with Google to read courses and hand-outs."
+            : "Add a Google OAuth client in Config → Settings first.";
+
+    public string ConnectedSinceText => _status?.Connected == true
+        ? "Connected " + EpochTime.Format(_status.ConnectedAt, "just now")
+        : "No account linked yet";
+
+    public string SyncDetail => _status?.Connected == true
+        ? "Last sync " + EpochTime.Format(_status.LastSync, "never")
+        : "Sync runs once an account is connected";
+
+    public string WriteBackText => _status?.WriteDraftGrades == true
+        ? "Draft write-back is on: corrected marks can be pushed back to Classroom."
+        : "Draft write-back is off. Turn it on in Config → Settings before pushing grades.";
+
+    public bool WriteBackEnabled => _status?.WriteDraftGrades ?? false;
+
+    public string WriteBackLabel => WriteBackEnabled ? "On" : "Off";
+
+    /// <summary>"Open in Classroom" needs a course that actually carries a
+    /// Google link; the command explains itself when the course has none.</summary>
+    public bool CanOpenClassroom => !string.IsNullOrWhiteSpace(SelectedCourse?.AlternateLink);
+
+    /// <summary>Pushing grades needs a target AND the teacher's explicit
+    /// write-back setting; otherwise the button is a request the backend will
+    /// refuse.</summary>
+    public bool CanPushGrades => HasAssignmentTarget && WriteBackEnabled;
+
+    public string CourseCountText => Courses.Count == 1 ? "1 course" : $"{Courses.Count} courses";
+
+    /// <summary>An unknown count is reported as unknown: a course nobody has
+    /// opened yet has no fetched assignment list to count.</summary>
+    public string AssignmentCountText => SelectedCourse is null
+        ? "—"
+        : Assignments.Count == 1 ? "1 assignment" : $"{Assignments.Count} assignments";
+
+    public string SelectedCourseText => SelectedCourse?.Title ?? "No course chosen";
+
+    public string SelectedAssignmentText => SelectedAssignment?.TitleText ?? "No assignment chosen";
+
+    public string AssignmentMetaText => SelectedAssignment is null
+        ? "Choose an assignment to unlock allow-listing, mark schemes and correction."
+        : $"{SelectedAssignment.PointsText} points"
+          + (string.IsNullOrWhiteSpace(SelectedAssignment.DueDate) ? string.Empty
+              : $" · due {SelectedAssignment.DueDate}")
+          + (string.IsNullOrWhiteSpace(SelectedAssignment.State) ? string.Empty
+              : $" · {PayloadFacts.StatusLabel(SelectedAssignment.State)}");
+
+    public string SubmissionsSummary
+    {
+        get
+        {
+            if (Submissions.Count == 0)
+            {
+                return "No submissions loaded yet";
+            }
+
+            var turnedIn = Submissions.Count(s => string.Equals(s.State, "TURNED_IN",
+                StringComparison.OrdinalIgnoreCase));
+            return $"{Submissions.Count} submissions · {turnedIn} turned in";
+        }
+    }
 
     public ClassroomCourseDto? SelectedCourse
     {
         get => _selectedCourse;
         set
         {
-            if (SetProperty(ref _selectedCourse, value) && value is not null)
+            if (!SetProperty(ref _selectedCourse, value))
+            {
+                return;
+            }
+
+            // Changing the course invalidates every assignment and submission
+            // chosen under the previous one: a stale id must never be the
+            // target of "correct" or "push grades" in another classroom.
+            Assignments.Clear();
+            Submissions.Clear();
+            SelectedAssignment = null;
+            SelectedSubmission = null;
+
+            OnPropertyChanged(nameof(HasCourse));
+            OnPropertyChanged(nameof(HasAssignmentTarget));
+            OnPropertyChanged(nameof(HasSubmissionTarget));
+        OnPropertyChanged(nameof(CanPushGrades));
+        OnPropertyChanged(nameof(CanOpenClassroom));
+        OnPropertyChanged(nameof(AssignmentCountText));
+        OnPropertyChanged(nameof(SelectedCourseText));
+            OnPropertyChanged(nameof(SelectedAssignmentText));
+            OnPropertyChanged(nameof(AssignmentMetaText));
+            if (value is not null && !_restoringSelection)
             {
                 _ = LoadAssignmentsAsync(value.Id);
             }
@@ -45,8 +207,20 @@ public sealed class ClassroomViewModel : PageViewModel
         get => _selectedAssignment;
         set
         {
-            if (SetProperty(ref _selectedAssignment, value) && value is not null
-                && SelectedCourse is not null)
+            if (!SetProperty(ref _selectedAssignment, value))
+            {
+                return;
+            }
+
+            Submissions.Clear();
+            SelectedSubmission = null;
+            OnPropertyChanged(nameof(HasAssignmentTarget));
+            OnPropertyChanged(nameof(HasSubmissionTarget));
+            OnPropertyChanged(nameof(CanPushGrades));
+            OnPropertyChanged(nameof(SelectedAssignmentText));
+            OnPropertyChanged(nameof(AssignmentMetaText));
+            OnPropertyChanged(nameof(SubmissionsSummary));
+            if (value is not null && SelectedCourse is not null && !_restoringSelection)
             {
                 _ = LoadSubmissionsAsync(SelectedCourse.Id, value.Id);
             }
@@ -56,25 +230,73 @@ public sealed class ClassroomViewModel : PageViewModel
     public ClassroomSubmissionDto? SelectedSubmission
     {
         get => _selectedSubmission;
-        set => SetProperty(ref _selectedSubmission, value);
+        set
+        {
+            if (SetProperty(ref _selectedSubmission, value))
+            {
+                OnPropertyChanged(nameof(HasSubmissionTarget));
+            }
+        }
     }
 
-    public string DetailText
+    /// <summary>What the backend last answered, said in words and labelled
+    /// facts. The raw JSON stays inside technical details.</summary>
+    public ObservableCollection<FactRow> DetailFacts { get; } = new();
+
+    public string DetailNote
     {
-        get => _detailText;
-        private set => SetProperty(ref _detailText, value);
+        get => _detailNote;
+        private set
+        {
+            if (SetProperty(ref _detailNote, value))
+            {
+                OnPropertyChanged(nameof(HasDetail));
+            }
+        }
     }
 
-    public string SyncText
+    public string DetailRaw
     {
-        get => _syncText;
-        private set => SetProperty(ref _syncText, value);
+        get => _detailRaw;
+        private set
+        {
+            if (SetProperty(ref _detailRaw, value))
+            {
+                OnPropertyChanged(nameof(HasDetailRaw));
+            }
+        }
+    }
+
+    public bool HasDetail => DetailFacts.Count > 0 || !string.IsNullOrWhiteSpace(DetailNote);
+
+    public bool HasDetailRaw => !string.IsNullOrWhiteSpace(DetailRaw);
+
+    private void ShowDetail(JsonElement payload, string fallbackNote)
+    {
+        DetailFacts.Clear();
+        foreach (var fact in PayloadFacts.Of(payload))
+        {
+            // Identifiers belong in technical details; the panel above says
+            // what happened, not which uuid it happened to.
+            if (fact.Label.EndsWith(" ID", StringComparison.Ordinal)
+                || fact.Label is "Kind" or "Path" or "Route")
+            {
+                continue;
+            }
+
+            DetailFacts.Add(fact);
+        }
+
+        DetailRaw = PayloadFacts.Raw(payload);
+        var summary = PayloadFacts.Summarize(payload);
+        DetailNote = string.IsNullOrWhiteSpace(summary) ? fallbackNote : summary;
+        OnPropertyChanged(nameof(HasDetail));
     }
 
     public AsyncCommand ConnectCommand => Command(async () =>
     {
         var payload = await Session.Api.ConnectClassroomAsync();
-        DetailText = Json.Pretty(payload);
+        ShowDetail(payload, "Google sign-in started. Finish it in the browser window that opened.");
         await LoadAsync();
         Status = "The backend started the Google consent flow; complete it in the browser it opened.";
     });
@@ -91,14 +313,39 @@ public sealed class ClassroomViewModel : PageViewModel
         await LoadAsync();
     });
 
+    /// <summary>Classroom owns the synchronized data, so the page frame shows
+    /// the shared Sync control here.</summary>
+    public override bool SyncsFromClassroom => true;
+
+    /// <summary>Runs the shared full sync and WAITS for the backend's terminal
+    /// state before reloading.
+    ///
+    /// The previous version started the job, slept 1.5 s, read ONE progress
+    /// snapshot and reloaded — so the page always showed "Connecting… 5 %"
+    /// while courses, students and submissions were still arriving, and the
+    /// rows it had just fetched were the ones from BEFORE the sync. That is
+    /// exactly why the sync looked like it stopped halfway.</summary>
     public AsyncCommand SyncCommand => Command(async () =>
     {
-        var started = await Session.Api.StartClassroomSyncAsync();
-        DetailText = Json.Pretty(started);
-        await Task.Delay(1500);
-        var progress = await Session.Api.ClassroomSyncProgressAsync();
-        SyncText = Json.Pretty(progress);
+        var result = await Session.Sync.SyncAsync();
+        try
+        {
+            ShowDetail(await Session.Api.ClassroomSyncProgressAsync(),
+                result?.Summary ?? "Sync finished.");
+        }
+        catch (ApiException ex)
+        {
+            DetailNote = ex.Display;
+            DetailRaw = ex.Technical;
+            OnPropertyChanged(nameof(HasDetail));
+            OnPropertyChanged(nameof(HasDetailRaw));
+        }
+
         await LoadAsync();
+        if (result is not null)
+        {
+            Status = result.Summary;
+        }
     });
 
     public AsyncCommand CorrectSelectedCommand => Command(async () =>
@@ -110,15 +357,18 @@ public sealed class ClassroomViewModel : PageViewModel
         }
 
         if (!Session.Dialogs.Confirm("Correct submission",
-                $"Correct the submission of {SelectedSubmission.TitleText}? The AI marker will run once."))
+                $"Correct the submission of {SelectedSubmission.TitleText}?\n\n"
+                + $"Course: {SelectedCourse.Title}\nAssignment: {SelectedAssignment.TitleText}\n\n"
+                + "The AI marker will run once and only this paper is marked."))
         {
             return;
         }
 
         var payload = JsonSerializer.SerializeToElement(
             new { submission_ids = new[] { SelectedSubmission.Id } });
-        DetailText = Json.Pretty(await Session.Api.CorrectSubmissionAsync(
-            SelectedCourse.Id, SelectedAssignment.Id, payload));
+        ShowDetail(await Session.Api.CorrectSubmissionAsync(
+            SelectedCourse.Id, SelectedAssignment.Id, payload),
+            $"Correction queued for {SelectedSubmission.TitleText}.");
         Status = "Correction queued.";
     });
 
@@ -131,15 +381,17 @@ public sealed class ClassroomViewModel : PageViewModel
         }
 
         if (!Session.Dialogs.Confirm("Correct the whole assignment",
-                $"Correct every eligible submission of \"{SelectedAssignment.TitleText}\"?\n\n"
+                $"Correct every eligible submission of \"{SelectedAssignment.TitleText}\" "
+                + $"in \"{SelectedCourse.Title}\"?\n\n"
                 + "Students who have not handed anything in are skipped, and the assignment must be "
                 + "allow-listed with a mark scheme."))
         {
             return;
         }
 
-        DetailText = Json.Pretty(await Session.Api.CorrectAllAsync(
-            SelectedCourse.Id, SelectedAssignment.Id, refresh: true));
+        ShowDetail(await Session.Api.CorrectAllAsync(
+            SelectedCourse.Id, SelectedAssignment.Id, refresh: true),
+            $"Every eligible paper in “{SelectedAssignment.TitleText}” was queued.");
         await LoadAsync();
     });
 
@@ -151,7 +403,11 @@ public sealed class ClassroomViewModel : PageViewModel
         }
 
         await Session.Api.SetAllowlistAsync(SelectedCourse.Id, SelectedAssignment.Id, true);
-        DetailText = "Assignment allow-listed for automatic corrections.";
+        DetailFacts.Clear();
+        DetailRaw = string.Empty;
+        DetailNote = $"“{SelectedAssignment.TitleText}” is allow-listed for automatic corrections.";
+        OnPropertyChanged(nameof(HasDetail));
+        OnPropertyChanged(nameof(HasDetailRaw));
     });
 
     public AsyncCommand UploadMarkSchemeCommand => Command(async () =>
@@ -167,8 +423,9 @@ public sealed class ClassroomViewModel : PageViewModel
             return;
         }
 
-        DetailText = Json.Pretty(await Session.Api.UploadMarkSchemeAsync(
-            SelectedCourse.Id, SelectedAssignment.Id, path));
+        ShowDetail(await Session.Api.UploadMarkSchemeAsync(
+            SelectedCourse.Id, SelectedAssignment.Id, path),
+            $"The mark scheme for “{SelectedAssignment.TitleText}” was uploaded.");
         Status = "Mark scheme uploaded.";
     });
 
@@ -180,13 +437,15 @@ public sealed class ClassroomViewModel : PageViewModel
         }
 
         if (!Session.Dialogs.Confirm("Push draft grades",
-                "Write the corrected marks back to Google Classroom as draft grades? This needs the "
-                + "grade write-back setting enabled."))
+                $"Write the corrected marks for \"{SelectedAssignment.TitleText}\" "
+                + $"in \"{SelectedCourse.Title}\" back to Google Classroom as draft grades?\n\n"
+                + "This changes grades in Google Classroom; it needs the grade write-back setting enabled."))
         {
             return;
         }
 
-        DetailText = Json.Pretty(await Session.Api.PushGradesAsync(SelectedCourse.Id, SelectedAssignment.Id));
+        ShowDetail(await Session.Api.PushGradesAsync(SelectedCourse.Id, SelectedAssignment.Id),
+            "Draft grades were written back to Google Classroom.");
     });
 
     public RelayCommand OpenExternalCommand => Sync(() =>
@@ -207,15 +466,56 @@ public sealed class ClassroomViewModel : PageViewModel
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(ProblemText));
         OnPropertyChanged(nameof(IsConnected));
+        OnPropertyChanged(nameof(IsDisconnected));
         OnPropertyChanged(nameof(LastSyncText));
+        OnPropertyChanged(nameof(StateTitle));
+        OnPropertyChanged(nameof(StateDetail));
+        OnPropertyChanged(nameof(ConnectedSinceText));
+        OnPropertyChanged(nameof(SyncDetail));
+        OnPropertyChanged(nameof(WriteBackText));
+        OnPropertyChanged(nameof(WriteBackEnabled));
+        OnPropertyChanged(nameof(WriteBackLabel));
+        OnPropertyChanged(nameof(CanOpenClassroom));
+        OnPropertyChanged(nameof(CanPushGrades));
+        OnPropertyChanged(nameof(CourseCountText));
+        OnPropertyChanged(nameof(AssignmentCountText));
+        OnPropertyChanged(nameof(SelectedCourseText));
+        OnPropertyChanged(nameof(SelectedAssignmentText));
+        OnPropertyChanged(nameof(AssignmentMetaText));
+        OnPropertyChanged(nameof(SubmissionsSummary));
 
-        SyncText = Json.Pretty(await Session.Api.ClassroomSyncStatusAsync());
+        // /classroom/sync streams server-sent events, so it can never be read as
+        // JSON. The pollable snapshot is /classroom/sync/progress; a failure here
+        // is cosmetic and must not stop the course list from loading.
+        try
+        {
+            var progress = await Session.Api.ClassroomSyncProgressAsync();
+            ShowDetail(progress, "Sync progress read from the backend.");
+        }
+        catch (ApiException ex)
+        {
+            DetailNote = ex.Display;
+            DetailRaw = ex.Technical;
+            OnPropertyChanged(nameof(HasDetail));
+            OnPropertyChanged(nameof(HasDetailRaw));
+        }
 
         if (!_status.Connected)
         {
+            // A stale selection from an earlier connection must not leave the
+            // course/assignment actions looking available.
             Courses.Clear();
+            Assignments.Clear();
+            Submissions.Clear();
+            SelectedCourse = null;
+            SelectedAssignment = null;
+            SelectedSubmission = null;
             return;
         }
+
+        var keepCourseId = SelectedCourse?.Id;
+        var keepAssignmentId = SelectedAssignment?.Id;
+        var keepSubmissionId = SelectedSubmission?.Id;
 
         var courses = await Session.Api.ClassroomCoursesAsync();
         Courses.Clear();
@@ -224,13 +524,33 @@ public sealed class ClassroomViewModel : PageViewModel
             Courses.Add(course);
         }
 
-        if (SelectedCourse is null && Courses.Count > 0)
+        OnPropertyChanged(nameof(CourseCountText));
+
+        // Keep the teacher's own choice across a refresh, but never pick one for
+        // them: auto-selecting the first course and its first assignment armed
+        // "correct" and "push grades" against a classroom nobody chose. The
+        // destructive actions must follow an explicit choice, not list order.
+        var keep = keepCourseId is null
+            ? null
+            : Courses.FirstOrDefault(c => c.Id == keepCourseId);
+        _restoringSelection = true;
+        try
         {
-            SelectedCourse = Courses[0];
+            SelectedCourse = keep;
+        }
+        finally
+        {
+            _restoringSelection = false;
+        }
+
+        if (keep is not null)
+        {
+            await LoadAssignmentsAsync(keep.Id, keepAssignmentId, keepSubmissionId);
         }
     }
 
-    private async Task LoadAssignmentsAsync(string courseId)
+    private async Task LoadAssignmentsAsync(string courseId, string? keepAssignmentId = null,
+        string? keepSubmissionId = null)
     {
         try
         {
@@ -253,7 +573,27 @@ public sealed class ClassroomViewModel : PageViewModel
                 }
             }
 
-            SelectedAssignment = Assignments.FirstOrDefault();
+            OnPropertyChanged(nameof(AssignmentCountText));
+
+            // The teacher picks the assignment; a reload only keeps a choice
+            // that still exists in the fresh list.
+            var restored = keepAssignmentId is null
+                ? null
+                : Assignments.FirstOrDefault(a => a.Id == keepAssignmentId);
+            _restoringSelection = true;
+            try
+            {
+                SelectedAssignment = restored;
+            }
+            finally
+            {
+                _restoringSelection = false;
+            }
+
+            if (restored is not null)
+            {
+                await LoadSubmissionsAsync(courseId, restored.Id, keepSubmissionId);
+            }
         }
         catch (ApiException ex)
         {
@@ -261,12 +601,14 @@ public sealed class ClassroomViewModel : PageViewModel
         }
     }
 
-    private async Task LoadSubmissionsAsync(string courseId, string courseworkId)
+    private async Task LoadSubmissionsAsync(string courseId, string courseworkId,
+        string? keepSubmissionId = null)
     {
         try
         {
             var payload = await Session.Api.ClassroomSubmissionsAsync(courseId, courseworkId);
             Submissions.Clear();
+            OnPropertyChanged(nameof(SubmissionsSummary));
             if (payload.TryGetProperty("submissions", out var list) && list.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in list.EnumerateArray())
@@ -277,13 +619,28 @@ public sealed class ClassroomViewModel : PageViewModel
                         UserId = item.TryGetProperty("user_id", out var user) ? user.GetString() : null,
                         StudentName = item.TryGetProperty("student_name", out var name) ? name.GetString() : null,
                         State = item.TryGetProperty("state", out var state) ? state.GetString() : null,
-                        Grade = item.TryGetProperty("assigned_grade", out var grade) ? grade.ToString() : null,
+                        Grade = item.TryGetProperty("assigned_grade", out var grade) && grade.ValueKind != JsonValueKind.Null
+                            ? grade.ToString()
+                            : null,
                         CourseworkId = courseworkId,
                     });
                 }
             }
 
-            SelectedSubmission = Submissions.FirstOrDefault();
+            OnPropertyChanged(nameof(SubmissionsSummary));
+
+            var restored = keepSubmissionId is null
+                ? null
+                : Submissions.FirstOrDefault(s => s.Id == keepSubmissionId);
+            _restoringSelection = true;
+            try
+            {
+                SelectedSubmission = restored;
+            }
+            finally
+            {
+                _restoringSelection = false;
+            }
         }
         catch (ApiException ex)
         {

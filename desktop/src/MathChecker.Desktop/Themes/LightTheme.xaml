@@ -1,0 +1,78 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ============================================================
+         Light appearance, taken from the reference: a near-white canvas,
+         white cards, indigo as the one decision colour, and soft ink.
+         ============================================================ -->
+
+    <SolidColorBrush x:Key="CanvasBrush" Color="#F7F7FB" />
+    <SolidColorBrush x:Key="CanvasDeepBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SunkenBrush" Color="#F1F1F7" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SurfaceHoverBrush" Color="#F2F1F8" />
+    <SolidColorBrush x:Key="SurfaceSelectedBrush" Color="#EAE7FD" />
+
+    <SolidColorBrush x:Key="HairlineBrush" Color="#E9E8F0" />
+    <SolidColorBrush x:Key="HairlineStrongBrush" Color="#D8D7E4" />
+    <SolidColorBrush x:Key="RowHairlineBrush" Color="#F0EFF6" />
+
+    <SolidColorBrush x:Key="TextBrush" Color="#16151F" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5E5C70" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#9290A4" />
+
+    <SolidColorBrush x:Key="AccentBrush" Color="#5B4DF0" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#4A3DDB" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="#3E32C6" />
+    <SolidColorBrush x:Key="AccentInkBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#EEEDFE" />
+    <SolidColorBrush x:Key="AccentLineBrush" Color="#D5D0FB" />
+    <SolidColorBrush x:Key="FocusBrush" Color="#7A6CFF" />
+
+    <SolidColorBrush x:Key="WarningBrush" Color="#B97710" />
+    <SolidColorBrush x:Key="WarningInkBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="WarningSurfaceBrush" Color="#FDF3E3" />
+    <SolidColorBrush x:Key="WarningTextBrush" Color="#8A5A0F" />
+
+    <SolidColorBrush x:Key="DangerBrush" Color="#D9483A" />
+    <SolidColorBrush x:Key="DangerSurfaceBrush" Color="#FDECEA" />
+    <SolidColorBrush x:Key="DangerTextBrush" Color="#A8342A" />
+
+    <SolidColorBrush x:Key="SuccessBrush" Color="#1F9D6B" />
+    <SolidColorBrush x:Key="SuccessSurfaceBrush" Color="#E5F7EE" />
+    <SolidColorBrush x:Key="SuccessTextBrush" Color="#12764F" />
+
+    <SolidColorBrush x:Key="InfoBrush" Color="#2F77D1" />
+    <SolidColorBrush x:Key="InfoSurfaceBrush" Color="#E9F1FD" />
+
+    <!-- The answer sheet stays paper in both appearances. -->
+    <SolidColorBrush x:Key="PaperBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="PaperInkBrush" Color="#16151F" />
+    <SolidColorBrush x:Key="PaperSurroundBrush" Color="#E8E7F0" />
+
+    <SolidColorBrush x:Key="TransparentBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="ScrimBrush" Color="#55161524" />
+
+    <!-- Ink on the one gradient hero card (always a coloured surface). -->
+    <SolidColorBrush x:Key="HeroInkBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="HeroMutedBrush" Color="#D9D4FF" />
+
+    <LinearGradientBrush x:Key="CanvasGradientBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#FBFBFE" Offset="0" />
+        <GradientStop Color="#F5F5FA" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- The raised, colourful surface used by the one hero card per page. -->
+    <LinearGradientBrush x:Key="HeroBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#6C5DF6" Offset="0" />
+        <GradientStop Color="#4B3DDA" Offset="1" />
+    </LinearGradientBrush>
+
+    <DropShadowEffect x:Key="CardShadowEffect" BlurRadius="18" ShadowDepth="3"
+                      Direction="270" Opacity="0.10" Color="#1F1D3A" />
+    <DropShadowEffect x:Key="PopShadowEffect" BlurRadius="32" ShadowDepth="10"
+                      Direction="270" Opacity="0.16" Color="#1F1D3A" />
+    <DropShadowEffect x:Key="FloatingShadow" BlurRadius="40" ShadowDepth="16"
+                      Direction="270" Opacity="0.18" Color="#1F1D3A" />
+</ResourceDictionary>

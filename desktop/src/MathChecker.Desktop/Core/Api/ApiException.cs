@@ -23,8 +23,14 @@ public sealed class ApiException : Exception
     public bool IsUnauthorized => Status == 401;
     public bool IsNotFound => Status == 404;
 
-    public string Display =>
-        string.IsNullOrWhiteSpace(Code) ? Message : $"{Message}  [{Code}]";
+    /// <summary>The sentence a teacher reads. The backend writes these for
+    /// people, so the machine code is not appended here.</summary>
+    public string Display => Message;
+
+    /// <summary>Status, code and route: only for technical details and logs.</summary>
+    public string Technical => $"HTTP {Status}"
+        + (string.IsNullOrWhiteSpace(Code) ? string.Empty : $" [{Code}]")
+        + (string.IsNullOrWhiteSpace(Path) ? string.Empty : $" · /api/{Path}");
 }
 
 /// <summary>A file the backend produced, with the name it asked for.</summary>

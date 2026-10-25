@@ -1,6 +1,7 @@
 using System.Windows.Input;
 using MathChecker.Desktop.Core;
 using MathChecker.Desktop.Core.Api;
+using MathChecker.Desktop.Core.Sync;
 using MathChecker.Desktop.Core.Mvvm;
 using MathChecker.Desktop.Core.UI;
 
@@ -43,6 +44,16 @@ public abstract class PageViewModel : ObservableObject
     public string Eyebrow => Group.ToUpperInvariant();
 
     public AsyncCommand RefreshCommand { get; }
+
+    /// <summary>True for pages whose rows are read from Google Classroom. Their
+    /// view passes <c>Sync="{Binding SyncService}"</c> to the page frame, which
+    /// renders the ONE shared Sync control; pages with no synchronized data
+    /// leave it false and show no button at all.</summary>
+    public virtual bool SyncsFromClassroom => false;
+
+    /// <summary>The shared synchronization service, or null on pages that have
+    /// nothing to synchronize.</summary>
+    public ClassroomSyncService? SyncService => SyncsFromClassroom ? Session.Sync : null;
 
     public bool IsBusy
     {
@@ -110,16 +121,17 @@ public abstract class PageViewModel : ObservableObject
         }
         catch (HttpRequestException ex)
         {
-            Error = "The backend is not reachable: " + ex.Message;
+            Session.Log.Warn($"page {Key} could not reach the backend: {ex.Message}");
+            Error = UserMessage.For(ex);
         }
         catch (TaskCanceledException)
         {
-            Error = "The backend did not answer in time. It may still be working; refresh to check.";
+            Error = UserMessage.For(new TimeoutException());
         }
         catch (Exception ex)
         {
             Session.Log.Error($"page {Key} failed to load", ex);
-            Error = ex.Message;
+            Error = UserMessage.For(ex);
         }
         finally
         {
@@ -165,12 +177,13 @@ public abstract class PageViewModel : ObservableObject
         }
         catch (HttpRequestException ex)
         {
-            Error = "The backend is not reachable: " + ex.Message;
+            Session.Log.Warn($"action on {Key} could not reach the backend: {ex.Message}");
+            Error = UserMessage.For(ex);
         }
         catch (Exception ex)
         {
             Session.Log.Error($"action on {Key} failed", ex);
-            Error = ex.Message;
+            Error = UserMessage.For(ex);
         }
         finally
         {
@@ -178,7 +191,11 @@ public abstract class PageViewModel : ObservableObject
         }
     }
 
-    private void HandleError(Exception ex) => Error = ex is ApiException api ? api.Display : ex.Message;
+    private void HandleError(Exception ex)
+    {
+        Session.Log.Error($"action on {Key} failed", ex);
+        Error = UserMessage.For(ex);
+    }
 
     protected AsyncCommand Command(Func<Task> action, Func<bool>? canExecute = null, string? success = null) =>
         new(() => RunAsync(action, success), canExecute, HandleError);

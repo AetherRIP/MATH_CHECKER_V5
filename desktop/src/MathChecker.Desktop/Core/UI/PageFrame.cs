@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using MathChecker.Desktop.Core.Sync;
 
 namespace MathChecker.Desktop.Core.UI;
 
@@ -11,6 +12,13 @@ namespace MathChecker.Desktop.Core.UI;
 /// </summary>
 public class PageFrame : ContentControl
 {
+    public PageFrame()
+    {
+        // One short fade-and-lift per navigation: the view is created fresh by
+        // the DataTemplate, so this never repeats on a refresh or a re-render.
+        Loaded += (_, _) => Motion.Enter(this);
+    }
+
     public static readonly DependencyProperty EyebrowProperty = DependencyProperty.Register(
         nameof(Eyebrow), typeof(string), typeof(PageFrame), new PropertyMetadata(string.Empty));
 
@@ -38,6 +46,15 @@ public class PageFrame : ContentControl
 
     public static readonly DependencyProperty ActionsProperty = DependencyProperty.Register(
         nameof(Actions), typeof(object), typeof(PageFrame), new PropertyMetadata(null));
+
+    public static readonly DependencyProperty SyncProperty = DependencyProperty.Register(
+        nameof(Sync), typeof(ClassroomSyncService), typeof(PageFrame),
+        new PropertyMetadata(null, OnSyncChanged));
+
+    private static readonly DependencyPropertyKey HasSyncKey = DependencyProperty.RegisterReadOnly(
+        nameof(HasSync), typeof(bool), typeof(PageFrame), new PropertyMetadata(false));
+
+    public static readonly DependencyProperty HasSyncProperty = HasSyncKey.DependencyProperty;
 
     private static readonly DependencyPropertyKey HasErrorKey = DependencyProperty.RegisterReadOnly(
         nameof(HasError), typeof(bool), typeof(PageFrame), new PropertyMetadata(false));
@@ -103,7 +120,30 @@ public class PageFrame : ContentControl
         set => SetValue(ActionsProperty, value);
     }
 
+    /// <summary>The shared Classroom synchronization service. When a page
+    /// supplies it (``Sync="{Binding SyncService}"``), the frame renders the
+    /// ONE Sync control — button, live stage, real percentage and the final
+    /// outcome — in the header. Pages whose rows come from somewhere else
+    /// leave it null and show no sync affordance at all.</summary>
+    public ClassroomSyncService? Sync
+    {
+        get => (ClassroomSyncService?)GetValue(SyncProperty);
+        set => SetValue(SyncProperty, value);
+    }
+
+    /// <summary>True when this page opted into synchronization; the template
+    /// uses it (not a converter) to show the sync cluster.</summary>
+    public bool HasSync => (bool)GetValue(HasSyncProperty);
+
     public bool HasError => (bool)GetValue(HasErrorProperty);
+
+    private static void OnSyncChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is PageFrame frame)
+        {
+            frame.SetValue(HasSyncKey, e.NewValue is ClassroomSyncService);
+        }
+    }
 
     private static void OnErrorTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {

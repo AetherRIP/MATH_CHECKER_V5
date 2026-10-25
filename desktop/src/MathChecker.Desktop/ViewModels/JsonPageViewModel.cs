@@ -1,17 +1,22 @@
 using System.Collections.ObjectModel;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using MathChecker.Desktop.Core;
 using MathChecker.Desktop.Core.Api;
 using MathChecker.Desktop.Core.Mvvm;
+using MathChecker.Desktop.Core.UI;
 using MathChecker.Desktop.Models;
 
 namespace MathChecker.Desktop.ViewModels;
 
-/// <summary>One named backend payload shown on a system page.</summary>
+/// <summary>One named backend payload shown on a system page: a sentence,
+/// labelled facts, and the raw payload kept for technical details only.</summary>
 public sealed class JsonSectionVm : ObservableObject
 {
-    private string _text = "Not loaded.";
+    private string _notice = "Not loaded yet.";
+    private string _raw = string.Empty;
+    private bool _isUnavailable;
 
     public JsonSectionVm(string title, string path)
     {
@@ -20,12 +25,102 @@ public sealed class JsonSectionVm : ObservableObject
     }
 
     public string Title { get; }
+
+    /// <summary>The API route. Only ever rendered inside technical details.</summary>
     public string Path { get; }
 
-    public string Text
+    public ObservableCollection<FactRow> Facts { get; } = new();
+
+    /// <summary>A plain sentence: what this section says, or why it is closed.</summary>
+    public string Notice
     {
-        get => _text;
-        set => SetProperty(ref _text, value);
+        get => _notice;
+        set
+        {
+            if (SetProperty(ref _notice, value))
+            {
+                OnPropertyChanged(nameof(HasNotice));
+            }
+        }
+    }
+
+    /// <summary>The raw response, shown only when the user opens technical details.</summary>
+    public string Raw
+    {
+        get => _raw;
+        set
+        {
+            if (SetProperty(ref _raw, value))
+            {
+                OnPropertyChanged(nameof(HasRaw));
+            }
+        }
+    }
+
+    /// <summary>True when the backend refuses this area for the signed-in
+    /// role; that is a normal state, not a failure of the page.</summary>
+    public bool IsUnavailable
+    {
+        get => _isUnavailable;
+        set
+        {
+            if (SetProperty(ref _isUnavailable, value))
+            {
+                OnPropertyChanged(nameof(IsAvailable));
+            }
+        }
+    }
+
+    public bool IsAvailable => !IsUnavailable;
+
+    public bool HasFacts => Facts.Count > 0;
+
+    public bool HasRaw => !string.IsNullOrWhiteSpace(Raw);
+
+    public bool HasNotice => !string.IsNullOrWhiteSpace(Notice);
+
+    public void Fill(JsonElement payload)
+    {
+        Facts.Clear();
+        foreach (var fact in PayloadFacts.Of(payload))
+        {
+            Facts.Add(fact);
+        }
+
+        Raw = PayloadFacts.Raw(payload);
+        var summary = PayloadFacts.Summarize(payload);
+        Notice = string.IsNullOrWhiteSpace(summary)
+            ? (Facts.Count == 1 ? "1 value reported." : $"{Facts.Count} values reported.")
+            : summary;
+        IsUnavailable = false;
+        OnPropertyChanged(nameof(HasFacts));
+    }
+
+    public void Close(string reason, string? technical = null)
+    {
+        Facts.Clear();
+        OnPropertyChanged(nameof(HasFacts));
+        IsUnavailable = true;
+        Notice = reason;
+        Raw = technical ?? string.Empty;
+    }
+
+    public void Fail(string reason, string? technical = null)
+    {
+        Facts.Clear();
+        OnPropertyChanged(nameof(HasFacts));
+        IsUnavailable = false;
+        Notice = reason;
+        Raw = technical ?? string.Empty;
+    }
+
+    /// <summary>Builds a section from a payload the page just produced (an
+    /// import preview or a change result), so it renders like every other one.</summary>
+    public static JsonSectionVm FromPayload(string title, string path, JsonElement payload)
+    {
+        var section = new JsonSectionVm(title, path);
+        section.Fill(payload);
+        return section;
     }
 }
 
@@ -49,18 +144,41 @@ public sealed class PageAction
 public class JsonPageViewModel : PageViewModel
 {
     private string _description;
+    private string _notice = string.Empty;
+    private readonly string _unavailableHelp;
 
     public JsonPageViewModel(AppSession session, string key, string title, string group,
-        string description, IEnumerable<(string Title, string Path)> sections)
+        string description, IEnumerable<(string Title, string Path)> sections,
+        string? unavailableHelp = null)
         : base(session, key, title)
     {
         Group = group;
         _description = description;
+        _unavailableHelp = unavailableHelp
+                           ?? "This area is available to the developer role only on this installation. "
+                           + "Nothing else in the application is affected.";
         foreach (var (sectionTitle, path) in sections)
         {
             Sections.Add(new JsonSectionVm(sectionTitle, path));
         }
     }
+
+    /// <summary>A page-level sentence shown when the whole page is closed to
+    /// the signed-in role. It replaces the old red "refused every section"
+    /// banner, which explained nothing to a teacher.</summary>
+    public string Notice
+    {
+        get => _notice;
+        private set
+        {
+            if (SetProperty(ref _notice, value))
+            {
+                OnPropertyChanged(nameof(HasNotice));
+            }
+        }
+    }
+
+    public bool HasNotice => !string.IsNullOrWhiteSpace(Notice);
 
     public ObservableCollection<JsonSectionVm> Sections { get; } = new();
     public ObservableCollection<PageAction> Actions { get; } = new();
@@ -73,11 +191,32 @@ public class JsonPageViewModel : PageViewModel
 
     public RelayCommand CopyCommand => new(() =>
     {
-        var text = string.Join(Environment.NewLine + Environment.NewLine,
-            Sections.Select(s => $"== {s.Title} =={Environment.NewLine}{s.Text}"));
+        var builder = new StringBuilder();
+        foreach (var section in Sections)
+        {
+            builder.AppendLine($"== {section.Title} ==");
+            if (!string.IsNullOrWhiteSpace(section.Notice))
+            {
+                builder.AppendLine(section.Notice);
+            }
+
+            foreach (var fact in section.Facts)
+            {
+                builder.AppendLine($"{fact.Label}: {fact.Value}");
+            }
+
+            if (section.HasRaw)
+            {
+                builder.AppendLine();
+                builder.AppendLine(section.Raw);
+            }
+
+            builder.AppendLine();
+        }
+
         try
         {
-            Clipboard.SetText(text);
+            Clipboard.SetText(builder.ToString().TrimEnd());
             Status = "Copied to the clipboard.";
         }
         catch (Exception ex)
@@ -101,43 +240,57 @@ public class JsonPageViewModel : PageViewModel
             }
             catch (Exception ex)
             {
-                Error = ex.Message;
+                Session.Log.Error("page action failed", ex);
+                Error = UserMessage.For(ex);
             }
         }, canRun));
 
     protected override async Task LoadCoreAsync()
     {
-        var failures = 0;
+        var closed = 0;
+        var failed = 0;
+        Notice = string.Empty;
         foreach (var section in Sections)
         {
             try
             {
                 var payload = await Session.Api.RawAsync(section.Path);
-                section.Text = Json.Pretty(payload);
+                section.Fill(payload);
             }
-            catch (ApiException ex) when (ex.IsForbidden)
+            catch (ApiException ex) when (ex.IsForbidden || ex.IsUnauthorized)
             {
-                failures++;
-                section.Text = "HTTP 403 — this endpoint is limited to the developer role.\n\n"
-                               + ex.Message;
+                // A closed area is a state, not an error: the message below
+                // says what it means instead of printing an HTTP code.
+                closed++;
+                section.Close(WhyClosed(ex), ex.Technical);
             }
             catch (ApiException ex)
             {
-                failures++;
-                section.Text = $"HTTP {ex.Status}: {ex.Message} [{ex.Code}]";
+                failed++;
+                section.Fail(ex.Display, ex.Technical);
             }
             catch (Exception ex)
             {
-                failures++;
-                section.Text = "Could not load: " + ex.Message;
+                failed++;
+                Session.Log.Error($"section {section.Title} failed to load", ex);
+                section.Fail("This information could not be read from the backend. Refresh to try again.",
+                    ex.GetType().Name + ": " + ex.Message);
             }
         }
 
-        if (failures > 0 && failures == Sections.Count)
+        if (closed == Sections.Count)
         {
-            Error = "The backend refused every section on this page; the text above carries its reason.";
+            Notice = _unavailableHelp;
+        }
+        else if (failed == Sections.Count)
+        {
+            Error = "The backend could not answer this page. Use Backend → Restart backend, then refresh.";
         }
     }
+
+    private static string WhyClosed(ApiException ex) => ex.IsForbidden
+        ? "Not available for the signed-in role."
+        : "Not enabled on this installation.";
 
     // ------------------------------------------------------------- factories
 
@@ -168,10 +321,7 @@ public class JsonPageViewModel : PageViewModel
             }
 
             var preview = await session.Api.PreviewImportAsync(path);
-            page.Sections.Add(new JsonSectionVm("Import preview", "data/import/preview")
-            {
-                Text = Json.Pretty(preview),
-            });
+            page.Sections.Add(JsonSectionVm.FromPayload("Import preview", "data/import/preview", preview));
             session.Notify("Import preview loaded; nothing was written.");
         });
 
@@ -191,7 +341,7 @@ public class JsonPageViewModel : PageViewModel
             }
 
             var outcome = await session.Api.ImportAsync(path, "add_only", null);
-            page.Sections.Add(new JsonSectionVm("Import result", "data/import") { Text = Json.Pretty(outcome) });
+            page.Sections.Add(JsonSectionVm.FromPayload("Import result", "data/import", outcome));
             session.Notify("Import applied.");
         });
 
@@ -247,10 +397,7 @@ public class JsonPageViewModel : PageViewModel
             }
 
             var payload = await session.Api.FactoryResetAsync("RESET");
-            page.Sections.Add(new JsonSectionVm("Factory reset", "privacy/factory-reset")
-            {
-                Text = Json.Pretty(payload),
-            });
+            page.Sections.Add(JsonSectionVm.FromPayload("Factory reset", "privacy/factory-reset", payload));
             session.Notify("Factory reset completed.");
         });
 
@@ -267,7 +414,9 @@ public class JsonPageViewModel : PageViewModel
                 ("Logs", "diagnostics/logs"),
                 ("Database", "diagnostics/db"),
                 ("Self check", "diagnostics/selfcheck"),
-            });
+            },
+            "Diagnostics are open to the developer role only. Teachers do not need them: "
+            + "the rest of the application keeps working exactly as it does now.");
 
         page.AddAction("Clear backend logs", async () =>
         {
@@ -303,7 +452,9 @@ public class JsonPageViewModel : PageViewModel
                 ("Teams", "distributed/teams"),
                 ("Devices", "distributed/devices"),
                 ("Workers", "distributed/workers"),
-            });
+            },
+            "The multi-school layer is not enabled on this installation, so accounts, teams and "
+            + "sync across schools are switched off. Corrections, Classroom and reports are unaffected.");
 
     public static JsonPageViewModel RemoteAccess(AppSession session)
     {
@@ -326,20 +477,14 @@ public class JsonPageViewModel : PageViewModel
             }
 
             var payload = await session.Api.SetPublicAddressAsync(true);
-            page.Sections.Add(new JsonSectionVm("Change result", "access/public-address")
-            {
-                Text = Json.Pretty(payload),
-            });
+            page.Sections.Add(JsonSectionVm.FromPayload("Change result", "access/public-address", payload));
             session.Notify("Public address enabled.");
         });
 
         page.AddAction("Disable public address", async () =>
         {
             var payload = await session.Api.SetPublicAddressAsync(false);
-            page.Sections.Add(new JsonSectionVm("Change result", "access/public-address")
-            {
-                Text = Json.Pretty(payload),
-            });
+            page.Sections.Add(JsonSectionVm.FromPayload("Change result", "access/public-address", payload));
             session.Notify("Public address disabled.");
         });
 
@@ -348,10 +493,12 @@ public class JsonPageViewModel : PageViewModel
 
     public static JsonPageViewModel Updates(AppSession session) =>
         new(session, "updates", "Updates", "System",
-            "Release records and installations from the distributed layer (developer view).",
+            "Release records and installations for the distributed layer.",
             new[]
             {
                 ("Overview", "distributed/releases/overview"),
                 ("Releases", "distributed/releases"),
-            });
+            },
+            "Automatic updates need the multi-school layer, which is not enabled on this installation. "
+            + "The application itself stays on the version shown in the rail.");
 }

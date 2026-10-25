@@ -60,7 +60,7 @@ public class DeskProvenanceTests
 
         Assert.Equal(QuestionState.SchemeCheck, provenance.State);
         Assert.Equal("Scheme check", provenance.Label);
-        Assert.Contains("arithmetic", provenance.AttentionText);
+        Assert.Contains("Arithmetic", provenance.AttentionText);
     }
 
     [Fact]

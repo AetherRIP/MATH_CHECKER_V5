@@ -4,6 +4,7 @@
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
     <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}" Description="{Binding Summary}"
                   StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
+                  Sync="{Binding SyncService}"
                   BodyPadding="0,18,0,0">
         <ui:PageFrame.Actions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
@@ -19,12 +20,12 @@
             <DockPanel>
                 <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
                     <DockPanel>
-                        <TextBlock Text="Classes" Style="{StaticResource RowTitle}" VerticalAlignment="Center" />
                         <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Padding="9,2"
                                 VerticalAlignment="Center">
                             <TextBlock Text="{Binding Items.Count, StringFormat={}{0} classes}"
-                                       FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                                       FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Border>
+                        <TextBlock Text="Classes" Style="{StaticResource RowTitle}" VerticalAlignment="Center" />
                     </DockPanel>
                 </Border>
 

@@ -8,11 +8,17 @@
         <ui:PageFrame.Actions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
-                <Button Content="Stage correction" Command="{Binding ProposeCommand}" />
-                <Button Content="Record decision…" Command="{Binding DecideCommand}" />
+                <!-- Staging and recording a decision read the selected discrepancy;
+                     approve and reject read the selected proposal. -->
+                <Button Content="Stage correction" Command="{Binding ProposeCommand}"
+                        IsEnabled="{Binding HasDiscrepancy}" ToolTip="Select a discrepancy row first" />
+                <Button Content="Record decision…" Command="{Binding DecideCommand}"
+                        IsEnabled="{Binding HasDiscrepancy}" ToolTip="Select a discrepancy row first" />
                 <Button Content="Approve proposal" Style="{StaticResource PrimaryButton}"
-                        Command="{Binding ApproveProposalCommand}" />
-                <Button Content="Reject proposal" Command="{Binding RejectProposalCommand}" Margin="0" />
+                        Command="{Binding ApproveProposalCommand}"
+                        IsEnabled="{Binding HasProposal}" ToolTip="Select a staged proposal first" />
+                <Button Content="Reject proposal" Command="{Binding RejectProposalCommand}" Margin="0"
+                        IsEnabled="{Binding HasProposal}" ToolTip="Select a staged proposal first" />
             </StackPanel>
         </ui:PageFrame.Actions>
 
@@ -23,12 +29,12 @@
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
                         <DockPanel>
-                            <TextBlock Text="Discrepancies" Style="{StaticResource RowTitle}" VerticalAlignment="Center" />
                             <Border DockPanel.Dock="Right" Style="{StaticResource WarningChip}" Padding="9,2"
                                     VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Discrepancies.Count, StringFormat={}{0} open}"
-                                           FontSize="10.5" Foreground="{StaticResource WarningTextBrush}" />
+                                           FontSize="10.5" Foreground="{DynamicResource WarningTextBrush}" />
                             </Border>
+                            <TextBlock Text="Discrepancies" Style="{StaticResource RowTitle}" VerticalAlignment="Center" />
                         </DockPanel>
                     </Border>
                     <Grid>
@@ -36,11 +42,13 @@
                                   SelectedItem="{Binding SelectedDiscrepancy}"
                                   AutomationProperties.Name="Discrepancies">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="170" />
-                                <DataGridTextColumn Header="Question" Binding="{Binding Title}" Width="200" />
+                                <DataGridTextColumn Header="Question" Binding="{Binding Question}" Width="84" />
+                                <DataGridTextColumn Header="Assignment" Binding="{Binding Assignment}" Width="200" />
+                                <DataGridTextColumn Header="Student" Binding="{Binding Student}" Width="140"
+                                                    ui:TableLayout.Priority="2" />
                                 <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="150"
                                                     ui:TableLayout.Priority="1" />
-                                <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="*" />
+                                <DataGridTextColumn Header="Finding" Binding="{Binding Detail}" Width="*" />
                             </DataGrid.Columns>
                         </DataGrid>
                         <TextBlock Text="No discrepancies are open." Style="{StaticResource EmptyText}"
@@ -60,11 +68,11 @@
                                   SelectedItem="{Binding SelectedProposal}"
                                   AutomationProperties.Name="Staged proposals">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="170" />
-                                <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="200" />
+                                <DataGridTextColumn Header="Question" Binding="{Binding Question}" Width="84" />
+                                <DataGridTextColumn Header="Assignment" Binding="{Binding Assignment}" Width="200" />
                                 <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="150"
                                                     ui:TableLayout.Priority="1" />
-                                <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="*" />
+                                <DataGridTextColumn Header="What changes" Binding="{Binding Detail}" Width="*" />
                             </DataGrid.Columns>
                         </DataGrid>
                         <TextBlock Text="Nothing is staged." Style="{StaticResource EmptyText}"
@@ -74,13 +82,23 @@
                 </DockPanel>
             </Border>
 
-            <Border Style="{StaticResource Card}" Margin="0,12,0,0" Height="160" Padding="12">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top"
-                               Text="A staged proposal changes nothing until it is explicitly approved. The backend records every decision."
-                               Style="{StaticResource CardSubtitle}" Margin="2,0,0,6" />
-                    <TextBox Style="{StaticResource JsonBox}" Text="{Binding DetailText, Mode=OneWay}" Margin="0" />
-                </DockPanel>
+            <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="DISCREPANCY RECORD" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="A staged proposal changes nothing until it is explicitly approved. The backend records every decision."
+                               Style="{StaticResource CardSubtitle}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding DetailNote}" FontSize="12.5" Margin="0,10,0,0"
+                               Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap"
+                               Visibility="{Binding HasDetailNote, Converter={StaticResource BoolToVis}}" />
+                    <ItemsControl ItemsSource="{Binding DetailFacts}" Margin="0,8,0,0"
+                                  ItemTemplate="{StaticResource FactRowTemplate}"
+                                  Visibility="{Binding HasDetailFacts, Converter={StaticResource BoolToVis}}" />
+                    <Expander Header="Technical details" Margin="0,12,0,0"
+                              Visibility="{Binding HasDetailRaw, Converter={StaticResource BoolToVis}}">
+                        <TextBox Style="{StaticResource JsonBox}" Text="{Binding DetailRaw, Mode=OneWay}"
+                                 Margin="0,4,0,0" MinHeight="120" MaxHeight="260" />
+                    </Expander>
+                </StackPanel>
             </Border>
         </StackPanel>
         </ScrollViewer>

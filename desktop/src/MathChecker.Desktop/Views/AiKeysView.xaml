@@ -8,11 +8,15 @@
         <ui:PageFrame.Actions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
-                <Button Content="Test selected" Command="{Binding TestSelectedCommand}" />
+                <Button Content="Test selected" Command="{Binding TestSelectedCommand}"
+                        IsEnabled="{Binding HasSelection}" ToolTip="Select a key row first" />
                 <Button Content="Test all" Style="{StaticResource PrimaryButton}" Command="{Binding TestAllCommand}" />
-                <Button Content="Disable" Command="{Binding DisableCommand}" />
-                <Button Content="Re-enable" Command="{Binding EnableCommand}" />
-                <Button Content="Remove" Command="{Binding RemoveCommand}" Margin="0" />
+                <Button Content="Disable" Command="{Binding DisableCommand}"
+                        IsEnabled="{Binding HasSelection}" ToolTip="Select a key row first" />
+                <Button Content="Re-enable" Command="{Binding EnableCommand}"
+                        IsEnabled="{Binding HasSelection}" ToolTip="Select a key row first" />
+                <Button Content="Remove" Command="{Binding RemoveCommand}" Margin="0"
+                        IsEnabled="{Binding HasSelection}" ToolTip="Select a key row first" />
             </StackPanel>
         </ui:PageFrame.Actions>
 
@@ -20,7 +24,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="150" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,12">
@@ -79,12 +83,21 @@
                 </DockPanel>
             </Border>
 
-            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,12,0,0" Padding="12">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="BACKEND RESPONSE" Style="{StaticResource SectionLabel}"
-                               Margin="2,0,0,6" />
-                    <TextBox Style="{StaticResource JsonBox}" Text="{Binding ResultText, Mode=OneWay}" Margin="0" />
-                </DockPanel>
+            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="KEY TEST RESULT" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="The backend tests keys before using them; results are shown here."
+                               Style="{StaticResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap"
+                               Visibility="{Binding HasResult, Converter={StaticResource InverseBoolToVis}}" />
+                    <StackPanel Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding ResultNote}" Style="{StaticResource CardSubtitle}"
+                                   Margin="0,6,0,0" TextWrapping="Wrap" />
+                        <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
+                            <ItemsControl ItemsSource="{Binding ResultFacts}"
+                                          ItemTemplate="{StaticResource FactRowTemplate}" />
+                        </ScrollViewer>
+                    </StackPanel>
+                </StackPanel>
             </Border>
         </Grid>
     </ui:PageFrame>

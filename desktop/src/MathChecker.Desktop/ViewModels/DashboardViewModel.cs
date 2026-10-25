@@ -25,14 +25,29 @@ public sealed class DashboardViewModel : PageViewModel
         };
     }
 
+    /// <summary>The overview reports Classroom's course/assignment counts, so it
+    /// offers the same sync as the pages that own those rows.</summary>
+    public override bool SyncsFromClassroom => true;
+
     public ObservableCollection<AttentionItemDto> AttentionItems { get; } = new();
     public ObservableCollection<JobDto> RecentJobs { get; } = new();
 
     public JobDto? SelectedJob
     {
         get => _selectedJob;
-        set => SetProperty(ref _selectedJob, value);
+        set
+        {
+            if (SetProperty(ref _selectedJob, value))
+            {
+                OnPropertyChanged(nameof(HasSelectedJob));
+            }
+        }
     }
+
+    /// <summary>True once a job row is picked. Cancel and Retry stay disabled
+    /// until then: both return immediately without a selection, so an active
+    /// button would promise work it cannot do.</summary>
+    public bool HasSelectedJob => _selectedJob is not null;
 
     public string LastUpdated
     {
@@ -79,8 +94,9 @@ public sealed class DashboardViewModel : PageViewModel
                 return "Not configured (no OAuth client)";
             }
 
+            var assignments = classroom.Allowlisted == 1 ? "1 assignment" : $"{classroom.Allowlisted} assignments";
             return classroom.Connected
-                ? $"Connected as {classroom.Email} · {classroom.Courses} courses · {classroom.Allowlisted} assignments enabled"
+                ? $"Connected as {classroom.Email} · {classroom.Courses} courses · {assignments} enabled"
                 : "Configured but not connected";
         }
     }

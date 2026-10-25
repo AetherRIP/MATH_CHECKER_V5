@@ -6,6 +6,7 @@
     <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}"
                   Description="What the desk has marked, what is still moving, and what needs a decision."
                   StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
+                  Sync="{Binding SyncService}"
                   BodyPadding="0,14,0,0">
         <ui:PageFrame.Actions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
@@ -19,6 +20,41 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
         <StackPanel>
 
+            <!-- The one hero card, echoing the reference's coloured
+                 "continue" surface: what is moving right now, and the
+                 shortcut to it. Everything in it is live state. -->
+            <Border CornerRadius="{StaticResource PanelRadius}"
+                    Background="{DynamicResource HeroBrush}"
+                    Padding="24,20" Margin="0,0,0,12"
+                    Effect="{DynamicResource CardShadowEffect}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="TODAY'S DESK" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource HeroMutedBrush}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                            <TextBlock Text="{Binding PendingText}"
+                                       FontFamily="{StaticResource DisplayFont}"
+                                       FontSize="32" FontWeight="Bold"
+                                       Foreground="{DynamicResource HeroInkBrush}" />
+                            <TextBlock Text="corrections in flight" FontSize="14.5" FontWeight="Medium"
+                                       Foreground="{DynamicResource HeroInkBrush}"
+                                       VerticalAlignment="Bottom" Margin="8,0,0,6" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding TodayCaption}" FontSize="12.5" Margin="0,4,0,0"
+                                   Foreground="{DynamicResource HeroMutedBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="Open tasks"
+                            Style="{StaticResource HeroActionButton}"
+                            Command="{Binding OpenJobsCommand}"
+                            VerticalAlignment="Center" Margin="20,0,0,0" />
+                </Grid>
+            </Border>
+
             <!-- Metric strip: the day at a glance, in one row of numbers. -->
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -29,11 +65,11 @@
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0" Style="{StaticResource StatTile}" Margin="0,0,10,0"
-                        Background="{StaticResource AccentSoftBrush}"
-                        BorderBrush="{StaticResource AccentLineBrush}">
+                        Background="{DynamicResource AccentSoftBrush}"
+                        BorderBrush="{DynamicResource AccentLineBrush}">
                     <StackPanel>
                         <TextBlock Text="TODAY" Style="{StaticResource SectionLabel}"
-                                   Foreground="{StaticResource AccentBrush}" />
+                                   Foreground="{DynamicResource AccentBrush}" />
                         <TextBlock Text="{Binding TodayFigure}" Style="{StaticResource DisplayFigure}"
                                    Margin="0,2,0,0" />
                         <TextBlock Text="{Binding TodayCaption}" Style="{StaticResource CardSubtitle}"
@@ -68,7 +104,7 @@
                         <TextBlock Text="FAILED" Style="{StaticResource SectionLabel}" />
                         <TextBlock Text="{Binding FailedText}" Style="{StaticResource DisplayFigure}"
                                    Margin="0,2,0,0"
-                                   Foreground="{StaticResource WarningTextBrush}" />
+                                   Foreground="{DynamicResource WarningTextBrush}" />
                         <TextBlock Text="Need a retry" Style="{StaticResource CardSubtitle}" />
                     </StackPanel>
                 </Border>
@@ -99,18 +135,24 @@
                         </Border>
 
                         <Border DockPanel.Dock="Bottom" Padding="12,6"
-                                BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,1,0,0">
+                                BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="0,1,0,0">
                             <DockPanel>
                                 <TextBlock Text="{Binding LastUpdated, StringFormat=Updated {0}}"
                                            Style="{StaticResource CardSubtitle}" VerticalAlignment="Center" />
                                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
                                             HorizontalAlignment="Right">
+                                    <!-- Both act on the selected row only. Disabled until one
+                                         is picked, so neither looks like it did something. -->
                                     <Button Content="Cancel job" Style="{StaticResource GhostButton}"
                                             Height="26" Padding="9,2" Margin="0,0,6,0"
-                                            Command="{Binding CancelSelectedJobCommand}" />
+                                            Command="{Binding CancelSelectedJobCommand}"
+                                            IsEnabled="{Binding HasSelectedJob}"
+                                            ToolTip="Select a job row first" />
                                     <Button Content="Retry job" Style="{StaticResource GhostButton}"
                                             Height="26" Padding="9,2" Margin="0"
-                                            Command="{Binding RetrySelectedJobCommand}" />
+                                            Command="{Binding RetrySelectedJobCommand}"
+                                            IsEnabled="{Binding HasSelectedJob}"
+                                            ToolTip="Select a job row first" />
                                 </StackPanel>
                             </DockPanel>
                         </Border>
@@ -121,7 +163,7 @@
                                       AutomationProperties.Name="Recent jobs">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Student" Binding="{Binding StudentName}" Width="132"  ElementStyle="{StaticResource CellText}" />
-                                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="94"  ElementStyle="{StaticResource CellText}" />
+                                    <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="94"  ElementStyle="{StaticResource CellText}" />
                                     <DataGridTextColumn Header="Stage" Binding="{Binding StageText}" Width="*" MinWidth="120"  ElementStyle="{StaticResource CellText}" />
                                     <DataGridTextColumn Header="Attempt" Binding="{Binding Attempts}" Width="68"
                                                         ui:TableLayout.Priority="2"  ElementStyle="{StaticResource CellText}" />
@@ -144,11 +186,13 @@
                     <Border Style="{StaticResource Card}" Margin="0,0,0,10">
                         <StackPanel>
                             <DockPanel>
-                                <TextBlock Text="Needs attention" Style="{StaticResource CardTitle}" />
+                                <!-- Docked first so the ghost button keeps its own
+                                     width instead of becoming the whole row's hit area. -->
                                 <Button DockPanel.Dock="Right" Content="Review"
                                         Style="{StaticResource GhostButton}" Height="24" Padding="8,2"
                                         Margin="0" FontSize="11"
                                         Command="{Binding OpenReviewCommand}" VerticalAlignment="Center" />
+                                <TextBlock Text="Needs attention" Style="{StaticResource CardTitle}" />
                             </DockPanel>
                             <TextBlock Text="{Binding AttentionSummary}" Style="{StaticResource CardSubtitle}"
                                        Margin="0,1,0,0" />
@@ -158,7 +202,7 @@
                                 <ItemsControl ItemsSource="{Binding AttentionItems}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Border BorderBrush="{StaticResource RowHairlineBrush}"
+                                            <Border BorderBrush="{DynamicResource RowHairlineBrush}"
                                                     BorderThickness="0,0,0,1" Padding="0,7">
                                                 <StackPanel>
                                                     <TextBlock Text="{Binding Title}" Style="{StaticResource RowTitle}"
@@ -182,25 +226,39 @@
                     <Border Style="{StaticResource Card}" Margin="0">
                         <StackPanel>
                             <TextBlock Text="SYSTEM" Style="{StaticResource SectionLabel}" />
-                            <DockPanel Margin="0,7,0,0">
+                            <!-- A two-column grid, not a DockPanel: a right-docked
+                                 last child used to overlap the label and clip the
+                                 start of the value ("Classroom1 as …"). -->
+                            <Grid Margin="0,7,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Text="AI keys" Style="{StaticResource CardSubtitle}"
                                            VerticalAlignment="Center" />
-                                <TextBlock DockPanel.Dock="Right" HorizontalAlignment="Right"
-                                           Text="{Binding ApiHealthText}" FontSize="11.5"
-                                           Foreground="{StaticResource TextBrush}" TextWrapping="NoWrap" />
-                            </DockPanel>
-                            <DockPanel Margin="0,4,0,0">
+                                <TextBlock Grid.Column="1" Text="{Binding ApiHealthText}" FontSize="11.5"
+                                           Foreground="{DynamicResource TextBrush}" TextWrapping="NoWrap"
+                                           TextAlignment="Right" TextTrimming="CharacterEllipsis"
+                                           Margin="12,0,0,0" />
+                            </Grid>
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Text="Classroom" Style="{StaticResource CardSubtitle}"
                                            VerticalAlignment="Center" />
-                                <TextBlock DockPanel.Dock="Right" HorizontalAlignment="Right"
-                                           Text="{Binding ClassroomText}" FontSize="11.5"
-                                           Foreground="{StaticResource TextBrush}" TextWrapping="NoWrap" />
-                            </DockPanel>
+                                <TextBlock Grid.Column="1" Text="{Binding ClassroomText}" FontSize="11.5"
+                                           Foreground="{DynamicResource TextBrush}" TextWrapping="NoWrap"
+                                           TextAlignment="Right" TextTrimming="CharacterEllipsis"
+                                           Margin="12,0,0,0"
+                                           ToolTip="{Binding ClassroomText}" />
+                            </Grid>
                             <TextBlock Text="{Binding VersionText}" Style="{StaticResource CardSubtitle}"
                                        Margin="0,6,0,0" TextWrapping="NoWrap"
                                        TextTrimming="CharacterEllipsis"
                                        ToolTip="{Binding VersionText}" />
-                            <Border Height="1" Background="{StaticResource HairlineBrush}" Margin="0,8,0,6" />
+                            <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,8,0,6" />
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="AI &amp; keys" Style="{StaticResource GhostButton}"
                                         Command="{Binding OpenAiKeysCommand}" Padding="8,2" Height="24"

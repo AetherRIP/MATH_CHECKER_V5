@@ -31,7 +31,7 @@
                             <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Padding="9,2"
                                     VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Items.Count, StringFormat={}{0} waiting}"
-                                           FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                                           FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
                             <TextBlock Text="Teacher decisions" Style="{StaticResource RowTitle}"
                                        VerticalAlignment="Center" />
@@ -82,7 +82,7 @@
                         <TextBlock Text="{Binding Selected.ScoreText}" Style="{StaticResource DisplayFigure}"
                                    FontSize="34" Margin="0,16,0,0" />
 
-                        <Border Height="1" Background="{StaticResource HairlineBrush}" Margin="0,14,0,12" />
+                        <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,14,0,12" />
 
                         <DockPanel Margin="0,0,0,7">
                             <TextBlock Text="Confidence" Style="{StaticResource CardSubtitle}" />
@@ -103,7 +103,7 @@
                         <TextBlock Text="WHY THE ENGINE ASKED" Style="{StaticResource SectionLabel}"
                                    Margin="0,14,0,6" />
                         <TextBlock Text="{Binding Selected.ReasonsText}" FontSize="12"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
 
                         <TextBlock Text="Accepting records a teacher decision that later automated runs cannot replace. Overriding stores the mark you enter."
                                    Style="{StaticResource CardSubtitle}" Margin="0,16,0,0" />

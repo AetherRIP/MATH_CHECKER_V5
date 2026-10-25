@@ -9,9 +9,14 @@
         <ui:PageFrame.Actions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
-                <Button Content="Cancel job" Command="{Binding CancelJobCommand}" />
-                <Button Content="Retry job" Command="{Binding RetryJobCommand}" />
-                <Button Content="Open result" Command="{Binding OpenResultCommand}" Margin="0" />
+                <!-- Each one acts on the selected job; none of them may look
+                     available while nothing is selected. -->
+                <Button Content="Cancel job" Command="{Binding CancelJobCommand}"
+                        IsEnabled="{Binding HasSelection}" ToolTip="Select a job row first" />
+                <Button Content="Retry job" Command="{Binding RetryJobCommand}"
+                        IsEnabled="{Binding HasSelection}" ToolTip="Select a job row first" />
+                <Button Content="Open result" Command="{Binding OpenResultCommand}" Margin="0"
+                        IsEnabled="{Binding HasSelection}" ToolTip="Select a job row first" />
             </StackPanel>
         </ui:PageFrame.Actions>
 
@@ -19,23 +24,23 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="150" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0" Style="{StaticResource FilterBar}" Margin="0,0,0,12">
                 <WrapPanel>
                     <TextBlock Text="Status" Style="{StaticResource FieldLabel}" />
                     <ComboBox Width="160" ItemsSource="{Binding StatusFilters}"
-                              SelectedItem="{Binding StatusFilter}" />
+                              SelectedValuePath="Value" SelectedValue="{Binding StatusFilter}" />
                     <Border Style="{StaticResource Chip}" Padding="9,3" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Items.Count, StringFormat={}{0} jobs}"
-                                   FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                                   FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                     <Border Style="{StaticResource Chip}" Padding="9,3" Margin="8,0,0,0"
                             VerticalAlignment="Center"
                             Visibility="{Binding ShowWorkers, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="{Binding WorkersText}" FontSize="10.5"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                     <TextBlock Text="Size" Style="{StaticResource FieldLabel}" Margin="14,0,6,0"
                                Visibility="{Binding ShowWorkers, Converter={StaticResource BoolToVis}}" />
@@ -62,18 +67,18 @@
                         <DataGrid Style="{StaticResource DataTable}" ui:TableLayout.FillColumn="2" ItemsSource="{Binding Items}"
                                   SelectedItem="{Binding Selected}" AutomationProperties.Name="Jobs">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Student" Binding="{Binding StudentName}" Width="150" />
-                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="112" />
-                                <DataGridTextColumn Header="Stage" Binding="{Binding StageText}" Width="*" MinWidth="120" />
+                                <DataGridTextColumn Header="Student" Binding="{Binding StudentName}" Width="150"
+                                                    ElementStyle="{StaticResource CellText}" />
+                                <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="112" />
+                                <DataGridTextColumn Header="Stage" Binding="{Binding StageText}" Width="*" MinWidth="120"
+                                                    ElementStyle="{StaticResource CellText}" />
                                 <DataGridTextColumn Header="Progress"
-                                                    Binding="{Binding Progress, StringFormat={}{0:P0}}" Width="80"
+                                                    Binding="{Binding ProgressText}" Width="80"
                                                     ui:TableLayout.Priority="2" />
                                 <DataGridTextColumn Header="Attempt" Binding="{Binding Attempts}" Width="70"
                                                     ui:TableLayout.Priority="2" />
-                                <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="130"
+                                <DataGridTextColumn Header="Created" Binding="{Binding CreatedText}" Width="150"
                                                     ui:TableLayout.Priority="1" />
-                                <DataGridTextColumn Header="Result" Binding="{Binding ResultId}" Width="170"
-                                                    ui:TableLayout.Priority="3" />
                             </DataGrid.Columns>
                         </DataGrid>
 
@@ -90,13 +95,18 @@
                 </DockPanel>
             </Border>
 
-            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,12,0,0" Padding="12">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="SELECTED JOB" Style="{StaticResource SectionLabel}"
-                               Margin="2,0,0,6" />
-                    <TextBox Style="{StaticResource JsonBox}" Text="{Binding SelectedDetail, Mode=OneWay}"
-                             Margin="0" />
-                </DockPanel>
+            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="SELECTED JOB" Style="{StaticResource SectionLabel}" />
+                    <!-- An instruction is not data: before a row is picked the
+                         hint reads as plain muted text, not a monospace field. -->
+                    <TextBlock Text="Select a job to see its stage, attempts and error."
+                               Style="{StaticResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap"
+                               Visibility="{Binding HasSelection, Converter={StaticResource InverseBoolToVis}}" />
+                    <ItemsControl ItemsSource="{Binding SelectedFacts}" Margin="0,8,0,0"
+                                  ItemTemplate="{StaticResource FactRowTemplate}"
+                                  Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
             </Border>
         </Grid>
     </ui:PageFrame>

@@ -4,12 +4,16 @@
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
     <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}" Description="{Binding Summary}"
                   StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
+                  Sync="{Binding SyncService}"
                   BodyPadding="0,18,0,0">
         <ui:PageFrame.Actions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
-                <Button Content="Recheck mark scheme" Command="{Binding RecheckMarkSchemeCommand}" />
-                <Button Content="Open first page image" Command="{Binding OpenMarkSchemePageCommand}" Margin="0" />
+                <!-- Both read the selected assignment's mark scheme. -->
+                <Button Content="Recheck mark scheme" Command="{Binding RecheckMarkSchemeCommand}"
+                        IsEnabled="{Binding HasSelection}" ToolTip="Select an assignment row first" />
+                <Button Content="Open first page image" Command="{Binding OpenMarkSchemePageCommand}" Margin="0"
+                        IsEnabled="{Binding HasSelection}" ToolTip="Select an assignment row first" />
             </StackPanel>
         </ui:PageFrame.Actions>
 
@@ -22,10 +26,11 @@
                     <TextBox Width="200" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.Name="Search assignments" />
                     <TextBlock Text="Kind" Style="{StaticResource FieldLabel}" Margin="10,0,6,0" />
-                    <ComboBox Width="120" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" />
+                    <ComboBox Width="120" ItemsSource="{Binding Kinds}" SelectedValuePath="Value"
+                              SelectedValue="{Binding Kind}" />
                     <Border Style="{StaticResource Chip}" Padding="9,3" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Items.Count, StringFormat={}{0} assignments}"
-                                   FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                                   FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                 </WrapPanel>
             </Border>
@@ -35,8 +40,10 @@
                     <DataGrid Style="{StaticResource DataTable}" ui:TableLayout.FillColumn="0" ItemsSource="{Binding Items}"
                               SelectedItem="{Binding Selected}" AutomationProperties.Name="Assignments">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Assignment" Binding="{Binding DisplayTitle}" Width="*" MinWidth="160" />
+                            <DataGridTextColumn Header="Assignment" Binding="{Binding DisplayTitle}" Width="*" MinWidth="160"
+                                                ElementStyle="{StaticResource CellText}" />
                             <DataGridTextColumn Header="Class" Binding="{Binding CourseLabel}" Width="180"
+                                                ElementStyle="{StaticResource CellText}"
                                                 ui:TableLayout.Priority="1" />
                             <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="78"
                                                 ui:TableLayout.Priority="2" />
@@ -82,13 +89,37 @@
                 </WrapPanel>
             </Border>
 
-            <Border Style="{StaticResource Card}" Margin="0,12,0,0" Height="190" Padding="12">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="MARK SCHEME" Style="{StaticResource SectionLabel}"
-                               Margin="2,0,0,6" />
-                    <TextBox Style="{StaticResource JsonBox}" Text="{Binding MarkSchemeText, Mode=OneWay}"
-                             Margin="0" />
-                </DockPanel>
+            <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="MARK SCHEME" Style="{StaticResource SectionLabel}" />
+                    <!-- An instruction before a selection is a hint, not data. -->
+                    <TextBlock Text="Select an assignment to read its mark scheme."
+                               Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0"
+                               Visibility="{Binding HasSelection, Converter={StaticResource InverseBoolToVis}}" />
+
+                    <StackPanel Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding MarkSchemeNote}" Style="{StaticResource CardSubtitle}"
+                                   Margin="0,6,0,0" TextWrapping="Wrap" />
+
+                        <ItemsControl ItemsSource="{Binding MarkSchemeFacts}" Margin="0,10,0,0"
+                                      ItemTemplate="{StaticResource FactRowTemplate}"
+                                      Visibility="{Binding HasMarkSchemeFacts, Converter={StaticResource BoolToVis}}" />
+
+                        <Border Style="{StaticResource Divider}" Margin="0,12,0,10"
+                                Visibility="{Binding HasMarkSchemeContent, Converter={StaticResource BoolToVis}}" />
+                        <TextBox Text="{Binding MarkSchemeContent, Mode=OneWay}" IsReadOnly="True"
+                                 TextWrapping="Wrap" BorderThickness="0" Background="Transparent"
+                                 MaxHeight="220" VerticalScrollBarVisibility="Auto"
+                                 Visibility="{Binding HasMarkSchemeContent, Converter={StaticResource BoolToVis}}" />
+
+                        <Expander Header="Technical details" Margin="0,12,0,0"
+                                  Visibility="{Binding HasMarkSchemeRaw, Converter={StaticResource BoolToVis}}">
+                            <TextBox Style="{StaticResource JsonBox}" Margin="0,4,0,0"
+                                     Text="{Binding MarkSchemeRaw, Mode=OneWay}"
+                                     MinHeight="120" MaxHeight="260" />
+                        </Expander>
+                    </StackPanel>
+                </StackPanel>
             </Border>
         </StackPanel>
         </ScrollViewer>

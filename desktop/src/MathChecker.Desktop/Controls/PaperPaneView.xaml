@@ -12,10 +12,10 @@
         <!-- Header + zoom. Zoom is disabled while there is no paper to zoom. -->
         <WrapPanel Grid.Row="0" Margin="0,0,0,10">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0">
-                <Ellipse Width="6" Height="6" Fill="{StaticResource AccentBrush}"
+                <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentBrush}"
                          Margin="0,0,8,0" VerticalAlignment="Center" />
                 <TextBlock DockPanel.Dock="Left" Text="{Binding HeaderText}" FontSize="11.5"
-                           FontWeight="Medium" Foreground="{StaticResource TextSecondaryBrush}"
+                           FontWeight="Medium" Foreground="{DynamicResource TextSecondaryBrush}"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                            TextWrapping="NoWrap" MaxWidth="280"
                            ToolTip="{Binding HeaderText}" />
@@ -26,7 +26,7 @@
                         Width="30" Height="30" Margin="0,0,4,0" ToolTip="Zoom out (Ctrl -)"
                         AutomationProperties.Name="Zoom out" />
                 <TextBlock Text="{Binding ZoomText}" Width="48" TextAlignment="Center" FontSize="10.5"
-                           Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+                           Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
                 <Button Content="+" Command="{Binding ZoomInCommand}" Style="{StaticResource IconButton}"
                         Width="30" Height="30" Margin="0,0,6,0" ToolTip="Zoom in (Ctrl +)"
                         AutomationProperties.Name="Zoom in" />
@@ -36,8 +36,8 @@
             </StackPanel>
         </WrapPanel>
 
-        <Border Grid.Row="1" Background="{StaticResource PaperSurroundBrush}"
-                BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1"
+        <Border Grid.Row="1" Background="{DynamicResource PaperSurroundBrush}"
+                BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1"
                 CornerRadius="14" ClipToBounds="True">
             <Grid>
                 <ScrollViewer x:Name="PageScroll"
@@ -54,37 +54,37 @@
                 </ScrollViewer>
 
                 <!-- Page load: the previous page is covered, never shrunk. -->
-                <Border Background="{StaticResource PaperSurroundBrush}"
+                <Border Background="{DynamicResource PaperSurroundBrush}"
                         Visibility="{Binding IsPageLoading, Converter={StaticResource BoolToVis}}">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock Text="Loading page…" Foreground="{StaticResource TextSecondaryBrush}"
+                        <TextBlock Text="Loading page…" Foreground="{DynamicResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center" />
                         <TextBlock Text="The paper stays in place while the next page arrives."
-                                   FontSize="10.5" Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="10.5" Foreground="{DynamicResource TextMutedBrush}"
                                    Margin="0,4,0,0" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Border>
 
-                <Border Background="{StaticResource PaperSurroundBrush}"
+                <Border Background="{DynamicResource PaperSurroundBrush}"
                         Visibility="{Binding IsChecking, Converter={StaticResource BoolToVis}}">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock Text="Checking the stored original…" Foreground="{StaticResource TextSecondaryBrush}"
+                        <TextBlock Text="Checking the stored original…" Foreground="{DynamicResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center" />
                         <TextBlock Text="The marks are separate and will load independently."
-                                   Foreground="{StaticResource TextMutedBrush}" FontSize="10.5"
+                                   Foreground="{DynamicResource TextMutedBrush}" FontSize="10.5"
                                    Margin="0,4,0,0" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Border>
 
                 <!-- The backend's authoritative reason, shown verbatim. -->
-                <Border Background="{StaticResource PaperSurroundBrush}" Padding="28"
+                <Border Background="{DynamicResource PaperSurroundBrush}" Padding="28"
                         Visibility="{Binding IsMissing, Converter={StaticResource BoolToVis}}">
                     <StackPanel MaxWidth="440" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="{Binding MissingTitle}" FontFamily="{StaticResource DisplayFont}"
                                    FontSize="18" FontWeight="Medium"
                                    TextAlignment="Center" TextWrapping="Wrap" />
                         <TextBlock Text="{Binding MissingBody}" Margin="0,8,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextAlignment="Center" TextWrapping="Wrap" FontSize="12" />
                         <Button Content="{Binding MissingActionLabel}"
                                 Command="{Binding MissingActionCommand}"
@@ -94,14 +94,14 @@
                     </StackPanel>
                 </Border>
 
-                <Border Background="{StaticResource PaperSurroundBrush}" Padding="28"
+                <Border Background="{DynamicResource PaperSurroundBrush}" Padding="28"
                         Visibility="{Binding IsFailed, Converter={StaticResource BoolToVis}}">
                     <StackPanel MaxWidth="440" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="The paper could not be checked"
                                    FontFamily="{StaticResource DisplayFont}" FontSize="18"
                                    FontWeight="Medium" TextAlignment="Center" />
                         <TextBlock Text="{Binding FailureMessage}" Margin="0,8,0,0"
-                                   Foreground="{StaticResource DangerTextBrush}"
+                                   Foreground="{DynamicResource DangerTextBrush}"
                                    TextAlignment="Center" TextWrapping="Wrap" FontSize="12" />
                         <Button Content="Try again" Command="{Binding RetryCommand}"
                                 HorizontalAlignment="Center" Margin="0,16,0,0" MinWidth="0"
@@ -110,14 +110,14 @@
                 </Border>
 
                 <!-- One page failed, the rest of the paper is fine. -->
-                <Border Background="{StaticResource PaperSurroundBrush}" Padding="28"
+                <Border Background="{DynamicResource PaperSurroundBrush}" Padding="28"
                         Visibility="{Binding IsPageFailed, Converter={StaticResource BoolToVis}}">
                     <StackPanel MaxWidth="440" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="This page could not be shown"
                                    FontFamily="{StaticResource DisplayFont}" FontSize="18"
                                    FontWeight="Medium" TextAlignment="Center" />
                         <TextBlock Text="{Binding PageError}" Margin="0,8,0,0"
-                                   Foreground="{StaticResource DangerTextBrush}"
+                                   Foreground="{DynamicResource DangerTextBrush}"
                                    TextAlignment="Center" TextWrapping="Wrap" FontSize="12" />
                         <Button Content="Retry this page" Command="{Binding RetryPageCommand}"
                                 HorizontalAlignment="Center" Margin="0,16,0,0" MinWidth="0"
@@ -130,7 +130,7 @@
         <DockPanel Grid.Row="2" Margin="0,10,0,0"
                    Visibility="{Binding ShowPager, Converter={StaticResource BoolToVis}}">
             <TextBlock DockPanel.Dock="Left" Text="{Binding PageLabel}"
-                       Foreground="{StaticResource TextMutedBrush}" FontSize="10.5"
+                       Foreground="{DynamicResource TextMutedBrush}" FontSize="10.5"
                        VerticalAlignment="Center" />
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="‹" Command="{Binding PreviousPageCommand}" Style="{StaticResource IconButton}"
@@ -156,9 +156,9 @@
                                         <Setter Property="Margin" Value="3,0,0,0" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsCurrent}" Value="True">
-                                                <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-                                                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                                                <Setter Property="Foreground" Value="{StaticResource AccentInkBrush}" />
+                                                <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                                                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource AccentInkBrush}" />
                                                 <Setter Property="FontWeight" Value="SemiBold" />
                                             </DataTrigger>
                                         </Style.Triggers>

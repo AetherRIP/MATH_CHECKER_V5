@@ -12,7 +12,7 @@ public partial class SignInWindow : Window
     public SignInWindow(AppSession session, AuthStatusDto? status = null)
     {
         InitializeComponent();
-        WindowTheme.ApplyDarkTitleBar(this);
+        WindowTheme.ApplyTitleBar(this);
         _session = session;
         if (status is not null && !string.IsNullOrWhiteSpace(status.User))
         {

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using MathChecker.Desktop.Core;
+using MathChecker.Desktop.Core.UI;
 using MathChecker.Desktop.Models;
 
 namespace MathChecker.Desktop.ViewModels;
@@ -13,7 +14,9 @@ public sealed class AssignmentsViewModel : PageViewModel
     private string _newTitle = string.Empty;
     private string _newPoints = string.Empty;
     private string _newDueDate = string.Empty;
-    private string _markSchemeText = "Select an assignment to read its mark scheme.";
+    private string _markSchemeNote = string.Empty;
+    private string _markSchemeContent = string.Empty;
+    private string _markSchemeRaw = string.Empty;
     private string _summary = string.Empty;
     private readonly List<AssignmentDto> _all = new();
 
@@ -22,8 +25,17 @@ public sealed class AssignmentsViewModel : PageViewModel
     {
     }
 
+    /// <summary>Classroom coursework is mirrored here, so this page syncs it.</summary>
+    public override bool SyncsFromClassroom => true;
+
     public ObservableCollection<AssignmentDto> Items { get; } = new();
-    public ObservableCollection<string> Kinds { get; } = new() { "all", "managed", "external", "local" };
+    public ObservableCollection<ChoiceOption> Kinds { get; } = new()
+    {
+        new("All kinds", "all"),
+        new("Managed", "managed"),
+        new("External", "external"),
+        new("Local", "local"),
+    };
 
     public string Filter
     {
@@ -54,12 +66,29 @@ public sealed class AssignmentsViewModel : PageViewModel
         get => _selected;
         set
         {
-            if (SetProperty(ref _selected, value) && value is not null)
+            if (!SetProperty(ref _selected, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(HasSelection));
+            if (value is not null)
             {
                 _ = LoadMarkSchemeAsync(value.Id);
+                return;
             }
+
+            MarkSchemeFacts.Clear();
+            MarkSchemeContent = string.Empty;
+            MarkSchemeRaw = string.Empty;
+            MarkSchemeNote = string.Empty;
+            OnPropertyChanged(nameof(HasMarkSchemeFacts));
         }
     }
+
+    /// <summary>Recheck and the page-image action both act on the selected
+    /// assignment only; without one they would silently do nothing.</summary>
+    public bool HasSelection => _selected is not null;
 
     public string NewTitle
     {
@@ -79,11 +108,46 @@ public sealed class AssignmentsViewModel : PageViewModel
         set => SetProperty(ref _newDueDate, value);
     }
 
-    public string MarkSchemeText
+    /// <summary>The mark scheme read as a sentence, labelled facts and (when
+    /// the backend has one) the scheme text itself. The raw payload is kept for
+    /// the technical-details expander only.</summary>
+    public ObservableCollection<FactRow> MarkSchemeFacts { get; } = new();
+
+    public string MarkSchemeNote
     {
-        get => _markSchemeText;
-        private set => SetProperty(ref _markSchemeText, value);
+        get => _markSchemeNote;
+        private set => SetProperty(ref _markSchemeNote, value);
     }
+
+    public string MarkSchemeContent
+    {
+        get => _markSchemeContent;
+        private set
+        {
+            if (SetProperty(ref _markSchemeContent, value))
+            {
+                OnPropertyChanged(nameof(HasMarkSchemeContent));
+            }
+        }
+    }
+
+    public string MarkSchemeRaw
+    {
+        get => _markSchemeRaw;
+        private set
+        {
+            if (SetProperty(ref _markSchemeRaw, value))
+            {
+                OnPropertyChanged(nameof(HasMarkSchemeRaw));
+            }
+        }
+    }
+
+    public bool HasMarkSchemeFacts => MarkSchemeFacts.Count > 0;
+
+    public bool HasMarkSchemeContent => !string.IsNullOrWhiteSpace(MarkSchemeContent);
+
+    public bool HasMarkSchemeRaw => !string.IsNullOrWhiteSpace(MarkSchemeRaw);
 
     public string Summary
     {
@@ -127,9 +191,10 @@ public sealed class AssignmentsViewModel : PageViewModel
             return;
         }
 
-        var payload = await Session.Api.RecheckMarkSchemeAsync(Selected.Id);
-        MarkSchemeText = Json.Pretty(payload);
+        await Session.Api.RecheckMarkSchemeAsync(Selected.Id);
+        await LoadMarkSchemeAsync(Selected.Id);
         await LoadAsync();
+        Status = "Mark scheme rechecked by the backend.";
     });
 
     public AsyncCommand OpenMarkSchemePageCommand => Command(async () =>
@@ -200,27 +265,125 @@ public sealed class AssignmentsViewModel : PageViewModel
 
     private async Task LoadMarkSchemeAsync(string courseworkId)
     {
+        MarkSchemeFacts.Clear();
+        MarkSchemeContent = string.Empty;
+        MarkSchemeRaw = string.Empty;
+        MarkSchemeNote = "Reading the mark scheme…";
+        OnPropertyChanged(nameof(HasMarkSchemeFacts));
         try
         {
             var payload = await Session.Api.MarkSchemeAsync(courseworkId);
+            MarkSchemeRaw = PayloadFacts.Raw(payload);
             if (payload.ValueKind == JsonValueKind.Object
                 && payload.TryGetProperty("text", out var text)
                 && text.ValueKind == JsonValueKind.String)
             {
-                MarkSchemeText = text.GetString() ?? "(empty mark scheme)";
+                MarkSchemeContent = text.GetString() ?? string.Empty;
             }
-            else
+
+            // Only the facts a teacher acts on. Validation internals (numbering,
+            // gaps, duplicates, anomalies) stay in technical details instead of
+            // burying the page under two dozen raw field names.
+            var hasScheme = ReadBool(payload, "has_mark_scheme");
+            var questions = ReadInt(payload, "validation", "question_count");
+            var marks = ReadNumber(payload, "validation", "total_marks");
+            var subquestions = ReadInt(payload, "validation", "subquestion_count");
+            var warnings = ReadString(payload, "warnings");
+
+            if (hasScheme || !string.IsNullOrWhiteSpace(MarkSchemeContent))
             {
-                MarkSchemeText = Json.Pretty(payload);
+                MarkSchemeFacts.Add(new FactRow("Questions", questions.ToString()));
+                if (marks is not null)
+                {
+                    MarkSchemeFacts.Add(new FactRow("Marks available", $"{marks:0.##}"));
+                }
+
+                if (subquestions > 0)
+                {
+                    MarkSchemeFacts.Add(new FactRow("Subquestions", subquestions.ToString()));
+                }
+
+                if (!string.IsNullOrWhiteSpace(warnings))
+                {
+                    MarkSchemeFacts.Add(new FactRow("Warnings", warnings!));
+                }
+
+                if (ReadBool(payload, "manual_override"))
+                {
+                    MarkSchemeFacts.Add(new FactRow("Manual override", "On"));
+                }
             }
+
+            MarkSchemeNote = DescribeMarkScheme(payload, MarkSchemeContent);
+            OnPropertyChanged(nameof(HasMarkSchemeFacts));
         }
         catch (ApiException ex)
         {
-            MarkSchemeText = ex.Display;
+            MarkSchemeNote = ex.Display;
+            MarkSchemeRaw = ex.Technical;
         }
         catch (Exception ex)
         {
-            MarkSchemeText = ex.Message;
+            MarkSchemeNote = "The mark scheme could not be read: " + ex.Message;
         }
     }
+
+    /// <summary>One sentence that says what the state means rather than
+    /// repeating the raw boolean flags.</summary>
+    private static string DescribeMarkScheme(JsonElement payload, string content)
+    {
+        var hasScheme = ReadBool(payload, "has_mark_scheme");
+        var processed = ReadBool(payload, "processed");
+        var questions = ReadInt(payload, "validation", "question_count");
+
+        if (!hasScheme && string.IsNullOrWhiteSpace(content))
+        {
+            return "No mark scheme is attached to this assignment yet. "
+                   + "Upload one from Classroom → Assignments, then recheck it here.";
+        }
+
+        if (!processed && questions == 0)
+        {
+            return "A mark scheme is attached but has not been processed yet. Run “Recheck mark scheme”.";
+        }
+
+        if (questions > 0)
+        {
+            return "The mark scheme is processed and ready for correction.";
+        }
+
+        return string.IsNullOrWhiteSpace(content)
+            ? "The mark scheme is attached to this assignment."
+            : "The mark scheme text attached to this assignment is shown below.";
+    }
+
+    private static bool ReadBool(JsonElement payload, string property) =>
+        payload.ValueKind == JsonValueKind.Object
+        && payload.TryGetProperty(property, out var value)
+        && value.ValueKind == JsonValueKind.True;
+
+    private static string? ReadString(JsonElement payload, string property) =>
+        payload.ValueKind == JsonValueKind.Object
+        && payload.TryGetProperty(property, out var value)
+        && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static int ReadInt(JsonElement payload, string parent, string property) =>
+        payload.ValueKind == JsonValueKind.Object
+        && payload.TryGetProperty(parent, out var section)
+        && section.ValueKind == JsonValueKind.Object
+        && section.TryGetProperty(property, out var value)
+        && value.TryGetInt32(out var number)
+            ? number
+            : 0;
+
+    private static double? ReadNumber(JsonElement payload, string parent, string property) =>
+        payload.ValueKind == JsonValueKind.Object
+        && payload.TryGetProperty(parent, out var section)
+        && section.ValueKind == JsonValueKind.Object
+        && section.TryGetProperty(property, out var value)
+        && value.TryGetDouble(out var number)
+            ? number
+            : null;
 }

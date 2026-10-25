@@ -4,7 +4,7 @@
         Title="MATH_CHECKER_V5" Height="860" Width="1440"
         MinHeight="600" MinWidth="900"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource CanvasGradientBrush}"
+        Background="{DynamicResource CanvasGradientBrush}"
         TextOptions.TextFormattingMode="Ideal">
 
     <Window.InputBindings>
@@ -36,10 +36,10 @@
             <Setter Property="Width" Value="6" />
             <Setter Property="Height" Value="6" />
             <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
+            <Setter Property="Fill" Value="{DynamicResource DangerBrush}" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding BackendAvailable}" Value="True">
-                    <Setter Property="Fill" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -53,9 +53,9 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="30" />
+            <RowDefinition Height="48" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="24" />
+            <RowDefinition Height="26" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
@@ -66,9 +66,9 @@
              Menu strip: File / View / Backend, then the ambient facts.
              ============================================================ -->
         <Border Grid.Row="0" Grid.ColumnSpan="2"
-                Background="{StaticResource CanvasDeepBrush}"
-                BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,0,0,1">
-            <DockPanel Margin="6,0">
+                Background="{DynamicResource CanvasDeepBrush}"
+                BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="0,0,0,1">
+            <DockPanel Margin="12,0">
 
                 <Menu DockPanel.Dock="Left" VerticalAlignment="Center">
                     <MenuItem Header="_File">
@@ -95,7 +95,7 @@
                         <StackPanel Orientation="Horizontal">
                             <Ellipse Style="{StaticResource StatusDot}" Margin="0,0,6,0" />
                             <TextBlock Text="{Binding BackendShort}" FontSize="10"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" TextWrapping="NoWrap" />
                         </StackPanel>
                     </Border>
@@ -117,22 +117,22 @@
                 <!-- The palette is the primary way to move; it reads as a field. -->
                 <Button Command="{Binding TogglePaletteCommand}"
                         Style="{StaticResource GhostButton}"
-                        Height="24" Padding="10,0" MaxWidth="380"
+                        Height="32" Padding="12,0" MaxWidth="420"
                         HorizontalAlignment="Center"
-                        Background="{StaticResource SurfaceBrush}"
-                        BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1"
+                        Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1"
                         AutomationProperties.Name="Search pages"
                         ToolTip="Search every page (Ctrl+K)">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="&#xE721;" Style="{StaticResource IconGlyph}" FontSize="11"
-                                   Margin="0,0,7,0" Foreground="{StaticResource TextMutedBrush}" />
+                                   Margin="0,0,7,0" Foreground="{DynamicResource TextMutedBrush}" />
                         <TextBlock Text="Search pages and actions" FontSize="11.5"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    VerticalAlignment="Center" TextWrapping="NoWrap" />
-                        <Border Background="{StaticResource CanvasDeepBrush}" CornerRadius="2"
+                        <Border Background="{DynamicResource CanvasDeepBrush}" CornerRadius="2"
                                 Padding="5,1" Margin="14,0,0,0" VerticalAlignment="Center">
                             <TextBlock Text="Ctrl K" FontSize="9" FontFamily="{StaticResource MonoFont}"
-                                       Foreground="{StaticResource TextMutedBrush}" TextWrapping="NoWrap" />
+                                       Foreground="{DynamicResource TextMutedBrush}" TextWrapping="NoWrap" />
                         </Border>
                     </StackPanel>
                 </Button>
@@ -143,8 +143,8 @@
              Rail: one entry per destination family.
              ============================================================ -->
         <Border Grid.Row="1" Grid.Column="0" Width="{Binding RailWidth}"
-                BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,0,1,0"
-                Background="{StaticResource CanvasDeepBrush}">
+                BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="0,0,1,0"
+                Background="{DynamicResource CanvasDeepBrush}">
             <DockPanel>
                 <Grid DockPanel.Dock="Top" Margin="12,12,10,8">
                     <Grid.ColumnDefinitions>
@@ -155,21 +155,21 @@
 
                     <!-- The compact rail has no room for a wordmark; keep the
                          toggle alone there so the header never crowds. -->
-                    <Border Width="26" Height="26" CornerRadius="3" Background="{StaticResource AccentBrush}"
+                    <Border Width="30" Height="30" CornerRadius="9" Background="{DynamicResource AccentBrush}"
                             Visibility="{Binding IsRailExpanded, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="&#x2211;" FontFamily="{StaticResource DisplayFont}"
                                    FontSize="16" FontWeight="Bold"
-                                   Foreground="{StaticResource AccentInkBrush}"
+                                   Foreground="{DynamicResource AccentInkBrush}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
 
                     <StackPanel Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center"
                                 Visibility="{Binding IsRailExpanded, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="Math Checker" FontFamily="{StaticResource DisplayFont}"
-                                   FontSize="14" FontWeight="SemiBold" TextWrapping="NoWrap"
-                                   Foreground="{StaticResource TextBrush}" />
-                        <TextBlock Text="MARKING WORKSPACE" FontSize="8" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="15" FontWeight="Bold" TextWrapping="NoWrap"
+                                   Foreground="{DynamicResource TextBrush}" />
+                        <TextBlock Text="MARKING WORKSPACE" FontSize="8.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    Margin="0,1,0,0" TextWrapping="NoWrap" />
                     </StackPanel>
 
@@ -184,20 +184,20 @@
                 </Grid>
 
                 <Border DockPanel.Dock="Bottom" Margin="8,8,8,10" Padding="8,7"
-                        Background="{StaticResource SurfaceBrush}"
-                        BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1"
+                        Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1"
                         CornerRadius="4">
                     <StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <Ellipse Style="{StaticResource StatusDot}" Margin="0,0,6,0" />
                             <TextBlock Text="{Binding BackendShort}" FontSize="10"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                        TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                                        MaxWidth="150" VerticalAlignment="Center"
                                        Visibility="{Binding IsRailExpanded, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
                         <TextBlock Text="{Binding AppVersion, StringFormat=Desktop {0}}"
-                                   FontSize="9.5" Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="9.5" Foreground="{DynamicResource TextMutedBrush}"
                                    Margin="0,4,0,0" TextWrapping="NoWrap"
                                    Visibility="{Binding IsRailExpanded, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
@@ -221,8 +221,8 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Border Grid.Row="0" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,0,0,1">
-                <DockPanel Margin="20,0,20,0" Height="34">
+            <Border Grid.Row="0" BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="0,0,0,1">
+                <DockPanel Margin="26,0,26,0" MinHeight="46">
                     <TextBlock DockPanel.Dock="Left" Text="{Binding SpaceName}"
                                Style="{StaticResource SectionLabel}" VerticalAlignment="Center"
                                Margin="0,1,16,0" />
@@ -243,9 +243,9 @@
                         Visibility="{Binding HasBackendWarning, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <TextBlock Text="Check which data this window is showing."
-                                   FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
+                                   FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" />
                         <TextBlock Text="{Binding BackendWarning}" Margin="0,2,0,0" FontSize="11.5"
-                                   TextWrapping="Wrap" Foreground="{StaticResource WarningTextBrush}" />
+                                   TextWrapping="Wrap" Foreground="{DynamicResource WarningTextBrush}" />
                     </StackPanel>
                 </Border>
 
@@ -258,32 +258,38 @@
                                 Margin="12,0,0,0" />
                         <StackPanel>
                             <TextBlock Text="The correction backend is not available."
-                                       FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" />
                             <TextBlock Text="{Binding BackendDetail}" Margin="0,2,0,0" FontSize="11.5"
-                                       Foreground="{StaticResource DangerTextBrush}" />
+                                       Foreground="{DynamicResource DangerTextBrush}" />
                         </StackPanel>
                     </DockPanel>
                 </Border>
 
-                <Border Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource AccentLineBrush}"
-                        BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,0,0,8"
+                <Border Background="{DynamicResource AccentSoftBrush}" BorderBrush="{DynamicResource AccentLineBrush}"
+                        BorderThickness="1" CornerRadius="{StaticResource PillRadius}" Padding="14,7"
+                        Margin="0,0,0,10" HorizontalAlignment="Left"
+                        Effect="{DynamicResource CardShadowEffect}"
                         Visibility="{Binding Toast, Converter={StaticResource NullToVisibility}}">
-                    <TextBlock Text="{Binding Toast}" FontSize="11.5"
-                               Foreground="{StaticResource AccentBrush}" />
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="6" Height="6" Margin="0,0,8,0" VerticalAlignment="Center"
+                                 Fill="{DynamicResource AccentBrush}" />
+                        <TextBlock Text="{Binding Toast}" FontSize="12" FontWeight="Medium"
+                                   Foreground="{DynamicResource AccentBrush}" />
+                    </StackPanel>
                 </Border>
             </StackPanel>
 
-            <ContentControl Grid.Row="2" Content="{Binding Current}" Margin="20,12,20,0"
+            <ContentControl Grid.Row="2" Content="{Binding Current}" Margin="26,16,26,0"
                             HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                            TextElement.Foreground="{StaticResource TextBrush}" />
+                            TextElement.Foreground="{DynamicResource TextBrush}" />
         </Grid>
 
         <!-- ============================================================
              Status bar: quiet facts, not a second header.
              ============================================================ -->
         <Border Grid.Row="2" Grid.ColumnSpan="2"
-                Background="{StaticResource CanvasDeepBrush}"
-                BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,1,0,0"
+                Background="{DynamicResource CanvasDeepBrush}"
+                BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="0,1,0,0"
                 Padding="20,0">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -293,21 +299,21 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBlock FontSize="10" VerticalAlignment="Center"
-                           Foreground="{StaticResource TextMutedBrush}"
+                           Foreground="{DynamicResource TextMutedBrush}"
                            Text="{Binding DataFolder, StringFormat=DATA  {0}}"
                            TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                            MaxWidth="460" />
 
                 <TextBlock Grid.Column="1" FontSize="10" Margin="24,0" VerticalAlignment="Center"
-                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
                            Text="{Binding Current.Status}" TextWrapping="NoWrap"
                            TextTrimming="CharacterEllipsis" />
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock FontSize="10" Foreground="{StaticResource TextMutedBrush}"
+                    <TextBlock FontSize="10" Foreground="{DynamicResource TextMutedBrush}"
                                Text="{Binding AppVersion, StringFormat=Desktop {0}}" TextWrapping="NoWrap" />
-                    <Border Width="1" Height="10" Margin="10,0" Background="{StaticResource HairlineBrush}" />
-                    <TextBlock FontSize="10" Foreground="{StaticResource TextMutedBrush}"
+                    <Border Width="1" Height="10" Margin="10,0" Background="{DynamicResource HairlineBrush}" />
+                    <TextBlock FontSize="10" Foreground="{DynamicResource TextMutedBrush}"
                                Text="Ctrl+K to jump" TextWrapping="NoWrap" />
                 </StackPanel>
             </Grid>
@@ -317,23 +323,23 @@
              Command palette overlay.
              ============================================================ -->
         <Grid x:Name="PaletteScrim" Grid.RowSpan="3" Grid.ColumnSpan="2" Panel.ZIndex="90"
-              Background="{StaticResource ScrimBrush}" Focusable="True"
+              Background="{DynamicResource ScrimBrush}" Focusable="True"
               Visibility="{Binding IsPaletteOpen, Converter={StaticResource BoolToVis}}"
               PreviewKeyDown="OnPaletteKeyDown"
               MouseLeftButtonDown="OnPaletteScrimClick">
-            <Border Width="560" VerticalAlignment="Top" Margin="0,88,0,0"
-                    Background="{StaticResource SurfaceRaisedBrush}"
-                    BorderBrush="{StaticResource HairlineStrongBrush}" BorderThickness="1"
-                    CornerRadius="4" Padding="8"
-                    Effect="{StaticResource FloatingShadow}"
+            <Border Width="600" VerticalAlignment="Top" Margin="0,120,0,0"
+                    Background="{DynamicResource SurfaceRaisedBrush}"
+                    BorderBrush="{DynamicResource HairlineStrongBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource DialogRadius}" Padding="10"
+                    Effect="{DynamicResource FloatingShadow}"
                     MouseLeftButtonDown="OnPaletteCardClick">
                 <StackPanel>
                     <Grid Margin="0,0,0,4">
-                        <TextBox x:Name="PaletteInput" MinHeight="34" Margin="0"
+                        <TextBox x:Name="PaletteInput" MinHeight="38" Margin="0" FontSize="13.5"
                                  Text="{Binding PaletteQuery, UpdateSourceTrigger=PropertyChanged}"
                                  AutomationProperties.Name="Search every page" />
                         <TextBlock Text="Type a page name — Results, Prompts, Students…"
-                                   FontSize="11.5" Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="11.5" Foreground="{DynamicResource TextMutedBrush}"
                                    Margin="11,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
                                    Visibility="{Binding PaletteQuery, Converter={StaticResource EmptyToVisibility}}" />
                     </Grid>
@@ -349,9 +355,9 @@
 
                     <DockPanel Margin="8,6,8,2">
                         <TextBlock Text="Enter to open  ·  Esc to close" FontSize="9.5"
-                                   Foreground="{StaticResource TextMutedBrush}" TextWrapping="NoWrap" />
+                                   Foreground="{DynamicResource TextMutedBrush}" TextWrapping="NoWrap" />
                         <TextBlock DockPanel.Dock="Right" Text="{Binding PaletteHint}" FontSize="9.5"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    HorizontalAlignment="Right" TextWrapping="NoWrap" />
                     </DockPanel>
                 </StackPanel>

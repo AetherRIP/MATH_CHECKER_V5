@@ -36,18 +36,33 @@
                         <DataGrid Style="{StaticResource DataTable}" ui:TableLayout.FillColumn="2" ItemsSource="{Binding Hits}"
                                   MouseDoubleClick="OnRowDoubleClick" AutomationProperties.Name="Search results">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Type" Binding="{Binding Group}" Width="120" />
-                                <DataGridTextColumn Header="Name" Binding="{Binding Title}" Width="240" />
-                                <DataGridTextColumn Header="Detail" Binding="{Binding Subtitle}" Width="*" />
+                                <DataGridTextColumn Header="Type" Binding="{Binding Group}" Width="120"
+                                                    ElementStyle="{StaticResource CellText}" />
+                                <DataGridTextColumn Header="Name" Binding="{Binding Title}" Width="240"
+                                                    ElementStyle="{StaticResource CellText}" />
+                                <DataGridTextColumn Header="Detail" Binding="{Binding Subtitle}" Width="*"
+                                                    ElementStyle="{StaticResource CellText}" />
                             </DataGrid.Columns>
                         </DataGrid>
 
+                        <!-- Two different states: before a search there is nothing to
+                             report, so the page must not open on "Nothing found". -->
                         <Border Style="{StaticResource EmptyState}" MaxWidth="360"
                                 HorizontalAlignment="Center" VerticalAlignment="Center"
-                                Visibility="{Binding Hits.Count, Converter={StaticResource ZeroToVis}}">
+                                Visibility="{Binding ShowInitialHint, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="Search your local data" Style="{StaticResource EmptyTitle}" />
+                                <TextBlock Text="Students, classes, assignments and corrections are searched by name or id. No Google request is made."
+                                           Style="{StaticResource EmptyText}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource EmptyState}" MaxWidth="360"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="{Binding ShowNoResults, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
                                 <TextBlock Text="Nothing found" Style="{StaticResource EmptyTitle}" />
-                                <TextBlock Text="Search students, classes, assignments or corrections by name."
+                                <TextBlock Text="No student, class, assignment or correction matches that search."
                                            Style="{StaticResource EmptyText}" />
                             </StackPanel>
                         </Border>

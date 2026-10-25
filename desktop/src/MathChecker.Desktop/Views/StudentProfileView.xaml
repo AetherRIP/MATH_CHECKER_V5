@@ -20,43 +20,43 @@
                 </Grid.ColumnDefinitions>
 
                 <Border Width="48" Height="48" CornerRadius="10" VerticalAlignment="Center"
-                        Background="{StaticResource AccentSoftBrush}"
-                        BorderBrush="{StaticResource AccentLineBrush}" BorderThickness="1">
+                        Background="{DynamicResource AccentSoftBrush}"
+                        BorderBrush="{DynamicResource AccentLineBrush}" BorderThickness="1">
                     <TextBlock Text="{Binding Profile.Initials}" FontSize="18" FontWeight="SemiBold"
-                               Foreground="{StaticResource AccentBrush}"
+                               Foreground="{DynamicResource AccentBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
 
                 <StackPanel Grid.Column="1" Margin="12,0,12,0" VerticalAlignment="Center">
                     <TextBlock Text="{Binding Profile.Name}" FontSize="20" FontWeight="SemiBold"
-                               Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                               Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis" />
                     <WrapPanel Margin="0,3,0,0">
                         <TextBlock Text="{Binding Profile.ClassText}" FontSize="12"
-                                   Foreground="{StaticResource TextBrush}" />
+                                   Foreground="{DynamicResource TextBrush}" />
                         <TextBlock Text="  ·  Google Classroom ID " FontSize="12"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Text="{Binding Profile.StudentId}" FontSize="12"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Text="{Binding Profile.Email, StringFormat=  ·  {0}}" FontSize="12"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </WrapPanel>
                     <TextBlock Text="{Binding Profile.IdentitySource}" FontSize="10.5"
-                               Foreground="{StaticResource TextMutedBrush}" Margin="0,3,0,0" />
+                               Foreground="{DynamicResource TextMutedBrush}" Margin="0,3,0,0" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <Border Style="{StaticResource AccentChip}" HorizontalAlignment="Right"
                             Visibility="{Binding ShowTrackingWarning, Converter={StaticResource InverseBoolToVis}}">
                         <TextBlock Text="Classroom data connected" FontSize="10.5"
-                                   Foreground="{StaticResource CanvasDeepBrush}" />
+                                   Foreground="{DynamicResource CanvasDeepBrush}" />
                     </Border>
                     <Border Style="{StaticResource WarningChip}" HorizontalAlignment="Right"
                             Visibility="{Binding ShowTrackingWarning, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="No Classroom data" FontSize="10.5"
-                                   Foreground="{StaticResource WarningTextBrush}" />
+                                   Foreground="{DynamicResource WarningTextBrush}" />
                     </Border>
                     <TextBlock Text="Loading…" FontSize="10.5" HorizontalAlignment="Right" Margin="0,4,0,0"
-                               Foreground="{StaticResource TextMutedBrush}"
+                               Foreground="{DynamicResource TextMutedBrush}"
                                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
                 </StackPanel>
             </Grid>
@@ -79,7 +79,7 @@
                     <Border Style="{StaticResource WarningBanner}" Margin="0,0,0,10"
                             Visibility="{Binding ShowTrackingWarning, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="{Binding TrackingWarning}" TextWrapping="Wrap" FontSize="12"
-                                   Foreground="{StaticResource WarningTextBrush}" />
+                                   Foreground="{DynamicResource WarningTextBrush}" />
                     </Border>
 
                     <Grid>
@@ -113,7 +113,7 @@
                             <StackPanel>
                                 <TextBlock Text="NOT SUBMITTED" Style="{StaticResource SectionLabel}" />
                                 <TextBlock Text="{Binding OutstandingText}" Style="{StaticResource DisplayFigure}"
-                                           Margin="0,2,0,0" Foreground="{StaticResource WarningTextBrush}" />
+                                           Margin="0,2,0,0" Foreground="{DynamicResource WarningTextBrush}" />
                                 <TextBlock Text="No work handed in, draft or reclaimed" Style="{StaticResource CardSubtitle}" />
                             </StackPanel>
                         </Border>
@@ -122,7 +122,7 @@
                             <StackPanel>
                                 <TextBlock Text="AVERAGE (MATH CHECKER)" Style="{StaticResource SectionLabel}" />
                                 <TextBlock Text="{Binding McAverageText}" FontSize="22" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextBrush}" Margin="0,2,0,0"
+                                           Foreground="{DynamicResource TextBrush}" Margin="0,2,0,0"
                                            TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{Binding Profile.ScoresSource}"
                                            Style="{StaticResource CardSubtitle}" TextTrimming="CharacterEllipsis" />
@@ -152,34 +152,34 @@
                                     <StackPanel Grid.Column="0" Margin="0,0,10,0">
                                         <TextBlock Text="GOOGLE CLASSROOM" Style="{StaticResource SectionLabel}" />
                                         <TextBlock Text="{Binding ClassroomAverageText}" FontSize="22"
-                                                   FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+                                                   FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}"
                                                    Margin="0,3,0,0" />
                                         <TextBlock Text="average, marked work only"
                                                    Style="{StaticResource CardSubtitle}" />
                                         <TextBlock Text="{Binding ClassroomGradedText}" FontSize="11.5"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" />
                                         <TextBlock Text="{Binding ClassroomSpreadText, StringFormat=High / low  {0}}"
-                                                   FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Text="MATH CHECKER" Style="{StaticResource SectionLabel}" />
                                         <TextBlock Text="{Binding OverallText}" FontSize="18"
-                                                   FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+                                                   FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}"
                                                    Margin="0,3,0,0" TextWrapping="Wrap" />
                                         <TextBlock Text="all stored corrections"
                                                    Style="{StaticResource CardSubtitle}" />
                                         <TextBlock Text="{Binding McSpreadText, StringFormat=High / low  {0}}"
-                                                   FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                                    Margin="0,6,0,0" />
                                         <TextBlock Text="{Binding ZerosText, StringFormat=Actual zeros  {0}}"
-                                                   FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </StackPanel>
                                 </Grid>
 
                                 <Border Style="{StaticResource Divider}" Margin="0,10,0,0" />
                                 <TextBlock Text="{Binding Profile.ScoresSource}" FontSize="10.5"
-                                           Foreground="{StaticResource TextMutedBrush}" Margin="0,8,0,0" />
+                                           Foreground="{DynamicResource TextMutedBrush}" Margin="0,8,0,0" />
                             </StackPanel>
                         </Border>
 
@@ -196,31 +196,31 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0">
                                         <TextBlock Text="{Binding OnTimeText, StringFormat=On time  {0}}"
-                                                   FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4" />
+                                                   FontSize="12" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4" />
                                         <TextBlock Text="{Binding LateCountText, StringFormat=Late  {0}}"
-                                                   FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4" />
+                                                   FontSize="12" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4" />
                                         <TextBlock Text="{Binding MissingCountText, StringFormat=Outstanding incl. 0  {0}}"
-                                                   FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4" />
+                                                   FontSize="12" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4" />
                                         <TextBlock Text="{Binding DraftText, StringFormat=Draft  {0}}"
-                                                   FontSize="12" Foreground="{StaticResource TextBrush}" />
+                                                   FontSize="12" Foreground="{DynamicResource TextBrush}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Text="{Binding CorrectionsValueText, StringFormat=Corrections  {0}}"
-                                                   FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4" />
+                                                   FontSize="12" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4" />
                                         <TextBlock Text="{Binding PendingText, StringFormat=Pending jobs  {0}}"
-                                                   FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4" />
+                                                   FontSize="12" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4" />
                                         <TextBlock Text="{Binding NeedsReviewText, StringFormat=Need review  {0}}"
-                                                   FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4" />
+                                                   FontSize="12" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4" />
                                         <TextBlock Text="{Binding FailedJobsText, StringFormat=Failed jobs  {0}}"
-                                                   FontSize="12" Foreground="{StaticResource TextBrush}" />
+                                                   FontSize="12" Foreground="{DynamicResource TextBrush}" />
                                     </StackPanel>
                                 </Grid>
 
                                 <TextBlock Text="{Binding LastCorrectionText, StringFormat=Last corrected  {0}}"
-                                           FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                            Margin="0,10,0,0" />
                                 <TextBlock Text="{Binding Profile.CorrectionSource}" FontSize="10.5"
-                                           Foreground="{StaticResource TextMutedBrush}" Margin="0,6,0,0" />
+                                           Foreground="{DynamicResource TextMutedBrush}" Margin="0,6,0,0" />
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -243,22 +243,22 @@
                                 <StackPanel Grid.Column="0" Margin="0,0,10,0">
                                     <TextBlock Text="Highest-scoring topics" Style="{StaticResource FieldLabel}" />
                                     <TextBlock Text="{Binding StrengthText}" FontSize="12" TextWrapping="Wrap"
-                                               Foreground="{StaticResource TextBrush}" Margin="0,4,0,0" />
+                                               Foreground="{DynamicResource TextBrush}" Margin="0,4,0,0" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Margin="0,0,10,0">
                                     <TextBlock Text="Lowest-scoring topics" Style="{StaticResource FieldLabel}" />
                                     <TextBlock Text="{Binding FocusText}" FontSize="12" TextWrapping="Wrap"
-                                               Foreground="{StaticResource TextBrush}" Margin="0,4,0,0" />
+                                               Foreground="{DynamicResource TextBrush}" Margin="0,4,0,0" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="2">
                                     <TextBlock Text="Repeated difficulty" Style="{StaticResource FieldLabel}" />
                                     <TextBlock Text="{Binding RepeatedText}" FontSize="12" TextWrapping="Wrap"
-                                               Foreground="{StaticResource TextBrush}" Margin="0,4,0,0" />
+                                               Foreground="{DynamicResource TextBrush}" Margin="0,4,0,0" />
                                 </StackPanel>
                             </Grid>
 
                             <TextBlock Text="{Binding TopicNote}" FontSize="10.5"
-                                       Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,0"
+                                       Foreground="{DynamicResource TextMutedBrush}" Margin="0,10,0,0"
                                        TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
@@ -284,10 +284,10 @@
                                   AutomationProperties.HelpText="Filters the assignment list. Alt+Down opens the list, arrow keys choose, Enter applies." />
                         <Border Style="{StaticResource Chip}" Padding="9,3" VerticalAlignment="Center" Margin="10,0,0,0">
                             <TextBlock Text="{Binding AssignmentCountText}" FontSize="10.5"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Border>
                         <TextBlock Text="Click a column header to sort." FontSize="10.5" VerticalAlignment="Center"
-                                   Margin="12,0,0,0" Foreground="{StaticResource TextMutedBrush}" />
+                                   Margin="12,0,0,0" Foreground="{DynamicResource TextMutedBrush}" />
                     </WrapPanel>
                 </Border>
 
@@ -312,9 +312,9 @@
                         </Border>
 
                         <Border DockPanel.Dock="Bottom" Padding="12,7"
-                                BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,1,0,0">
+                                BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="0,1,0,0">
                             <TextBlock Text="{Binding SelectedAssignmentHint}" FontSize="11"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                        TextTrimming="CharacterEllipsis" />
                         </Border>
 
@@ -416,11 +416,11 @@
                                        TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
                             <WrapPanel Margin="0,3,0,0">
                                 <TextBlock Text="{Binding SelectedCorrectionScore}" FontSize="12"
-                                           Foreground="{StaticResource TextBrush}" />
+                                           Foreground="{DynamicResource TextBrush}" />
                                 <TextBlock Text="{Binding SelectedCorrectionStatus, StringFormat=  ·  {0}}" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <TextBlock Text="{Binding SelectedCorrectionWhen, StringFormat=  ·  {0}}" FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                             </WrapPanel>
 
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,8">
@@ -439,7 +439,7 @@
                                 <ItemsControl ItemsSource="{Binding Questions}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Border BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,0,0,1"
+                                            <Border BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="0,0,0,1"
                                                     Padding="0,7">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
@@ -450,23 +450,23 @@
 
                                                     <TextBlock Grid.Column="0" Text="{Binding NumberText}"
                                                                FontWeight="SemiBold" FontSize="12"
-                                                               Foreground="{StaticResource TextBrush}" />
+                                                               Foreground="{DynamicResource TextBrush}" />
                                                     <TextBlock Grid.Column="1" Text="{Binding MarkText}"
-                                                               FontSize="12" Foreground="{StaticResource TextBrush}" />
+                                                               FontSize="12" Foreground="{DynamicResource TextBrush}" />
 
                                                     <StackPanel Grid.Column="2">
                                                         <WrapPanel>
                                                             <TextBlock Text="{Binding Topic, StringFormat=Topic: {0}}"
-                                                                       FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                                                             <TextBlock Text="{Binding Status, StringFormat=  ·  {0}}"
-                                                                       FontSize="10.5" Foreground="{StaticResource TextMutedBrush}"
+                                                                       FontSize="10.5" Foreground="{DynamicResource TextMutedBrush}"
                                                                        Visibility="{Binding Status, Converter={StaticResource NullToVisibility}}" />
                                                         </WrapPanel>
                                                         <TextBlock Text="{Binding LossReason}" FontSize="11.5"
                                                                    TextWrapping="Wrap" Margin="0,2,0,0"
-                                                                   Foreground="{StaticResource TextBrush}" />
+                                                                   Foreground="{DynamicResource TextBrush}" />
                                                         <TextBlock Text="{Binding ReviewReason}" FontSize="10.5"
-                                                                   TextWrapping="Wrap" Foreground="{StaticResource WarningTextBrush}" />
+                                                                   TextWrapping="Wrap" Foreground="{DynamicResource WarningTextBrush}" />
                                                     </StackPanel>
                                                 </Grid>
                                             </Border>
@@ -512,13 +512,13 @@
                                         <StackPanel Width="72" Height="118" Margin="0,0,6,0">
                                             <TextBlock Text="{Binding ValueText}" FontSize="10.5"
                                                        HorizontalAlignment="Center"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                                             <Border Height="{Binding BarHeight}" Width="26" VerticalAlignment="Bottom"
-                                                    Background="{StaticResource AccentBrush}" CornerRadius="3"
+                                                    Background="{DynamicResource AccentBrush}" CornerRadius="3"
                                                     Margin="0,4,0,4" />
                                             <TextBlock Text="{Binding Label}" FontSize="9.5"
                                                        HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                                       Foreground="{StaticResource TextMutedBrush}" />
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -547,16 +547,16 @@
                                         <StackPanel Width="96" Height="142" Margin="0,0,8,8">
                                             <TextBlock Text="{Binding ValueText}" FontSize="10"
                                                        HorizontalAlignment="Center"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                                             <Border Height="{Binding BarHeight}" Width="34" VerticalAlignment="Bottom"
-                                                    Background="{StaticResource AccentBrush}" CornerRadius="3"
+                                                    Background="{DynamicResource AccentBrush}" CornerRadius="3"
                                                     Margin="0,4,0,4" />
                                             <TextBlock Text="{Binding Topic}" FontSize="10.5" TextWrapping="Wrap"
                                                        HorizontalAlignment="Center"
-                                                       Foreground="{StaticResource TextBrush}" />
+                                                       Foreground="{DynamicResource TextBrush}" />
                                             <TextBlock Text="{Binding QuestionText}" FontSize="9.5"
                                                        HorizontalAlignment="Center"
-                                                       Foreground="{StaticResource TextMutedBrush}" />
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -582,17 +582,17 @@
                                 <StackPanel Grid.Column="0" Margin="0,0,12,0">
                                     <TextBlock Text="Highest-scoring topics" Style="{StaticResource FieldLabel}" />
                                     <TextBlock Text="{Binding StrengthText}" FontSize="12" TextWrapping="Wrap"
-                                               Foreground="{StaticResource TextBrush}" Margin="0,4,0,0" />
+                                               Foreground="{DynamicResource TextBrush}" Margin="0,4,0,0" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="1">
                                     <TextBlock Text="Lowest-scoring topics" Style="{StaticResource FieldLabel}" />
                                     <TextBlock Text="{Binding FocusText}" FontSize="12" TextWrapping="Wrap"
-                                               Foreground="{StaticResource TextBrush}" Margin="0,4,0,0" />
+                                               Foreground="{DynamicResource TextBrush}" Margin="0,4,0,0" />
                                 </StackPanel>
                             </Grid>
 
                             <TextBlock Text="{Binding RepeatedText}" FontSize="12" TextWrapping="Wrap"
-                                       Foreground="{StaticResource TextBrush}" Margin="0,10,0,0" />
+                                       Foreground="{DynamicResource TextBrush}" Margin="0,10,0,0" />
                         </StackPanel>
                     </Border>
 
@@ -603,17 +603,17 @@
                                        Style="{StaticResource CardSubtitle}" Margin="0,2,0,8" />
                             <WrapPanel>
                                 <TextBlock Text="{Binding OnTimeText, StringFormat=On time {0}}" FontSize="12"
-                                           Foreground="{StaticResource TextBrush}" Margin="0,0,18,6" />
+                                           Foreground="{DynamicResource TextBrush}" Margin="0,0,18,6" />
                                 <TextBlock Text="{Binding LateCountText, StringFormat=Late {0}}" FontSize="12"
-                                           Foreground="{StaticResource TextBrush}" Margin="0,0,18,6" />
+                                           Foreground="{DynamicResource TextBrush}" Margin="0,0,18,6" />
                                 <TextBlock Text="{Binding MissingCountText, StringFormat=Outstanding {0}}" FontSize="12"
-                                           Foreground="{StaticResource TextBrush}" Margin="0,0,18,6" />
+                                           Foreground="{DynamicResource TextBrush}" Margin="0,0,18,6" />
                                 <TextBlock Text="{Binding DraftText, StringFormat=Draft {0}}" FontSize="12"
-                                           Foreground="{StaticResource TextBrush}" Margin="0,0,18,6" />
+                                           Foreground="{DynamicResource TextBrush}" Margin="0,0,18,6" />
                                 <TextBlock Text="{Binding TurnedInText, StringFormat=Turned in {0}}" FontSize="12"
-                                           Foreground="{StaticResource TextBrush}" Margin="0,0,18,6" />
+                                           Foreground="{DynamicResource TextBrush}" Margin="0,0,18,6" />
                                 <TextBlock Text="{Binding ReturnedText, StringFormat=Returned {0}}" FontSize="12"
-                                           Foreground="{StaticResource TextBrush}" Margin="0,0,18,6" />
+                                           Foreground="{DynamicResource TextBrush}" Margin="0,0,18,6" />
                             </WrapPanel>
                         </StackPanel>
                     </Border>
@@ -650,21 +650,21 @@
                                 <StackPanel Grid.Column="0">
                                     <TextBlock Text="Google Classroom name" Style="{StaticResource FieldLabel}" />
                                     <TextBlock Text="{Binding Profile.OfficialName, TargetNullValue=—}" FontSize="12.5"
-                                               Foreground="{StaticResource TextBrush}" Margin="0,3,0,8" />
+                                               Foreground="{DynamicResource TextBrush}" Margin="0,3,0,8" />
 
                                     <TextBlock Text="Email" Style="{StaticResource FieldLabel}" />
                                     <TextBlock Text="{Binding Profile.Email, TargetNullValue=—}" FontSize="12.5"
-                                               Foreground="{StaticResource TextBrush}" Margin="0,3,0,8" />
+                                               Foreground="{DynamicResource TextBrush}" Margin="0,3,0,8" />
 
                                     <TextBlock Text="Student ID" Style="{StaticResource FieldLabel}" />
                                     <TextBlock Text="{Binding Profile.StudentId}" FontFamily="{StaticResource MonoFont}"
-                                               FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,3,0,8" />
+                                               FontSize="12" Foreground="{DynamicResource TextBrush}" Margin="0,3,0,8" />
 
                                     <TextBlock Text="Class / grade" Style="{StaticResource FieldLabel}" />
                                     <TextBlock Text="{Binding Profile.ClassText}" FontSize="12.5"
-                                               Foreground="{StaticResource TextBrush}" Margin="0,3,0,2" />
+                                               Foreground="{DynamicResource TextBrush}" Margin="0,3,0,2" />
                                     <TextBlock Text="{Binding Profile.CourseText, StringFormat=Classroom course: {0}}"
-                                               FontSize="10.5" Foreground="{StaticResource TextMutedBrush}"
+                                               FontSize="10.5" Foreground="{DynamicResource TextMutedBrush}"
                                                Visibility="{Binding Profile.CourseText, Converter={StaticResource NullToVisibility}}" />
                                 </StackPanel>
 
@@ -672,17 +672,17 @@
                                     <StackPanel Visibility="{Binding IsReadingDetails, Converter={StaticResource BoolToVis}}">
                                         <TextBlock Text="Nickname" Style="{StaticResource FieldLabel}" />
                                         <TextBlock Text="{Binding Profile.NicknameText}" FontSize="12.5"
-                                                   Foreground="{StaticResource TextBrush}" Margin="0,3,0,8" />
+                                                   Foreground="{DynamicResource TextBrush}" Margin="0,3,0,8" />
 
                                         <TextBlock Text="Teacher-assigned class" Style="{StaticResource FieldLabel}" />
                                         <TextBlock Text="{Binding Profile.ClassName, TargetNullValue=Not set}" FontSize="12.5"
-                                                   Foreground="{StaticResource TextBrush}" Margin="0,3,0,8" />
+                                                   Foreground="{DynamicResource TextBrush}" Margin="0,3,0,8" />
 
                                         <TextBlock Text="Name shown in the app" Style="{StaticResource FieldLabel}" />
                                         <TextBlock Text="{Binding Profile.Name}" FontSize="12.5"
-                                                   Foreground="{StaticResource TextBrush}" Margin="0,3,0,2" />
+                                                   Foreground="{DynamicResource TextBrush}" Margin="0,3,0,2" />
                                         <TextBlock Text="Nickname when set, otherwise the Classroom name."
-                                                   FontSize="10.5" Foreground="{StaticResource TextMutedBrush}" />
+                                                   FontSize="10.5" Foreground="{DynamicResource TextMutedBrush}" />
                                     </StackPanel>
 
                                     <StackPanel Visibility="{Binding IsEditingDetails, Converter={StaticResource BoolToVis}}">
@@ -722,15 +722,15 @@
                             <TextBlock Text="Every figure on this profile names where it came from."
                                        Style="{StaticResource CardSubtitle}" Margin="0,2,0,8" />
                             <TextBlock Text="{Binding Profile.IdentitySource}" FontSize="11.5"
-                                       Foreground="{StaticResource TextBrush}" Margin="0,0,0,3" />
+                                       Foreground="{DynamicResource TextBrush}" Margin="0,0,0,3" />
                             <TextBlock Text="{Binding Profile.SubmissionSource}" FontSize="11.5"
-                                       Foreground="{StaticResource TextBrush}" Margin="0,0,0,3" />
+                                       Foreground="{DynamicResource TextBrush}" Margin="0,0,0,3" />
                             <TextBlock Text="{Binding Profile.ScoresSource}" FontSize="11.5"
-                                       Foreground="{StaticResource TextBrush}" Margin="0,0,0,3" />
+                                       Foreground="{DynamicResource TextBrush}" Margin="0,0,0,3" />
                             <TextBlock Text="{Binding Profile.CorrectionSource}" FontSize="11.5"
-                                       Foreground="{StaticResource TextBrush}" Margin="0,0,0,3" />
+                                       Foreground="{DynamicResource TextBrush}" Margin="0,0,0,3" />
                             <TextBlock Text="SOURCE: Local application data (nickname, class)" FontSize="11.5"
-                                       Foreground="{StaticResource TextBrush}" />
+                                       Foreground="{DynamicResource TextBrush}" />
                         </StackPanel>
                     </Border>
 

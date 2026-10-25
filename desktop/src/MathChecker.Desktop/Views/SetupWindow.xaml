@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="First run — Math Checker" Width="520" SizeToContent="Height"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False">
-    <StackPanel Margin="24" TextElement.Foreground="{StaticResource TextBrush}">
+    <StackPanel Margin="24" TextElement.Foreground="{DynamicResource TextBrush}">
         <TextBlock Text="Finish setting up Math Checker" FontSize="18" FontWeight="SemiBold" />
         <TextBlock Text="These details are stored by the backend and used on reports. You can change them later in Settings."
                    Style="{StaticResource Muted}" Margin="0,4,0,14" />

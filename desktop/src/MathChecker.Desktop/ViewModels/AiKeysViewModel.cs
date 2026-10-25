@@ -1,7 +1,8 @@
 using System.Collections.ObjectModel;
-using System.Text;
+using System.Text.Json;
 using System.Windows;
 using MathChecker.Desktop.Core;
+using MathChecker.Desktop.Core.UI;
 using MathChecker.Desktop.Models;
 
 namespace MathChecker.Desktop.ViewModels;
@@ -10,7 +11,7 @@ public sealed class AiKeysViewModel : PageViewModel
 {
     private KeyStatusDto? _selected;
     private string _newKeys = string.Empty;
-    private string _resultText = string.Empty;
+    private string _resultNote = string.Empty;
     private string _summary = string.Empty;
     private string _workerCount = "2";
     private WorkerStateDto? _workers;
@@ -27,8 +28,18 @@ public sealed class AiKeysViewModel : PageViewModel
     public KeyStatusDto? Selected
     {
         get => _selected;
-        set => SetProperty(ref _selected, value);
+        set
+        {
+            if (SetProperty(ref _selected, value))
+            {
+                OnPropertyChanged(nameof(HasSelection));
+            }
+        }
     }
+
+    /// <summary>Test, Disable, Re-enable and Remove all need one key; each one
+    /// returns early without it, so they stay disabled instead.</summary>
+    public bool HasSelection => _selected?.Fingerprint is not null;
 
     public string NewKeys
     {
@@ -36,10 +47,28 @@ public sealed class AiKeysViewModel : PageViewModel
         set => SetProperty(ref _newKeys, value);
     }
 
-    public string ResultText
+    /// <summary>What the backend did with the keys, as labelled facts instead
+    /// of a JSON blob in a monospace box.</summary>
+    public ObservableCollection<FactRow> ResultFacts { get; } = new();
+
+    public string ResultNote
     {
-        get => _resultText;
-        private set => SetProperty(ref _resultText, value);
+        get => _resultNote;
+        private set
+        {
+            if (SetProperty(ref _resultNote, value))
+            {
+                OnPropertyChanged(nameof(HasResult));
+            }
+        }
+    }
+
+    public bool HasResult => ResultFacts.Count > 0 || !string.IsNullOrWhiteSpace(ResultNote);
+
+    private void ShowResult(string note)
+    {
+        ResultNote = note;
+        OnPropertyChanged(nameof(HasResult));
     }
 
     public string Summary
@@ -76,7 +105,16 @@ public sealed class AiKeysViewModel : PageViewModel
 
         var payload = await Session.Api.AddKeysAsync(keys);
         NewKeys = string.Empty;
-        ResultText = Json.Pretty(payload);
+        ResultFacts.Clear();
+        foreach (var fact in PayloadFacts.Of(payload))
+        {
+            ResultFacts.Add(fact);
+        }
+
+        var summary = PayloadFacts.Summarize(payload);
+        ShowResult(string.IsNullOrWhiteSpace(summary)
+            ? "Keys submitted. The backend tested them against the real API before storing them."
+            : summary);
         await LoadAsync();
         Status = "Keys submitted. The backend tests them against the real API before activating them.";
     });
@@ -89,9 +127,24 @@ public sealed class AiKeysViewModel : PageViewModel
         }
 
         var result = await Session.Api.TestKeyAsync(Selected.Fingerprint);
-        ResultText = $"{result.Fingerprint}\nstatus: {result.Status}\nauth: {result.AuthOk}\n"
-                     + $"generate: {result.GenerateOk}\nresponse: {result.ResponseTimeMs:0} ms\n"
-                     + $"error: {result.ErrorKind ?? "—"}\n{result.Message}";
+        ResultFacts.Clear();
+        ResultFacts.Add(new FactRow("Key", Selected.Label ?? Selected.Fingerprint ?? "Selected key"));
+        ResultFacts.Add(new FactRow("Status", PayloadFacts.StatusLabel(result.Status)));
+        ResultFacts.Add(new FactRow("Authentication", result.AuthOk ? "Accepted" : "Refused"));
+        ResultFacts.Add(new FactRow("Generation", result.GenerateOk ? "Working" : "Failed"));
+        if (result.ResponseTimeMs is not null)
+        {
+            ResultFacts.Add(new FactRow("Response time", $"{result.ResponseTimeMs:0} ms"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.ErrorKind))
+        {
+            ResultFacts.Add(new FactRow("Problem", PayloadFacts.StatusLabel(result.ErrorKind)));
+        }
+
+        ShowResult(string.IsNullOrWhiteSpace(result.Message)
+            ? "The backend finished testing this key."
+            : result.Message!);
         await LoadAsync();
     });
 
@@ -99,21 +152,39 @@ public sealed class AiKeysViewModel : PageViewModel
     {
         TestingAll = true;
         _testCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
-        var builder = new StringBuilder();
+        ResultFacts.Clear();
+        ShowResult("Testing each key against the live API…");
+        var index = 0;
         try
         {
             var dispatcher = Application.Current?.Dispatcher;
             await Session.Api.StreamKeyTestsAsync(async element =>
             {
-                var line = Json.Pretty(element);
+                index++;
+                var label = Text(element, "label") ?? Text(element, "fingerprint") ?? $"Key {index}";
+                var status = PayloadFacts.StatusLabel(Text(element, "status"));
+                var auth = element.TryGetProperty("auth_ok", out var a) && a.ValueKind == JsonValueKind.True;
+                var generate = element.TryGetProperty("generate_ok", out var g) && g.ValueKind == JsonValueKind.True;
+                var ms = element.TryGetProperty("response_time_ms", out var t) && t.TryGetDouble(out var parsed)
+                    ? $" · {parsed:0} ms"
+                    : string.Empty;
+                var value = $"{status} · auth {(auth ? "accepted" : "refused")} · "
+                            + $"generation {(generate ? "working" : "failed")}{ms}";
+
                 if (dispatcher is null)
                 {
-                    builder.AppendLine(line);
                     return;
                 }
 
-                await dispatcher.InvokeAsync(() => ResultText = builder.AppendLine(line).ToString());
+                await dispatcher.InvokeAsync(() =>
+                {
+                    ResultFacts.Add(new FactRow(label!, value));
+                    OnPropertyChanged(nameof(HasResult));
+                });
             }, _testCts.Token);
+            ShowResult(ResultFacts.Count == 0
+                ? "No keys were tested: add a key first."
+                : $"Finished testing {ResultFacts.Count} keys against the live API.");
             Status = "Key test finished.";
         }
         finally
@@ -197,5 +268,20 @@ public sealed class AiKeysViewModel : PageViewModel
         _workers = await Session.Api.WorkersAsync();
         WorkerCount = _workers.Running.ToString();
         OnPropertyChanged(nameof(WorkersText));
+    }
+
+    private static string? Text(JsonElement element, string property)
+    {
+        if (!element.TryGetProperty(property, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number => value.ToString(),
+            _ => null,
+        };
     }
 }

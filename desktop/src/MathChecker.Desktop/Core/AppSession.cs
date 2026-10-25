@@ -2,6 +2,7 @@ using MathChecker.Desktop.Core.Api;
 using MathChecker.Desktop.Core.Backend;
 using MathChecker.Desktop.Core.Configuration;
 using MathChecker.Desktop.Core.Diagnostics;
+using MathChecker.Desktop.Core.Sync;
 using MathChecker.Desktop.Models;
 
 namespace MathChecker.Desktop.Core;
@@ -21,6 +22,7 @@ public sealed class AppSession
         Host = host;
         Api = api;
         Dialogs = dialogs;
+        Sync = new ClassroomSyncService(this);
     }
 
     public DesktopSettings Settings { get; }
@@ -28,6 +30,9 @@ public sealed class AppSession
     public BackendHost Host { get; }
     public MathCheckerApiClient Api { get; }
     public IDialogService Dialogs { get; }
+
+    /// <summary>The one synchronization path every page's Sync button uses.</summary>
+    public ClassroomSyncService Sync { get; }
 
     /// <summary>Set by the shell: navigates to a page key.</summary>
     public Action<string>? Navigate { get; set; }
@@ -81,16 +86,13 @@ public interface IDialogService
 public sealed class DialogService : IDialogService
 {
     public bool Confirm(string title, string message) =>
-        System.Windows.MessageBox.Show(message, title, System.Windows.MessageBoxButton.YesNo,
-            System.Windows.MessageBoxImage.Question) == System.Windows.MessageBoxResult.Yes;
+        Views.MessageWindow.Confirm(title, message);
 
     public void Info(string title, string message) =>
-        System.Windows.MessageBox.Show(message, title, System.Windows.MessageBoxButton.OK,
-            System.Windows.MessageBoxImage.Information);
+        Views.MessageWindow.Show(title, message, Views.MessageKind.Info);
 
     public void Error(string title, string message) =>
-        System.Windows.MessageBox.Show(message, title, System.Windows.MessageBoxButton.OK,
-            System.Windows.MessageBoxImage.Error);
+        Views.MessageWindow.Show(title, message, Views.MessageKind.Error);
 
     public string? PickOpenFile(string title, string filter)
     {

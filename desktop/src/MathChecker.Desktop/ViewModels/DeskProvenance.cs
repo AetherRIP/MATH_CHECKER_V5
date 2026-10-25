@@ -68,9 +68,9 @@ public static class DeskProvenance
         {
             var check = question.SchemeCheck;
             var detail = new List<string> { "Scheme check" };
-            if (!string.IsNullOrWhiteSpace(check.DiscrepancyType))
+            if (check.HasDiscrepancyType)
             {
-                detail.Add(check.DiscrepancyType!);
+                detail.Add(check.DiscrepancyTypeText);
             }
             else if (!string.IsNullOrWhiteSpace(check.Evidence))
             {

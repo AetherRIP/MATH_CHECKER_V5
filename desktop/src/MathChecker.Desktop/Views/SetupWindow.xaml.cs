@@ -13,7 +13,7 @@ public partial class SetupWindow : Window
     public SetupWindow(AppSession session, SetupStatusDto status)
     {
         InitializeComponent();
-        WindowTheme.ApplyDarkTitleBar(this);
+        WindowTheme.ApplyTitleBar(this);
         _session = session;
         TeacherBox.Text = status.Teacher?.TeacherName ?? string.Empty;
         SchoolBox.Text = status.Teacher?.SchoolName ?? string.Empty;

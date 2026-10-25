@@ -154,7 +154,7 @@ public class PaperPaneTests
         await paper.OpenAsync("r1");
 
         Assert.True(paper.IsPageFailed);
-        Assert.Contains("page_render_failed", paper.PageError);
+        Assert.Contains("The page could not be rendered.", paper.PageError);
         Assert.Equal(3, paper.PageCount);
         Assert.True(paper.ShowPager);
 
@@ -181,7 +181,7 @@ public class PaperPaneTests
         await paper.OpenAsync("r1");
 
         Assert.True(paper.IsFailed);
-        Assert.Contains("backend_error", paper.FailureMessage);
+        Assert.Contains("The marking backend is unavailable.", paper.FailureMessage);
 
         handler.MetadataResponse = null;
         handler.Metadata = PageHandler.Available(1);

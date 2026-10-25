@@ -14,6 +14,9 @@ public sealed class ClassesViewModel : PageViewModel
     {
     }
 
+    /// <summary>Classes are Classroom courses, so this page syncs them.</summary>
+    public override bool SyncsFromClassroom => true;
+
     public ObservableCollection<ClassDto> Items { get; } = new();
 
     public ClassDto? Selected
