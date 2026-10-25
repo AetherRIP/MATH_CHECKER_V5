@@ -48,7 +48,7 @@ public sealed class SchemeReviewViewModel : PageViewModel
     private string _summary = string.Empty;
 
     public SchemeReviewViewModel(AppSession session)
-        : base(session, "scheme", "Scheme mismatches")
+        : base(session, "scheme", "Mark scheme review")
     {
         Group = "Review";
     }

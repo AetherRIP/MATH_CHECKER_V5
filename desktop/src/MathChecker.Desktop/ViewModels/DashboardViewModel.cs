@@ -13,7 +13,7 @@ public sealed class DashboardViewModel : PageViewModel
     private string _lastUpdated = "—";
 
     public DashboardViewModel(AppSession session)
-        : base(session, "dashboard", "Today")
+        : base(session, "dashboard", "Overview")
     {
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
         _timer.Tick += async (_, _) =>

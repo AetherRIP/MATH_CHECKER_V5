@@ -10,7 +10,7 @@ public sealed class ReviewViewModel : PageViewModel
     private string _summary = string.Empty;
 
     public ReviewViewModel(AppSession session)
-        : base(session, "review", "Queue")
+        : base(session, "review", "Review queue")
     {
     }
 

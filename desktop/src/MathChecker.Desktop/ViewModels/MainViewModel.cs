@@ -410,14 +410,18 @@ public sealed class MainViewModel : ObservableObject
 
     private void BuildNavigation()
     {
-        Add(new DashboardViewModel(_session) { Group = "Desk" });
-        Add(new SearchViewModel(_session) { Group = "Desk" });
+        Add(new DashboardViewModel(_session) { Group = "Home" });
+        Add(new SearchViewModel(_session) { Group = "Home" });
 
+        // Correcting is the reason the application exists, so the guided start
+        // comes first and the monitor sits beside it: start work, watch work.
+        Add(new AutomationViewModel(_session) { Group = "Correct" });
         Add(new CorrectionViewModel(_session) { Group = "Correct" });
         Add(new WorkersViewModel(_session) { Group = "Correct" });
-        Add(new JobsViewModel(_session, "tasks", "Tasks", showWorkers: true) { Group = "Correct" });
-        Add(new JobsViewModel(_session, "jobs", "Job log", showWorkers: false) { Group = "Correct" });
-        Add(new AutomationViewModel(_session) { Group = "Correct" });
+        // "Queue" shows the worker lanes; "Job history" is the plain record of
+        // every job. They answer different questions, so both stay.
+        Add(new JobsViewModel(_session, "tasks", "Queue", showWorkers: true) { Group = "Correct" });
+        Add(new JobsViewModel(_session, "jobs", "Job history", showWorkers: false) { Group = "Correct" });
 
         Add(new ReviewViewModel(_session) { Group = "Review" });
         Add(new SchemeReviewViewModel(_session) { Group = "Review" });
@@ -436,9 +440,9 @@ public sealed class MainViewModel : ObservableObject
         // tab strip without going back through the list.
         Add(new AssignmentDetailViewModel(_session) { Group = "People" });
 
-        Add(new SettingsViewModel(_session) { Group = "Config" });
-        Add(new AiKeysViewModel(_session) { Group = "Config" });
-        Add(new PromptsViewModel(_session) { Group = "Config" });
+        Add(new SettingsViewModel(_session) { Group = "Settings" });
+        Add(new AiKeysViewModel(_session) { Group = "Settings" });
+        Add(new PromptsViewModel(_session) { Group = "Settings" });
 
         Add(JsonPageViewModel.Storage(_session));
         Add(JsonPageViewModel.Privacy(_session));

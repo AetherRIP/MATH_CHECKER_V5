@@ -48,7 +48,7 @@
                                    Foreground="{DynamicResource HeroMutedBrush}"
                                    TextTrimming="CharacterEllipsis" />
                     </StackPanel>
-                    <Button Grid.Column="1" Content="Open tasks"
+                    <Button Grid.Column="1" Content="Open queue"
                             Style="{StaticResource HeroActionButton}"
                             Command="{Binding OpenJobsCommand}"
                             VerticalAlignment="Center" Margin="20,0,0,0" />
@@ -263,7 +263,7 @@
                                 <Button Content="AI &amp; keys" Style="{StaticResource GhostButton}"
                                         Command="{Binding OpenAiKeysCommand}" Padding="8,2" Height="24"
                                         FontSize="11" />
-                                <Button Content="Job log" Style="{StaticResource GhostButton}"
+                                <Button Content="Job history" Style="{StaticResource GhostButton}"
                                         Command="{Binding OpenJobsCommand}" Padding="8,2" Height="24"
                                         FontSize="11" Margin="0" />
                             </StackPanel>

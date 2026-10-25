@@ -76,7 +76,7 @@
     </UserControl.Resources>
 
     <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}"
-                  Description="Live worker cards from the backend's own job rows."
+                  Description="Every paper the backend is correcting, updated live. Stages, percentages and errors come straight from the job rows, so a queued paper never looks like a busy one."
                   StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
                   BodyPadding="0,18,0,0">
         <ui:PageFrame.Actions>
@@ -84,7 +84,7 @@
                 <Button Content="New correction" Style="{StaticResource PrimaryButton}"
                         Command="{Binding StartCorrectionCommand}" Margin="0,0,8,0" />
                 <Button Content="Refresh" Command="{Binding RefreshNowCommand}" />
-                <Button Content="Open job log" Command="{Binding OpenJobsCommand}" Margin="0" />
+                <Button Content="Job history" Command="{Binding OpenJobsCommand}" Margin="0" />
             </StackPanel>
         </ui:PageFrame.Actions>
 
@@ -145,6 +145,30 @@
                         <StackPanel>
                             <TextBlock Text="{Binding FailedCount}" Style="{StaticResource SummaryNumber}" />
                             <TextBlock Text="FAILED" Style="{StaticResource StatLabel}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- How many papers may be corrected at once. The number is
+                         a request: the backend caps it by healthy API keys. -->
+                    <Border Style="{StaticResource SummaryTile}" MinWidth="250">
+                        <StackPanel>
+                            <TextBlock Text="{Binding ParallelismText}" Style="{StaticResource SummaryNumber}"
+                                       FontSize="15" />
+                            <TextBlock Text="RUNNING IN PARALLEL" Style="{StaticResource StatLabel}" />
+                            <DockPanel Margin="0,6,0,0">
+                                <Button DockPanel.Dock="Right" Content="Apply"
+                                        Command="{Binding ApplyWorkersCommand}" Height="24" Padding="8,1"
+                                        Margin="6,0,0,0"
+                                        ToolTip="Ask the backend to run this many corrections at once" />
+                                <ComboBox ItemsSource="{Binding WorkerOptions}"
+                                          SelectedItem="{Binding RequestedWorkers}"
+                                          Height="24" FontSize="11"
+                                          AutomationProperties.Name="Corrections to run at once"
+                                          ToolTip="Capped by the number of healthy API keys" />
+                            </DockPanel>
+                            <TextBlock Text="{Binding WorkerNote}" FontSize="9.5" Margin="0,4,0,0"
+                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextMutedBrush}" />
                         </StackPanel>
                     </Border>
                 </WrapPanel>
@@ -264,7 +288,9 @@
                                             <TextBlock Text="{Binding StageText}" FontSize="11"
                                                        Foreground="{DynamicResource TextMutedBrush}"
                                                        Margin="0,2,0,0" TextWrapping="NoWrap"
-                                                       TextTrimming="CharacterEllipsis" />
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Visibility="{Binding HasStageLine,
+                                                           Converter={StaticResource BoolToVis}}" />
                                             <TextBlock Text="{Binding QuestionText, StringFormat=At {0}}"
                                                        FontSize="11" Margin="0,2,0,0"
                                                        Foreground="{DynamicResource TextMutedBrush}"
@@ -323,6 +349,18 @@
                                            Margin="0,4,0,0" TextWrapping="Wrap" />
                             </StackPanel>
                         </DockPanel>
+
+                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button Content="Retry" Command="{Binding RetrySelectedCommand}"
+                                    IsEnabled="{Binding CanRetry}" Height="30" Padding="12,3"
+                                    ToolTip="Queue this failed paper again" />
+                            <Button Content="Cancel" Command="{Binding CancelSelectedCommand}"
+                                    IsEnabled="{Binding CanCancel}" Height="30" Padding="12,3"
+                                    ToolTip="Stop this job; the submission is never deleted" />
+                            <Button Content="Open result" Command="{Binding OpenResultCommand}"
+                                    IsEnabled="{Binding CanOpenResult}" Height="30" Padding="12,3" Margin="0"
+                                    ToolTip="Open this paper's marks in the marking desk" />
+                        </StackPanel>
 
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel>

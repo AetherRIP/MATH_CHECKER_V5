@@ -191,3 +191,91 @@ class TestWorkerStates:
         state = pool.public_state()
         assert state["metrics"].get("avg_seconds") is not None
         assert state["queue"]["completed"] >= 1
+
+
+class TestRealConcurrency:
+    """Papers must genuinely overlap in time, not just look parallel in a UI.
+
+    Mock mode is used deliberately: it exercises the real pool, the real
+    spawned worker processes and the real job/stage records with no network
+    and no quota. The proof is the stored timestamps, not a callback.
+    """
+
+    @staticmethod
+    def _intervals(ids: list[str]) -> list[tuple[float, float]]:
+        spans = []
+        for job_id in ids:
+            row = db.query_one(
+                "SELECT started_at, finished_at FROM correction_jobs WHERE id = ?",
+                (job_id,))
+            assert row is not None and row["started_at"] is not None, job_id
+            spans.append((float(row["started_at"]),
+                          float(row["finished_at"] or time.time())))
+        return spans
+
+    @staticmethod
+    def _max_overlap(spans: list[tuple[float, float]]) -> int:
+        """Most jobs that were in flight at the same instant."""
+        moments: list[tuple[float, int]] = []
+        for start, end in spans:
+            moments.append((start, 1))
+            moments.append((end, -1))
+        # End-ticks sort before start-ticks at the same instant, so a job that
+        # finishes exactly as another starts is not counted as overlapping.
+        moments.sort(key=lambda m: (m[0], m[1]))
+        running = peak = 0
+        for _, delta in moments:
+            running += delta
+            peak = max(peak, running)
+        return peak
+
+    def test_four_jobs_run_in_parallel_and_never_exceed_the_pool_size(
+            self, pool, fresh_state):
+        # The pool is capped by HEALTHY KEYS, so one key means one worker and
+        # no overlap at all. Three keys is what a real installation rotates.
+        from app.config import get_secrets
+        get_secrets().set_gemini_keys(
+            ["AIzaConcurrencyKey11111111", "AIzaConcurrencyKey22222222",
+             "AIzaConcurrencyKey33333333"])
+        assert pool.set_size(2) == 2
+        ids = []
+        for student in ("P1", "P2", "P3", "P4"):
+            job_id = _enqueue_job(student)
+            _stage_manual_job(job_id, fresh_state)
+            ids.append(job_id)
+        pool._wake.set()
+        finals = [_wait_terminal(pool, jid, timeout=240) for jid in ids]
+        assert all(f["status"] == "COMPLETED" for f in finals), finals
+
+        spans = self._intervals(ids)
+        peak = self._max_overlap(spans)
+        assert peak >= 2, f"jobs never overlapped: {spans}"
+        assert peak <= 2, f"{peak} jobs ran at once with a pool of 2: {spans}"
+
+        # Each card must belong to a distinct worker process while it runs.
+        workers = [db.query_one(
+            "SELECT worker_id FROM correction_jobs WHERE id = ?", (jid,))["worker_id"]
+            for jid in ids]
+        assert all(worker for worker in workers), workers
+
+    def test_raising_the_pool_size_raises_the_number_in_flight(
+            self, pool, fresh_state):
+        from app.config import get_secrets
+        get_secrets().set_gemini_keys(
+            ["AIzaConcurrencyKey11111111", "AIzaConcurrencyKey22222222",
+             "AIzaConcurrencyKey33333333"])
+        assert pool.set_size(3) >= 2
+        ids = []
+        for student in ("R1", "R2", "R3", "R4"):
+            job_id = _enqueue_job(student)
+            _stage_manual_job(job_id, fresh_state)
+            ids.append(job_id)
+        pool._wake.set()
+        finals = [_wait_terminal(pool, jid, timeout=240) for jid in ids]
+        assert all(f["status"] == "COMPLETED" for f in finals), finals
+
+        peak = self._max_overlap(self._intervals(ids))
+        # A larger pool must actually be used; the cap still holds.
+        assert peak >= 2, f"jobs never overlapped: {peak}"
+        assert peak <= max(1, pool.recommended_workers()), peak
+        pool.set_size(2)

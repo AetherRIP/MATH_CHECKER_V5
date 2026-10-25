@@ -46,13 +46,16 @@ public static class PageIcons
 
     private static readonly Dictionary<string, string> SpaceGlyphs = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["Desk"] = "\uE80F",      // Home
+        ["Home"] = "\uE80F",      // Home
         ["Correct"] = "\uE710",   // Add
         ["Review"] = "\uE73E",    // CheckMark
         ["Results"] = "\uE9D2",   // Chart
         ["People"] = "\uE716",    // People
-        ["Config"] = "\uE713",    // Settings
+        ["Settings"] = "\uE713",  // Settings
         ["System"] = "\uE9D9",    // Diagnostic
+        // A saved session from before the rename still resolves to a glyph.
+        ["Desk"] = "\uE80F",
+        ["Config"] = "\uE713",
     };
 
     /// <summary>Glyph for a navigation space, used by the rail and palette.</summary>

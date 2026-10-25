@@ -37,6 +37,11 @@ public sealed class WorkerCardViewModel : ObservableObject
     public string StatusText { get; private set; } = "—";
     public string PhaseText { get; private set; } = string.Empty;
     public string StageText { get; private set; } = string.Empty;
+
+    /// <summary>True only when the stage says something the phase line does
+    /// not: a completed card used to print "Correction completed" twice.</summary>
+    public bool HasStageLine => StageText.Length > 0
+        && !string.Equals(StageText, PhaseText, StringComparison.OrdinalIgnoreCase);
     public string QuestionText { get; private set; } = string.Empty;
     public bool HasQuestion { get; private set; }
     public string AttemptsText { get; private set; } = "1 of 1";

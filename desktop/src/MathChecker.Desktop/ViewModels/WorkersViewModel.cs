@@ -40,6 +40,9 @@ public sealed class WorkersViewModel : PageViewModel
     private WorkerCardViewModel? _selected;
     private CancellationTokenSource? _streamCts;
     private CancellationTokenSource? _detailCts;
+    private int _requestedWorkers = 2;
+    private int _runningWorkers;
+    private string _workerNote = string.Empty;
 
     public WorkersViewModel(AppSession session)
         : base(session, "workers", "Correction monitor")
@@ -124,9 +127,22 @@ public sealed class WorkersViewModel : PageViewModel
             if (SetProperty(ref _selected, value))
             {
                 OnPropertyChanged(nameof(HasSelection));
+                OnPropertyChanged(nameof(CanRetry));
+                OnPropertyChanged(nameof(CanCancel));
+                OnPropertyChanged(nameof(CanOpenResult));
             }
         }
     }
+
+    /// <summary>Retry only makes sense for a job the backend marked failed: it
+    /// creates a new attempt from the stored attempt count.</summary>
+    public bool CanRetry => Selected is { IsFailed: true };
+
+    /// <summary>The backend refuses cancellation for a job that already
+    /// finished; a completed correction must stay a completed correction.</summary>
+    public bool CanCancel => Selected is { } card && !card.IsFinished;
+
+    public bool CanOpenResult => Selected?.Job.ResultId is { Length: > 0 };
 
     public bool HasSelection => Selected is not null;
 
@@ -160,6 +176,90 @@ public sealed class WorkersViewModel : PageViewModel
     });
 
     public AsyncCommand RefreshNowCommand => Command(async () => await RefreshDashboardAsync());
+
+    // ------------------------------------------------- real actions on a job
+
+    public AsyncCommand RetrySelectedCommand => Command(async () =>
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+
+        await Session.Api.RetryJobAsync(Selected.JobId);
+        Status = "Retry queued for " + Selected.StudentName + ".";
+        await RefreshDashboardAsync();
+    });
+
+    public AsyncCommand CancelSelectedCommand => Command(async () =>
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+
+        if (!Session.Dialogs.Confirm("Cancel this correction?",
+                $"Stop correcting {Selected.StudentName}'s paper?\n\n"
+                + "A queued job is removed; a running one stops at the next safe stage. "
+                + "The submission itself is never deleted."))
+        {
+            return;
+        }
+
+        await Session.Api.CancelJobAsync(Selected.JobId);
+        Status = "Cancellation requested for " + Selected.StudentName + ".";
+        await RefreshDashboardAsync();
+    });
+
+    /// <summary>Opens the stored result in the marking desk, where the marks,
+    /// the pages and the teacher's corrections live.</summary>
+    public RelayCommand OpenResultCommand => Sync(() =>
+    {
+        if (Selected?.Job.ResultId is { Length: > 0 } resultId)
+        {
+            Session.OpenResult(resultId);
+        }
+    });
+
+    // ------------------------------------------------- parallel corrections
+
+    /// <summary>How many corrections may run at once. The pool caps this by the
+    /// healthy API keys, so the number here is a request, not a promise —
+    /// <see cref="WorkerNote"/> says what the backend actually did.</summary>
+    public ObservableCollection<int> WorkerOptions { get; } = new() { 1, 2, 3, 4, 5, 6, 7, 8 };
+
+    public int RequestedWorkers
+    {
+        get => _requestedWorkers;
+        set
+        {
+            if (value > 0 && SetProperty(ref _requestedWorkers, value))
+            {
+                OnPropertyChanged(nameof(ParallelismText));
+            }
+        }
+    }
+
+    public string ParallelismText => $"{_runningWorkers} of {_requestedWorkers} running";
+
+    public string WorkerNote
+    {
+        get => _workerNote;
+        private set => SetProperty(ref _workerNote, value);
+    }
+
+    public AsyncCommand ApplyWorkersCommand => Command(async () =>
+    {
+        var state = await Session.Api.ResizeWorkersAsync(RequestedWorkers);
+        _runningWorkers = state.Running;
+        RequestedWorkers = state.Requested;
+        OnPropertyChanged(nameof(ParallelismText));
+        WorkerNote = state.Running < state.Requested
+            ? $"The backend is running {state.Running} of {state.Requested}: healthy API keys cap it."
+            : $"{state.Running} papers are corrected in parallel.";
+        Status = WorkerNote;
+        await RefreshDashboardAsync();
+    });
 
     public AsyncCommand OpenJobsCommand => new(() =>
     {
@@ -278,7 +378,20 @@ public sealed class WorkersViewModel : PageViewModel
         try
         {
             var state = await Session.Api.WorkersAsync();
+            _runningWorkers = state.Running;
+            RequestedWorkers = state.Requested > 0 ? state.Requested : RequestedWorkers;
             WorkersText = $"Workers {state.Running} of {state.Requested}";
+            OnPropertyChanged(nameof(ParallelismText));
+            if (state.Running < state.Requested)
+            {
+                WorkerNote = $"Only {state.Running} of {state.Requested} can run: healthy API keys cap it.";
+            }
+            else if (string.IsNullOrEmpty(WorkerNote) || _workerNote.StartsWith("Only "))
+            {
+                WorkerNote = state.Running == 0
+                    ? "No papers are running right now."
+                    : $"{state.Running} papers are corrected in parallel.";
+            }
             // A provider cooldown is why queued cards wait; say it here rather
             // than leaving the queue looking stuck.
             ProviderText = state.ProviderText;

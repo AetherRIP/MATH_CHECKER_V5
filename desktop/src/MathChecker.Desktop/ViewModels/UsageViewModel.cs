@@ -9,7 +9,7 @@ public sealed class UsageViewModel : PageViewModel
     private UsageDto? _usage;
 
     public UsageViewModel(AppSession session)
-        : base(session, "usage", "Bandwidth")
+        : base(session, "usage", "Data usage")
     {
     }
 

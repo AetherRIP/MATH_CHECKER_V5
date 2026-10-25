@@ -666,8 +666,13 @@ public sealed partial class MathCheckerApiClient : IDisposable
             $"classroom/courses/{Uri.EscapeDataString(courseId)}/assignments/{Uri.EscapeDataString(courseworkId)}/correct",
             payload, cancellationToken);
 
-    public Task<JsonElement> CorrectAllPreviewAsync(string courseworkId, CancellationToken cancellationToken = default) =>
-        GetJsonAsync($"assignments/{Uri.EscapeDataString(courseworkId)}/correct-all/preview", cancellationToken);
+    /// <summary>Side-effect-free description of a whole-assignment correction:
+    /// the counts, the blockers and the papers that would be queued. Typed, so
+    /// the page can show the backend's numbers without re-deriving them.</summary>
+    public Task<CorrectAllPreviewDto> CorrectAllPreviewAsync(string courseworkId,
+        CancellationToken cancellationToken = default) =>
+        GetAsync<CorrectAllPreviewDto>(
+            $"assignments/{Uri.EscapeDataString(courseworkId)}/correct-all/preview", cancellationToken);
 
     public Task<JsonElement> CorrectAllAsync(string courseId, string courseworkId, bool refresh,
         CancellationToken cancellationToken = default) =>
