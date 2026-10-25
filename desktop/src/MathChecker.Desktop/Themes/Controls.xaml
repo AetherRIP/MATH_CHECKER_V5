@@ -555,15 +555,19 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
-                    <Grid>
+                    <!-- Clipped: a long selection used to draw outside the control
+                         and over whatever sat beside it. -->
+                    <Grid ClipToBounds="True">
                         <Border x:Name="Chrome"
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="{StaticResource ControlRadius}" />
+                        <!-- Stretch (not Left) so a long selection is bounded by
+                             the control and can be trimmed instead of overflowing. -->
                         <ContentPresenter Margin="12,0,36,0"
                                           VerticalAlignment="Center"
-                                          HorizontalAlignment="Left"
+                                          HorizontalAlignment="Stretch"
                                           Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                           ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"

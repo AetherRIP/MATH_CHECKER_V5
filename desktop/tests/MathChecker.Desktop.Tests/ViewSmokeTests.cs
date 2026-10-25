@@ -105,6 +105,41 @@ public sealed class ViewSmokeTests
         });
     }
 
+    [Fact]
+    public void A_chosen_course_hides_the_placeholder_instead_of_drawing_over_it()
+    {
+        RunOnSta(() =>
+        {
+            // The placeholder is drawn ON TOP of the combo box, so it must
+            // collapse the moment a course is selected. It stayed visible for a
+            // selected object (the converter only recognised strings), which
+            // painted "Choose a course" over the course's own name.
+            var course = new MathChecker.Desktop.Models.ClassroomCourseDto
+            {
+                Id = "c1",
+                Name = "WBIS - O Level Mathematics - Mr. Abanout Akram",
+                Section = "Set 1",
+            };
+            var view = new ClassroomView
+            {
+                DataContext = new ClassroomTargetStub
+                {
+                    Courses = new[] { course },
+                    SelectedCourse = course,
+                },
+            };
+            view.Width = 1280;
+            view.Height = 800;
+            view.Measure(new Size(1280, 800));
+            view.Arrange(new Rect(0, 0, 1280, 800));
+            view.UpdateLayout();
+
+            var placeholder = FindText(view, "Choose a course");
+            Assert.NotNull(placeholder);
+            Assert.Equal(Visibility.Collapsed, placeholder!.Visibility);
+        });
+    }
+
     [Theory]
     [InlineData(1200, 3)]
     [InlineData(900, 3)]
@@ -160,6 +195,42 @@ public sealed class ViewSmokeTests
         yield return () => new AiKeysView();
         yield return () => new PromptsView();
         yield return () => new JsonPageView();
+    }
+
+    /// <summary>A mutable target for the combo's two-way selection bindings;
+    /// an anonymous type is read-only and WPF refuses the binding.</summary>
+    private sealed class ClassroomTargetStub
+    {
+        public MathChecker.Desktop.Models.ClassroomCourseDto[] Courses { get; set; } =
+            Array.Empty<MathChecker.Desktop.Models.ClassroomCourseDto>();
+
+        public MathChecker.Desktop.Models.ClassroomCourseDto? SelectedCourse { get; set; }
+
+        public object[] Assignments { get; set; } = Array.Empty<object>();
+
+        public object? SelectedAssignment { get; set; }
+
+        public bool IsConnected { get; set; } = true;
+    }
+
+    private static TextBlock? FindText(DependencyObject root, string text)
+    {
+        if (root is TextBlock block && block.Text == text)
+        {
+            return block;
+        }
+
+        var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var found = FindText(System.Windows.Media.VisualTreeHelper.GetChild(root, i), text);
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     private static string DescendantText(DependencyObject root)

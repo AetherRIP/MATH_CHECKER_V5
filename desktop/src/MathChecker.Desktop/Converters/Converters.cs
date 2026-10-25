@@ -16,13 +16,20 @@ public sealed class NullToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
 }
 
-/// <summary>True when the string is null or empty (for "no rows" messages).</summary>
+/// <summary>Visible only when there is nothing to show yet — the empty-state
+/// counterpart of NullToVisibility.
+///
+/// "Empty" means null or a blank string. Any other value, including a selected
+/// object such as a course, counts as present: this converter drives the
+/// placeholder text drawn OVER a combo box, and treating a non-string object as
+/// empty left "Choose a course" painted on top of the chosen course's name.
+/// </summary>
 public sealed class EmptyStringToVisibilityConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        value is string text && !string.IsNullOrWhiteSpace(text)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        value is null || (value is string text && string.IsNullOrWhiteSpace(text))
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();
