@@ -4,7 +4,7 @@ The desktop client is a WPF application (`net10.0-windows`). It never contains a
 copy of the correction engine: it starts, attaches to, and talks to the existing
 Python backend over HTTP. The release therefore ships the client, the unchanged
 V5 backend and a bundled Python runtime in one folder; double-clicking
-`MATH_CHECKER_V5.exe` starts everything.
+`V5.exe` starts everything.
 
 ## 1. What a release contains
 
@@ -16,7 +16,7 @@ desktop\artifacts\MATH_CHECKER_V5\
   backend\                    existing backend package (unmodified)
   runtime\python.exe          bundled Python + the backend's dependencies
   desktop\                    published WPF client (self-contained .NET)
-    MATH_CHECKER_V5.exe       the launcher people double-click
+    V5.exe                    the launcher people double-click
     ...                       .NET runtime and client DLLs (no .NET install needed)
 ```
 
@@ -26,7 +26,7 @@ eight parents, then uses `runtime\python.exe` from that same root
 portable layouts are therefore identical; nothing about a developer checkout is
 referenced at runtime.
 
-`MATH_CHECKER_V5.exe` is a normal WPF process, not a console wrapper: it has no
+`V5.exe` is a normal WPF process, not a console wrapper: it has no
 terminal window, enforces one instance per user session (a second double-click
 raises the existing window), waits for `/api/health` before showing the backend
 as ready, and stops the backend process tree it started when the window closes.
@@ -59,12 +59,13 @@ The script:
 
 1. `dotnet publish` of `desktop\src\MathChecker.Desktop` — self-contained,
    `win-x64`, single folder (no trimming: WPF does not support it), producing
-   `desktop\MATH_CHECKER_V5.exe`;
+   `desktop\V5.exe`;
 2. copies `main.py`, `backend\` and `requirements.txt` from the checkout,
    removing `__pycache__`;
-3. copies the bundled Python runtime;
+3. copies the bundled Python runtime and strips its `__pycache__` folders, so
+   caches from the build machine never ship;
 4. asserts the layout (`main.py`, `backend\app\main.py`, `runtime\python.exe`,
-   `desktop\MATH_CHECKER_V5.exe`);
+   `desktop\V5.exe`);
 5. writes `desktop\artifacts\MATH_CHECKER_V5_Portable.zip`;
 6. builds `desktop\artifacts\MATH_CHECKER_V5_Setup.exe` when `ISCC.exe` is found;
 7. writes `desktop\artifacts\release_manifest.json`.
@@ -80,7 +81,7 @@ dotnet run --project desktop\tools\MathChecker.Desktop.E2E
 ## 4. Release tests
 
 `desktop\test_release.ps1` exercises a staged build the way a user does: it
-copies the release outside the repository, starts `MATH_CHECKER_V5.exe`,
+copies the release outside the repository, starts `V5.exe`,
 confirms the window and the *bundled* interpreter, uploads one correction,
 waits for the job and its stored result, exports a PDF, launches a second copy
 to check the single-instance guard, closes the window and confirms no backend
@@ -104,7 +105,7 @@ in Demo Mode with a scratch data folder, so no real student record is touched.
 | Portable folder | `desktop\artifacts\MATH_CHECKER_V5\` — client, backend and runtime (328 MB on disk) |
 | Portable ZIP | `MATH_CHECKER_V5_Portable.zip`, **128.6 MB** |
 | Installer | `MATH_CHECKER_V5_Setup.exe`, **93.7 MB**, Inno Setup 6.7.3 |
-| Launcher actually run | `MATH_CHECKER_V5.exe` from a copy in `%TEMP%`, window title `MATH_CHECKER_V5` |
+| Launcher actually run | `V5.exe` from a copy in `%TEMP%`, window title `MATH_CHECKER_V5` |
 | Interpreter actually used | the copied `runtime\python.exe main.py --serve <port>` — not the checkout's `.venv` |
 | `/api/health` and `/api/dashboard` | `status=ok`, Demo Mode on |
 | Real correction through the packaged backend | job `COMPLETED` (`stage=Correction completed`), stored result, `9/12`, 3 questions |
@@ -116,6 +117,25 @@ in Demo Mode with a scratch data folder, so no real student record is touched.
 | Installer install → run → uninstall | **11/11 checks passed**: silent per-user install, launcher exists, backend + runtime present, installed window opened, `/api/health` ok, dashboard served, clean exit, uninstaller exit 0, program folder removed |
 
 The verification runs used Demo Mode and scratch data folders.
+
+## 5a. Re-verified after the `V5.exe` rename (2026-10-23)
+
+| Check | Result |
+|---|---|
+| `dotnet publish` + `build_release.ps1` | succeeded |
+| `dotnet test desktop\tests\MathChecker.Desktop.Tests` | **160 passed, 0 failed** |
+| `desktop\test_release.ps1` | **19/19 checks passed** |
+| Missing-interpreter / foreign-port / no-keys / other-cwd tests | **15/15 checks passed** |
+| Launcher | `desktop\artifacts\MATH_CHECKER_V5\desktop\V5.exe`, 199 KB, PE32+ |
+| Portable folder / ZIP | 281 MB on disk / **111.7 MB** (was 128.6 MB before runtime caches were stripped) |
+| Installer | `MATH_CHECKER_V5_Setup.exe`, **80.3 MB**, built with Inno Setup 6.7.3 |
+| Installer install → run → uninstall | **11/11 checks passed**: silent per-user install into a scratch folder, launcher/backend/runtime present, uninstaller registered, installed window opened, `/api/health` ok, dashboard served, clean close, uninstaller exit 0, folder removed |
+
+The Python runtime caches that used to travel inside the ZIP were removed from
+the build, which is where the size drop comes from. Nothing else in the layout
+changed. Inno Setup 6 (`ISCC.exe`) is found automatically in
+`%LOCALAPPDATA%\Programs\Inno Setup 6`; without it the script still builds the
+folder and ZIP and prints the exact `iscc` command.
 
 ## 6. Installer
 
@@ -174,7 +194,7 @@ certificate:
 
 ```powershell
 signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
-    /f certificate.pfx /p <password> MATH_CHECKER_V5.exe
+    /f certificate.pfx /p <password> V5.exe
 signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
     /f certificate.pfx /p <password> MATH_CHECKER_V5_Setup.exe
 ```

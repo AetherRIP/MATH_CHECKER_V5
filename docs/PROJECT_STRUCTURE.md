@@ -25,6 +25,7 @@ MATH V5/
                           name from backend/app/config.py and agent/agent.py,
                           so it stays at the root
   .gitignore              credential / cache / scratch ignore rules
+  .env.example           documented process environment variables (placeholders only)
   docs/                   architecture, lifecycle, reports, results, logs, evidence, archive
   .pytest_cache/           disposable test cache (git-ignored)
   __pycache__/             disposable Python bytecode (git-ignored)
@@ -52,6 +53,7 @@ backend/
   run.py        small uvicorn runner
   requirements.txt      RUNTIME packages (installed into the portable runtime)
   requirements-dev.txt  runtime packages + pytest/httpx (source checkout only)
+  requirements-lock.txt exact versions of that dev set, as verified on Windows
 frontend/
   src/          React + TypeScript UI source and page modules
   tests/        dependency-light TypeScript regression tests
@@ -64,6 +66,8 @@ scripts/
   build_portable.py     legacy portable assembler (not the canonical release path)
   install_autostart.py  installs/refuses machine-local autostart entries
   two_env_e2e.py        two-installation end-to-end harness (writes docs/results/)
+  setup_windows.ps1     prerequisite check + environment/UI setup (docs/WINDOWS_SETUP.md)
+  verify_windows.ps1    dependency, test, build and launch verification; nonzero on failure
 ```
 
 ## Shipped vs. not shipped

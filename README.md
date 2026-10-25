@@ -41,8 +41,19 @@ browser page.
 ```powershell
 dotnet build desktop\src\MathChecker.Desktop\MathChecker.Desktop.csproj
 dotnet run   --project desktop\src\MathChecker.Desktop\MathChecker.Desktop.csproj
-powershell -ExecutionPolicy Bypass -File desktop\build_release.ps1   # bundle + ZIP
+powershell -ExecutionPolicy Bypass -File desktop\build_release.ps1   # bundle + ZIP + installer
 ```
+
+The packaged product is **`desktop\artifacts\MATH_CHECKER_V5\desktop\V5.exe`**
+(also zipped as `MATH_CHECKER_V5_Portable.zip`, or installed per-user with
+`MATH_CHECKER_V5_Setup.exe` when Inno Setup 6 is available). The package root
+carries `start_desktop.bat`, so a recipient extracts the ZIP and double-clicks
+one file; it starts the client, never a build. Double-click `V5.exe` directly: it finds the
+bundled `runtime\python.exe`, starts the existing `main.py` backend, waits for
+`/api/health` and then opens the window. No .NET or Python install is needed on
+the target machine; API keys and Classroom credentials still have to be
+configured in the app itself and are never bundled. Build, launch and
+troubleshooting details: [desktop/README.md](desktop/README.md).
 
 Architecture, feature inventory, verification evidence, packaging and the
 handoff to the UI design phase: [docs/desktop-migration](docs/desktop-migration).
@@ -301,18 +312,44 @@ and reinstalls never destroy it.
 
 ### Clean Windows setup and launch
 
-1. Install Python 3.12 or later and enable **Add Python to PATH**.
-2. From the project folder, run `setup.bat` once. It creates a native `.venv`
-   and installs `backend/requirements-dev.txt` (the runtime set plus the test
-   tools; the portable release installs `backend/requirements.txt` only). It does **not** add anything to
+The complete, verified procedure — what to install, what each prerequisite is
+for, what can only be done by hand, and how to repair a failed step — is in
+[docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md). The short version:
+
+1. Install **Python 3.12 or later (64-bit)** and enable **Add Python to PATH**.
+2. Install the **Microsoft Visual C++ 2015-2022 Redistributable (x64)**. A fresh
+   Windows does not include it, and PyMuPDF, cryptography and Pillow are
+   compiled extensions that fail to import without it:
+   `winget install --id Microsoft.VCRedist.2015+.x64` (needs administrator
+   approval).
+3. Optional: **Node.js 20+** to build/develop the React UI, and the **.NET 10
+   SDK** for the WPF desktop client. Neither is needed to run the web app once
+   `frontend/dist` exists.
+4. From the project folder, run `setup.bat` once, or
+   `powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1` (same
+   work, plus prerequisite checks). It creates a native `.venv`, installs
+   `backend/requirements-dev.txt` (the runtime set plus the test tools; the
+   portable release installs `backend/requirements.txt` only) and builds
+   `frontend/dist` when npm is available. It does **not** add anything to
    Windows startup — the app runs only when you launch `start.bat`. If you
    do want it to start with Windows, run `setup.bat /autostart` and approve
    the UAC prompt; undo it later with
    `python scripts\install_autostart.py service-remove`.
-3. Run `start.bat` from the project folder. It serves the built UI at
+5. Check the installation with
+   `powershell -ExecutionPolicy Bypass -File scripts\verify_windows.ps1`
+   (dependency imports, backend and frontend suites, desktop build, and a real
+   launch with an HTTP health check). Add `-Quick -SkipDesktop` for a fast pass.
+6. Run `start.bat` from the project folder. It serves the built UI at
    `http://127.0.0.1:8642`; use `start.bat 9000` to select a port.
-4. Complete the first-run setup in the UI. Add Gemini keys and optionally
+7. Complete the first-run setup in the UI. Add Gemini keys and optionally
    connect Classroom there; do not put credentials in source or documentation.
+
+For an exact reproduction of the dependency set this repository was verified
+against (instead of the version ranges):
+
+```bat
+.venv\Scripts\python.exe -m pip install -r backend\requirements-lock.txt
+```
 
 For local UI development, install Node.js/npm, then from `frontend/` run
 `npm ci`, `npm run build`, or `npm run dev`. The checked-in package lockfile

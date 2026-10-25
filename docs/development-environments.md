@@ -20,7 +20,7 @@ still demo data. Only the process that answers knows, and it says so:
 
 | | 1. Production desktop | 2. Browser development | 3. Isolated test |
 | --- | --- | --- | --- |
-| Started by | `desktop\...\MATH_CHECKER_V5.exe` (or `build_release.ps1`) | `npm run dev` in `frontend/` | a backend with `MC5_DATA_DIR` pointed at a throwaway folder |
+| Started by | `desktop\...\V5.exe` (or `build_release.ps1`) | `npm run dev` in `frontend/` | a backend with `MC5_DATA_DIR` pointed at a throwaway folder |
 | Backend | its own local backend on its configured port, or an attached one | **the origin in `MC5_DEV_API`** | its own backend on its own port |
 | Data | the teacher's real data folder | whatever that backend uses | a separate folder under `dev_local/` |
 | Classroom / Gemini | configured in the app | inherited from the backend | usually absent (deliberately) |

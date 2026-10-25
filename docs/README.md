@@ -1,6 +1,8 @@
 # docs/ — developer guides, reports, evidence and logs
 
-Start with [ARCHITECTURE.md](ARCHITECTURE.md) for the current component map,
+Start with [WINDOWS_SETUP.md](WINDOWS_SETUP.md) to install, restore or repair a
+Windows checkout (prerequisites, dependency inventory, troubleshooting),
+[ARCHITECTURE.md](ARCHITECTURE.md) for the current component map,
 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for the repository inventory,
 [development-environments.md](development-environments.md) for which backend the
 desktop, the browser dev server and a test snapshot use,
@@ -49,6 +51,7 @@ policy.
 | [TEAMS_ACCOUNT_AUDIT_REPORT.md](reports/TEAMS_ACCOUNT_AUDIT_REPORT.md) | Assistant teams, account management and developer audit logs |
 | [TWO_WINDOWS_E2E_REPORT.md](reports/TWO_WINDOWS_E2E_REPORT.md) | Two-environment end-to-end integration test evidence |
 | [UI_ARCHITECTURE_REPORT.md](reports/UI_ARCHITECTURE_REPORT.md) | UI architecture correction: separate pages, Task Manager, AI workers |
+| [V5_CLEANUP_AND_PACKAGING_REPORT.md](reports/V5_CLEANUP_AND_PACKAGING_REPORT.md) | Workspace cleanup, `V5.exe` launcher build and release verification |
 
 ## results/ — machine-readable run results
 
