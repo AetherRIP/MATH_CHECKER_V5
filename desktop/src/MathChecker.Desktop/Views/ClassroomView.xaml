@@ -269,12 +269,40 @@
                             <Border Grid.Column="2" Style="{StaticResource Card}">
                                 <StackPanel>
                                     <TextBlock Text="MARK SCHEME" Style="{StaticResource SectionLabel}" />
-                                    <TextBlock Text="Every question is marked against the scheme attached to this assignment."
-                                               Style="{StaticResource CardSubtitle}" Margin="0,6,0,0"
+
+                                    <!-- The state of THIS assignment, read from the
+                                         backend. Whether a scheme exists decides
+                                         whether a correction can start at all, so it
+                                         is the first thing the card says. -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Border Style="{StaticResource AccentChip}" Padding="9,3"
+                                                Visibility="{Binding SchemeAttached, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="Attached" FontSize="10.5" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource CanvasDeepBrush}" />
+                                        </Border>
+                                        <Border Style="{StaticResource WarningChip}" Padding="9,3"
+                                                Visibility="{Binding SchemeMissing, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="Not attached" FontSize="10.5" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource WarningTextBrush}" />
+                                        </Border>
+                                        <Border Style="{StaticResource Chip}" Padding="9,3"
+                                                Visibility="{Binding SchemeChecking, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="Checking…" FontSize="10.5"
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                        </Border>
+                                    </StackPanel>
+
+                                    <TextBlock Text="{Binding SchemeTitle}"
+                                               FontFamily="{StaticResource DisplayFont}" FontSize="15"
+                                               FontWeight="SemiBold" Margin="0,8,0,0"
+                                               Foreground="{DynamicResource TextBrush}"
                                                TextWrapping="Wrap" />
-                                    <TextBlock Text="Uploading replaces the previous scheme for the chosen assignment only."
+                                    <TextBlock Text="{Binding SchemeDetail}" Style="{StaticResource CardSubtitle}"
+                                               Margin="0,4,0,0" TextWrapping="Wrap"
+                                               Visibility="{Binding HasSchemeDetail, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Text="Only this assignment's questions are marked against this file. Uploading again replaces it."
                                                Style="{StaticResource Muted}" Margin="0,8,0,0" TextWrapping="Wrap" />
-                                    <Button Content="Upload mark scheme…" Command="{Binding UploadMarkSchemeCommand}"
+                                    <Button Content="{Binding UploadSchemeLabel}" Command="{Binding UploadMarkSchemeCommand}"
                                             HorizontalAlignment="Left" Margin="0,12,0,0"
                                             IsEnabled="{Binding HasAssignmentTarget}"
                                             ToolTip="Attach the PDF used to mark this assignment" />

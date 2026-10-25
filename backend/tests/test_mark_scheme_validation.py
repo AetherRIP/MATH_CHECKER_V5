@@ -175,6 +175,28 @@ class TestValidationApi:
         data = client.get("/api/assignments/cw-x/mark-scheme").json()
         assert data["has_mark_scheme"] is False
         assert data["processed"] is False
+        # Nothing is attached, so there is no file to name — not an empty
+        # string that a page would render as a scheme called "".
+        assert data["file_name"] is None
+        assert data["pages"] is None
+
+    def test_the_attached_file_is_named_with_its_page_count(self, client, fresh_state):
+        """The Classroom card could only offer an upload button, so a teacher
+        could not tell which scheme (if any) an assignment already had.
+
+        The endpoint now reports the file that is actually on disk. The page
+        count is read from the PDF, not guessed from the upload.
+        """
+        from fixtures_mark_scheme import table_mark_scheme
+
+        path = fresh_state / "mark_schemes" / "cw-pages.pdf"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        table_mark_scheme(path)
+
+        data = client.get("/api/assignments/cw-pages/mark-scheme").json()
+        assert data["has_mark_scheme"] is True
+        assert data["file_name"] == "cw-pages.pdf"
+        assert data["pages"] >= 1
 
     def test_cached_structure_is_validated(self, client, fresh_state):
         self._seed_scheme("cw-1", fresh_state)

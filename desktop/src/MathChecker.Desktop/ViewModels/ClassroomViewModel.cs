@@ -33,6 +33,14 @@ public sealed class ClassroomViewModel : PageViewModel
     private string _detailNote = string.Empty;
     private string _detailRaw = string.Empty;
 
+    // What is attached to the chosen assignment. The card only offered an
+    // upload button, so a teacher could not tell an assignment that already had
+    // a scheme from one that would fail with "no mark scheme".
+    private string _schemeTitle = "Choose an assignment to see its mark scheme.";
+    private string _schemeDetail = string.Empty;
+    private bool _schemeAttached;
+    private bool _schemeChecking;
+
     /// <summary>Set while a load restores a selection by id, so assigning the
     /// restored item does not start a second, duplicate fetch.</summary>
     private bool _restoringSelection;
@@ -153,6 +161,28 @@ public sealed class ClassroomViewModel : PageViewModel
           + (string.IsNullOrWhiteSpace(SelectedAssignment.State) ? string.Empty
               : $" · {PayloadFacts.StatusLabel(SelectedAssignment.State)}");
 
+    /// <summary>True when this assignment already has a scheme on disk.</summary>
+    public bool SchemeAttached => _schemeAttached;
+
+    /// <summary>True only when a scheme is definitely absent: a read still in
+    /// flight or one that failed is not evidence of "not attached".</summary>
+    public bool SchemeMissing => HasAssignmentTarget && !_schemeAttached && !_schemeChecking;
+
+    public bool SchemeChecking => _schemeChecking;
+
+    /// <summary>The headline: "Attached · verified", "Not attached", …</summary>
+    public string SchemeTitle => _schemeTitle;
+
+    /// <summary>File, page count, marks and structure — what is actually on
+    /// disk, read from the backend, never inferred from the upload button.</summary>
+    public string SchemeDetail => _schemeDetail;
+
+    public bool HasSchemeDetail => !string.IsNullOrWhiteSpace(_schemeDetail);
+
+    public string UploadSchemeLabel => _schemeAttached
+        ? "Replace mark scheme…"
+        : "Upload mark scheme…";
+
     public string SubmissionsSummary
     {
         get
@@ -220,9 +250,15 @@ public sealed class ClassroomViewModel : PageViewModel
             OnPropertyChanged(nameof(SelectedAssignmentText));
             OnPropertyChanged(nameof(AssignmentMetaText));
             OnPropertyChanged(nameof(SubmissionsSummary));
-            if (value is not null && SelectedCourse is not null && !_restoringSelection)
+            if (value is null)
+            {
+                SetScheme("Choose an assignment to see its mark scheme.", string.Empty, false,
+                    checking: false);
+            }
+            else if (SelectedCourse is not null && !_restoringSelection)
             {
                 _ = LoadSubmissionsAsync(SelectedCourse.Id, value.Id);
+                _ = LoadMarkSchemeAsync(value.Id);
             }
         }
     }
@@ -270,6 +306,136 @@ public sealed class ClassroomViewModel : PageViewModel
     public bool HasDetail => DetailFacts.Count > 0 || !string.IsNullOrWhiteSpace(DetailNote);
 
     public bool HasDetailRaw => !string.IsNullOrWhiteSpace(DetailRaw);
+
+    private void SetScheme(string title, string detail, bool attached, bool checking)
+    {
+        _schemeTitle = title;
+        _schemeDetail = detail;
+        _schemeAttached = attached;
+        _schemeChecking = checking;
+        OnPropertyChanged(nameof(SchemeAttached));
+        OnPropertyChanged(nameof(SchemeMissing));
+        OnPropertyChanged(nameof(SchemeChecking));
+        OnPropertyChanged(nameof(SchemeTitle));
+        OnPropertyChanged(nameof(SchemeDetail));
+        OnPropertyChanged(nameof(HasSchemeDetail));
+        OnPropertyChanged(nameof(UploadSchemeLabel));
+    }
+
+    /// <summary>Reads the scheme actually attached to this assignment.
+    ///
+    /// A late answer for an assignment the teacher has already left is dropped:
+    /// the card must describe the assignment in front of them, not the one they
+    /// clicked before.</summary>
+    private Task LoadMarkSchemeAsync(string courseId, string courseworkId) =>
+        SelectedCourse?.Id == courseId ? LoadMarkSchemeAsync(courseworkId) : Task.CompletedTask;
+
+    private async Task LoadMarkSchemeAsync(string courseworkId)
+    {
+        SetScheme("Checking this assignment's mark scheme…", string.Empty, false, checking: true);
+        try
+        {
+            var payload = await Session.Api.MarkSchemeAsync(courseworkId);
+            if (SelectedAssignment?.Id != courseworkId)
+            {
+                return;
+            }
+
+            ApplyScheme(payload);
+        }
+        catch (ApiException ex)
+        {
+            if (SelectedAssignment?.Id == courseworkId)
+            {
+                SetScheme("The mark scheme could not be read", ex.Display, false, checking: false);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (SelectedAssignment?.Id == courseworkId)
+            {
+                SetScheme("The mark scheme could not be read", UserMessage.For(ex), false,
+                    checking: false);
+            }
+        }
+    }
+
+    private void ApplyScheme(JsonElement payload)
+    {
+        bool Flag(string name) => payload.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.True;
+
+        string? Text(string name) => payload.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+
+        int? Number(string name) => payload.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetDouble(out var number)
+                ? (int)Math.Round(number)
+                : null;
+
+        if (!Flag("has_mark_scheme"))
+        {
+            SetScheme("Not attached",
+                "Corrections for this assignment cannot start until a scheme is uploaded.",
+                attached: false, checking: false);
+            return;
+        }
+
+        var parts = new List<string>();
+        var fileName = Text("file_name");
+        if (!string.IsNullOrWhiteSpace(fileName))
+        {
+            parts.Add(fileName!);
+        }
+
+        if (Number("pages") is { } pages && pages > 0)
+        {
+            parts.Add(pages == 1 ? "1 page" : $"{pages} pages");
+        }
+
+        if (Number("total_marks") is { } marks && marks > 0)
+        {
+            parts.Add($"{marks} marks");
+        }
+
+        if (Number("subquestion_count") is { } partsCount && partsCount > 0)
+        {
+            parts.Add($"{partsCount} marking points");
+        }
+
+        var processed = Flag("processed");
+        var state = processed ? SchemeStateText(Text("verification_state")) : null;
+        var title = processed
+            ? (string.IsNullOrEmpty(state) ? "Attached" : $"Attached · {state}")
+            : "Attached · not analysed yet";
+
+        var detail = string.Join(" · ", parts);
+        if (!processed)
+        {
+            detail = (detail.Length > 0 ? detail + " — " : string.Empty)
+                     + "it is analysed the first time work is corrected.";
+        }
+
+        SetScheme(title, detail, attached: true, checking: false);
+    }
+
+    private static string? SchemeStateText(string? state)
+    {
+        var value = (state ?? string.Empty).Trim().ToUpperInvariant();
+        return value switch
+        {
+            "VERIFIED" => "verified",
+            "NEEDS_MANUAL_REVIEW" => "needs review",
+            "NEEDS_REPAIR" => "needs repair",
+            "NOT_VERIFIED" => "not verified yet",
+            "VERIFYING" => "being checked",
+            "REPAIRING" or "REVERIFYING" => "being re-read",
+            _ => string.IsNullOrWhiteSpace(value) ? null : PayloadFacts.StatusLabel(state),
+        };
+    }
 
     private void ShowDetail(JsonElement payload, string fallbackNote)
     {
@@ -423,10 +589,14 @@ public sealed class ClassroomViewModel : PageViewModel
             return;
         }
 
+        var courseworkId = SelectedAssignment.Id;
         ShowDetail(await Session.Api.UploadMarkSchemeAsync(
-            SelectedCourse.Id, SelectedAssignment.Id, path),
+            SelectedCourse.Id, courseworkId, path),
             $"The mark scheme for “{SelectedAssignment.TitleText}” was uploaded.");
         Status = "Mark scheme uploaded.";
+        // The card must show the file that is now attached, not the state it
+        // was in before the upload.
+        await LoadMarkSchemeAsync(courseworkId);
     });
 
     public AsyncCommand PushGradesCommand => Command(async () =>
@@ -483,6 +653,13 @@ public sealed class ClassroomViewModel : PageViewModel
         OnPropertyChanged(nameof(SelectedAssignmentText));
         OnPropertyChanged(nameof(AssignmentMetaText));
         OnPropertyChanged(nameof(SubmissionsSummary));
+        OnPropertyChanged(nameof(SchemeAttached));
+        OnPropertyChanged(nameof(SchemeMissing));
+        OnPropertyChanged(nameof(SchemeChecking));
+        OnPropertyChanged(nameof(SchemeTitle));
+        OnPropertyChanged(nameof(SchemeDetail));
+        OnPropertyChanged(nameof(HasSchemeDetail));
+        OnPropertyChanged(nameof(UploadSchemeLabel));
 
         // /classroom/sync streams server-sent events, so it can never be read as
         // JSON. The pollable snapshot is /classroom/sync/progress; a failure here
@@ -593,6 +770,7 @@ public sealed class ClassroomViewModel : PageViewModel
             if (restored is not null)
             {
                 await LoadSubmissionsAsync(courseId, restored.Id, keepSubmissionId);
+                await LoadMarkSchemeAsync(courseId, restored.Id);
             }
         }
         catch (ApiException ex)

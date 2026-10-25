@@ -682,10 +682,23 @@ def _mark_scheme_validation(coursework_id: str) -> dict:
     from ..engine import blueprint as bp_mod
     cw = db.query_one("SELECT id, title FROM coursework WHERE id = ?", (coursework_id,))
     path = _mark_scheme_path(coursework_id)
+    # What is ON DISK, so the page can say which file is attached instead of
+    # only offering an upload button: a teacher could not tell whether an
+    # assignment already had a scheme, or which one, before replacing it.
+    file_name = path.name if path else None
+    file_pages = None
+    if path is not None:
+        try:
+            from ..engine import scheme_inventory as _si
+            file_pages = _si.page_count(path)
+        except Exception:  # noqa: BLE001 - a page count is decoration
+            file_pages = None
     if not path:
         return {
             "coursework_id": coursework_id,
             "assignment_title": cw["title"] if cw else None,
+            "file_name": file_name,
+            "pages": file_pages,
             "has_mark_scheme": False,
             "processed": False,
             "validation": bp_mod.structure_report(None),
@@ -697,6 +710,8 @@ def _mark_scheme_validation(coursework_id: str) -> dict:
         return {
             "coursework_id": coursework_id,
             "assignment_title": cw["title"] if cw else None,
+            "file_name": file_name,
+            "pages": file_pages,
             "has_mark_scheme": True,
             "processed": False,
             "validation": bp_mod.structure_report(None),
@@ -761,6 +776,8 @@ def _mark_scheme_validation(coursework_id: str) -> dict:
     return {
         "coursework_id": coursework_id,
         "assignment_title": cw["title"] if cw else None,
+        "file_name": file_name,
+        "pages": file_pages,
         "has_mark_scheme": True,
         "processed": True,
         "validation": report,
