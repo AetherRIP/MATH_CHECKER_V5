@@ -4,37 +4,6 @@
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI"
              xmlns:views="clr-namespace:MathChecker.Desktop.Views">
     <UserControl.Resources>
-        <!-- One roster row: a real list item, so keyboard selection, hover and
-             the automation tree behave; the template only decides the layout. -->
-        <Style x:Key="PersonRow" TargetType="ListBoxItem">
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="Row" Background="Transparent"
-                                BorderBrush="{DynamicResource RowHairlineBrush}"
-                                BorderThickness="0,0,0,1" Padding="14,10">
-                            <ContentPresenter />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Row" Property="Background"
-                                        Value="{DynamicResource SurfaceHoverBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Row" Property="Background"
-                                        Value="{DynamicResource SurfaceSelectedBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <!-- The theme wraps every TextBlock by default, which defeats
              trimming; these cells must stay on one line. -->
         <Style x:Key="FactLabel" TargetType="TextBlock">
@@ -52,6 +21,18 @@
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
             <Setter Property="Margin" Value="0,2,0,0" />
         </Style>
+
+        <!-- Headline counts, sized like the monitor's tiles rather than the page
+             title: they are evidence, not decoration. -->
+        <Style x:Key="SummaryTile" TargetType="Border" BasedOn="{StaticResource Panel}">
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="MinWidth" Value="132" />
+        </Style>
+
+        <Style x:Key="SummaryNumber" TargetType="TextBlock" BasedOn="{StaticResource StatValue}">
+            <Setter Property="FontSize" Value="21" />
+        </Style>
     </UserControl.Resources>
 
     <ui:PageFrame Eyebrow="{Binding HeaderEyebrow}" Title="{Binding HeaderTitle}"
@@ -65,8 +46,10 @@
                             Visibility="{Binding IsProfileClosed, Converter={StaticResource BoolToVis}}">
                     <Button Content="Refresh" Command="{Binding RefreshCommand}" />
                     <Button Content="Open profile" Style="{StaticResource PrimaryButton}"
-                            Command="{Binding OpenProfileCommand}" />
-                    <Button Content="Results" Command="{Binding OpenResultsCommand}" Margin="0" />
+                            Command="{Binding OpenProfileCommand}"
+                            ToolTip="Everything stored for the selected student" />
+                    <Button Content="Results" Command="{Binding OpenResultsCommand}" Margin="0"
+                            ToolTip="Open this person's stored corrections" />
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Top"
@@ -90,51 +73,53 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <!-- Headline facts, one strip, no wrapping: the numbers line up
-                     because each sits in its own column instead of a WrapPanel. -->
-                <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,10" Padding="16,12">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                <!-- Headline counts as tiles, with the sync provenance beside
+                     them: the numbers line up because each sits in its own tile
+                     instead of a WrapPanel. -->
+                <DockPanel Grid.Row="0" Margin="0,0,0,10">
+                    <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center"
+                                HorizontalAlignment="Right" Margin="10,0,0,0">
+                        <TextBlock Text="{Binding LastSyncText}" FontSize="10.5"
+                                   HorizontalAlignment="Right"
+                                   Foreground="{DynamicResource TextMutedBrush}" />
+                        <!-- Google does return addresses for every account type,
+                             so the page says where they came from. -->
+                        <TextBlock Text="{Binding EmailSource, StringFormat=Email source: {0}}"
+                                   FontSize="10.5" HorizontalAlignment="Right"
+                                   Foreground="{DynamicResource TextMutedBrush}" />
+                    </StackPanel>
 
-                        <StackPanel>
-                            <TextBlock Text="STUDENTS" Style="{StaticResource FactLabel}" />
-                            <TextBlock Text="{Binding StudentsCountText}" Style="{StaticResource FactValue}"
-                                       FontSize="17" FontWeight="SemiBold" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1">
-                            <TextBlock Text="CLASSES" Style="{StaticResource FactLabel}" />
-                            <TextBlock Text="{Binding ClassesCountText}" Style="{StaticResource FactValue}"
-                                       FontSize="17" FontWeight="SemiBold" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="CORRECTIONS" Style="{StaticResource FactLabel}" />
-                            <TextBlock Text="{Binding CorrectionsCountText}" Style="{StaticResource FactValue}"
-                                       FontSize="17" FontWeight="SemiBold" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="3">
-                            <TextBlock Text="IN PROGRESS" Style="{StaticResource FactLabel}" />
-                            <TextBlock Text="{Binding InProgressCountText}" Style="{StaticResource FactValue}"
-                                       FontSize="17" FontWeight="SemiBold" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="4" VerticalAlignment="Center"
-                                    HorizontalAlignment="Right">
-                            <TextBlock Text="{Binding LastSyncText}" FontSize="10.5"
-                                       HorizontalAlignment="Right"
-                                       Foreground="{DynamicResource TextMutedBrush}" />
-                            <!-- Google does return addresses for every account type,
-                                 so the page says where they came from. -->
-                            <TextBlock Text="{Binding EmailSource, StringFormat=Email source: {0}}"
-                                       FontSize="10.5" HorizontalAlignment="Right"
-                                       Foreground="{DynamicResource TextMutedBrush}" />
-                        </StackPanel>
-                    </Grid>
-                </Border>
+                    <WrapPanel>
+                        <Border Style="{StaticResource SummaryTile}">
+                            <StackPanel>
+                                <TextBlock Text="STUDENTS" Style="{StaticResource StatLabel}" />
+                                <TextBlock Text="{Binding StudentsCountText}"
+                                           Style="{StaticResource SummaryNumber}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SummaryTile}">
+                            <StackPanel>
+                                <TextBlock Text="CLASSES" Style="{StaticResource StatLabel}" />
+                                <TextBlock Text="{Binding ClassesCountText}"
+                                           Style="{StaticResource SummaryNumber}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SummaryTile}">
+                            <StackPanel>
+                                <TextBlock Text="CORRECTIONS" Style="{StaticResource StatLabel}" />
+                                <TextBlock Text="{Binding CorrectionsCountText}"
+                                           Style="{StaticResource SummaryNumber}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SummaryTile}" Margin="0">
+                            <StackPanel>
+                                <TextBlock Text="IN PROGRESS" Style="{StaticResource StatLabel}" />
+                                <TextBlock Text="{Binding InProgressCountText}"
+                                           Style="{StaticResource SummaryNumber}" />
+                            </StackPanel>
+                        </Border>
+                    </WrapPanel>
+                </DockPanel>
 
                 <Border Grid.Row="1" Style="{StaticResource FilterBar}" Margin="0,0,0,10">
                     <Grid>
@@ -159,7 +144,7 @@
                                   SelectedItem="{Binding ClassFilter}"
                                   AutomationProperties.Name="Class filter" />
 
-                        <TextBlock Grid.Column="4" Text="Select a student to open the full profile."
+                        <TextBlock Grid.Column="4" Text="Select a row to open the full profile."
                                    FontSize="10.5" VerticalAlignment="Center" Margin="14,0,10,0"
                                    TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource TextMutedBrush}" />
@@ -175,112 +160,122 @@
                 <Border Grid.Row="2" Style="{StaticResource TableCard}">
                     <DockPanel>
                         <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="240" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="290" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Student" Style="{StaticResource SectionLabel}"
+                            <DockPanel>
+                                <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Padding="9,2"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding ShownText}" FontSize="10.5"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Border>
+                                <TextBlock Text="Roster" Style="{StaticResource RowTitle}"
                                            VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1"
-                                           Text="Latest activity"
-                                           Style="{StaticResource SectionLabel}"
-                                           VerticalAlignment="Center" Margin="14,0,14,0"
-                                           TextWrapping="NoWrap" />
-                                <TextBlock Grid.Column="2" Text="Records"
-                                           Style="{StaticResource SectionLabel}"
-                                           VerticalAlignment="Center" />
-                            </Grid>
+                            </DockPanel>
                         </Border>
 
                         <Grid>
-                            <ListBox ItemsSource="{Binding Items}"
-                                     SelectedItem="{Binding Selected}"
-                                     ItemContainerStyle="{StaticResource PersonRow}"
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                     AutomationProperties.Name="Students">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="240" />
-                                                <ColumnDefinition Width="*" MinWidth="120" />
-                                                <ColumnDefinition Width="290" />
-                                            </Grid.ColumnDefinitions>
-
-                                            <!-- Identity: long names and addresses
-                                                 ellipsize instead of pushing the
-                                                 facts off the row. -->
-                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                                <TextBlock Text="{Binding Name}" FontSize="13"
-                                                           FontWeight="SemiBold"
-                                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                                                           ToolTip="{Binding CoursesText}"
-                                                           Foreground="{DynamicResource TextBrush}" />
-                                                <TextBlock Text="{Binding SummaryLine}" FontSize="10.5"
-                                                           Margin="0,2,0,0"
-                                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                                                           ToolTip="{Binding CoursesText}"
-                                                           Foreground="{DynamicResource TextMutedBrush}" />
-                                                <TextBlock Text="{Binding EmailText}" FontSize="10.5"
-                                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                                                           Foreground="{DynamicResource TextMutedBrush}" />
-                                            </StackPanel>
-
-                                            <!-- Three labelled facts, each from a
-                                                 different source, so a Classroom
-                                                 grade is never read as a score. -->
-                                            <StackPanel Grid.Column="1" Margin="0,0,12,0"
-                                                        VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding LatestSubmissionText}"
-                                                           FontSize="11.5"
-                                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                <TextBlock Text="{Binding CorrectionText}"
-                                                           FontSize="11.5" Margin="0,3,0,0"
-                                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                <TextBlock Text="{Binding ClassroomGradeText}"
-                                                           FontSize="11.5" Margin="0,3,0,0"
-                                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                                                           Foreground="{DynamicResource TextMutedBrush}" />
-                                            </StackPanel>
-
-                                            <!-- Numbers stay in their own cells so a
-                                                 long name can never collide. -->
-                                            <UniformGrid Grid.Column="2" Columns="3"
-                                                         VerticalAlignment="Center">
-                                                <StackPanel>
-                                                    <TextBlock Text="SUBMITTED" Style="{StaticResource FactLabel}" />
-                                                    <TextBlock Text="{Binding SubmittedText}"
-                                                               Style="{StaticResource FactValue}" />
-                                                    <TextBlock Text="{Binding PendingText}" FontSize="10.5"
-                                                               Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
-                                                               Foreground="{DynamicResource TextMutedBrush}"
-                                                               Visibility="{Binding Pending,
-                                                                   Converter={StaticResource NonZeroToVis}}" />
-                                                </StackPanel>
-                                                <StackPanel Margin="8,0,0,0">
-                                                    <TextBlock Text="MATH CHECKER" Style="{StaticResource FactLabel}" />
-                                                    <TextBlock Text="{Binding TotalText}"
-                                                               Style="{StaticResource FactValue}" />
-                                                    <TextBlock Text="{Binding Corrections, StringFormat={}{0} corrections}"
-                                                               FontSize="10.5" Margin="0,2,0,0"
+                            <!-- A table, not a hand-built list: the header and the
+                                 cells are the same columns, so the labels line up
+                                 at every window width and the numeric block can
+                                 never be pushed off the row. -->
+                            <DataGrid Style="{StaticResource DataTable}"
+                                      ItemsSource="{Binding Items}"
+                                      SelectedItem="{Binding Selected}"
+                                      AutomationProperties.Name="Students">
+                                <DataGrid.Columns>
+                                    <DataGridTemplateColumn Header="Student" Width="1.15*" MinWidth="170">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="0,4" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" FontSize="12.5"
+                                                               FontWeight="SemiBold"
+                                                               TextWrapping="NoWrap"
                                                                TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding CoursesText}"
+                                                               Foreground="{DynamicResource TextBrush}" />
+                                                    <TextBlock Text="{Binding SummaryLine}" FontSize="10.5"
+                                                               Margin="0,2,0,0"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding CoursesText}"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                    <TextBlock Text="{Binding EmailText}" FontSize="10.5"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding EmailText}"
                                                                Foreground="{DynamicResource TextMutedBrush}" />
                                                 </StackPanel>
-                                                <StackPanel Margin="8,0,0,0">
-                                                    <TextBlock Text="LAST SYNC" Style="{StaticResource FactLabel}" />
-                                                    <TextBlock Text="{Binding SyncText}"
-                                                               Style="{StaticResource FactValue}" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+
+                                    <!-- Three labelled facts, each from a different
+                                         source, so a Classroom grade is never read
+                                         as a score. -->
+                                    <DataGridTemplateColumn Header="Latest activity" Width="1.35*"
+                                                            MinWidth="160">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="0,4" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding LatestSubmissionText}"
+                                                               FontSize="11.5"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding LatestSubmissionText}"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="{Binding CorrectionText}"
+                                                               FontSize="11.5" Margin="0,3,0,0"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding CorrectionText}"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="{Binding ClassroomGradeText}"
+                                                               FontSize="11.5" Margin="0,3,0,0"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding ClassroomGradeText}"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
                                                 </StackPanel>
-                                            </UniformGrid>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+
+                                    <DataGridTemplateColumn Header="Records" Width="Auto" MinWidth="264">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <UniformGrid Columns="3" Margin="0,4" VerticalAlignment="Center">
+                                                    <StackPanel>
+                                                        <TextBlock Text="SUBMITTED"
+                                                                   Style="{StaticResource FactLabel}" />
+                                                        <TextBlock Text="{Binding SubmittedText}"
+                                                                   Style="{StaticResource FactValue}" />
+                                                        <TextBlock Text="{Binding PendingText}" FontSize="10.5"
+                                                                   Margin="0,2,0,0"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                                   Visibility="{Binding Pending,
+                                                                       Converter={StaticResource NonZeroToVis}}" />
+                                                    </StackPanel>
+                                                    <StackPanel Margin="8,0,0,0">
+                                                        <TextBlock Text="MATH CHECKER"
+                                                                   Style="{StaticResource FactLabel}" />
+                                                        <TextBlock Text="{Binding TotalText}"
+                                                                   Style="{StaticResource FactValue}" />
+                                                        <TextBlock Text="{Binding Corrections, StringFormat={}{0} corrections}"
+                                                                   FontSize="10.5" Margin="0,2,0,0"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                                    </StackPanel>
+                                                    <StackPanel Margin="8,0,0,0">
+                                                        <TextBlock Text="LAST SYNC"
+                                                                   Style="{StaticResource FactLabel}" />
+                                                        <TextBlock Text="{Binding SyncText}"
+                                                                   Style="{StaticResource FactValue}" />
+                                                    </StackPanel>
+                                                </UniformGrid>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
 
                             <Border Style="{StaticResource EmptyState}" MaxWidth="380"
                                     HorizontalAlignment="Center" VerticalAlignment="Center"

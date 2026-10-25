@@ -380,8 +380,11 @@ public class WorkerDashboardTests
             view.UpdateLayout();
 
             var text = DescendantText(view);
-            Assert.Contains("NEW CORRECTION", text);
-            Assert.Contains("FOLLOW THE CORRECTION", text);
+            // The page owns its three steps and nothing else: no worker card,
+            // no live dashboard and no stage list of its own.
+            Assert.Contains("ATTACH THE TWO FILES", text);
+            Assert.Contains("NAME IT AND START", text);
+            Assert.Contains("WATCH IT RUN", text);
             Assert.DoesNotContain("WORKER DETAILS", text);
             Assert.DoesNotContain("PROCESSING", text);
         });

@@ -2,190 +2,197 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
+
+    <UserControl.Resources>
+        <!-- One assignment to include: a real checkbox row with the class and
+             its stored stats, so the choice is never just a bare title. -->
+        <Style x:Key="ChoiceRow" TargetType="Border">
+            <Setter Property="Padding" Value="12,4,10,4" />
+            <Setter Property="BorderBrush" Value="{DynamicResource RowHairlineBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+    </UserControl.Resources>
+
     <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}"
-                  Description="Pick one class and any number of its assignments, then export the combined report."
+                  Description="Tick the assignments to include, then build the report. One class at a time, any number of its assignments."
                   StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
-                  BodyPadding="0,18,0,0">
+                  BodyPadding="0,16,0,0">
         <ui:PageFrame.Actions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Build report" Style="{StaticResource PrimaryButton}"
-                        Command="{Binding BuildCommand}" />
+                        Command="{Binding BuildCommand}"
+                        ToolTip="Read the ticked assignments and fill the table below" />
                 <!-- Export reads the selection itself, so a teacher can go
                      straight to a file without previewing first. -->
                 <Button Content="Export PDF" Command="{Binding ExportPdfCommand}"
                         ToolTip="Export the selected assignments as PDF" />
-                <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" Margin="0"
+                <Button Content="Export CSV" Command="{Binding ExportCsvCommand}"
                         ToolTip="Export the selected assignments as CSV" />
+                <!-- The set-up pane is always available, but a small window
+                     needs the width for the table. -->
+                <Button Content="{Binding ScopeButtonText}" Command="{Binding ToggleScopeCommand}"
+                        Margin="0" ToolTip="Show or hide the set-up pane" />
             </StackPanel>
         </ui:PageFrame.Actions>
 
         <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" MinHeight="80" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="300" />
+            </Grid.ColumnDefinitions>
 
             <!-- ============================================================
-                 SCOPE: the three filters on one row, then the assignment
-                 picker. Keeping this band short is what leaves the report table
-                 a usable amount of the page.
+                 SET-UP: what goes into the report. Fixed width, its own
+                 column, its own scrolling list — the report table keeps every
+                 remaining pixel instead of sharing a band with the filters.
                  ============================================================ -->
-            <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,12" Padding="16,12">
-                <StackPanel>
-                    <DockPanel>
-                        <Button DockPanel.Dock="Right" Content="{Binding ScopeButtonText}"
-                                Command="{Binding ToggleScopeCommand}" Height="26"
-                                Padding="12,2" FontSize="11.5" Margin="0"
-                                ToolTip="Show or hide the filters and the assignment picker" />
-                        <TextBlock Text="REPORT SCOPE" Style="{StaticResource SectionLabel}"
-                                   VerticalAlignment="Center" />
-                        <!-- When the band is folded this line still says exactly
-                             what the report covers. -->
-                        <TextBlock Text="{Binding ScopeSummary}" FontSize="11"
-                                   VerticalAlignment="Center" Margin="14,0,10,0"
-                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   Visibility="{Binding IsScopeCollapsed,
-                                       Converter={StaticResource BoolToVis}}" />
-                    </DockPanel>
+            <Border Grid.Column="0" Style="{StaticResource Card}" Padding="14,12"
+                    Width="360" Margin="0,0,12,0"
+                    Visibility="{Binding IsScopeExpanded, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="120" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                    <StackPanel Visibility="{Binding IsScopeExpanded,
-                        Converter={StaticResource BoolToVis}}">
-                    <Grid Margin="0,10,0,0">
+                    <TextBlock Grid.Row="0" Text="SET UP THE REPORT"
+                               Style="{StaticResource SectionLabel}" />
+
+                    <!-- 1 · scope -->
+                    <StackPanel Grid.Row="1" Margin="0,10,0,0">
+                        <TextBlock Text="1 · SCOPE" Style="{StaticResource SectionLabel}"
+                                   Foreground="{DynamicResource TextMutedBrush}" />
+
+                        <TextBlock Text="Class" Style="{StaticResource FieldLabel}"
+                                   Margin="0,8,0,5" />
+                        <ComboBox HorizontalAlignment="Stretch" Margin="0"
+                                  ItemsSource="{Binding Classes}" SelectedItem="{Binding SelectedClass}"
+                                  AutomationProperties.Name="Report class">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Title}" TextWrapping="NoWrap"
+                                               TextTrimming="CharacterEllipsis" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+
+                        <TextBlock Text="Student class (optional)" Style="{StaticResource FieldLabel}"
+                                   Margin="0,10,0,5" />
+                        <ComboBox HorizontalAlignment="Stretch" Margin="0"
+                                  ItemsSource="{Binding StudentClasses}"
+                                  SelectedItem="{Binding StudentClass}"
+                                  AutomationProperties.Name="Student class filter" />
+
+                        <TextBlock Text="Student (optional)" Style="{StaticResource FieldLabel}"
+                                   Margin="0,10,0,5" />
+                        <TextBox Text="{Binding StudentQuery, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Filter by student" />
+                    </StackPanel>
+
+                    <!-- 2 · assignments -->
+                    <Grid Grid.Row="2" Margin="0,12,0,6">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="240" />
-                            <ColumnDefinition Width="14" />
-                            <ColumnDefinition Width="180" />
-                            <ColumnDefinition Width="14" />
-                            <ColumnDefinition Width="*" MinWidth="160" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-
-                        <StackPanel>
-                            <TextBlock Text="Class" Style="{StaticResource FieldLabel}" Margin="0,0,0,5" />
-                            <ComboBox Margin="0" HorizontalAlignment="Stretch"
-                                      ItemsSource="{Binding Classes}" SelectedItem="{Binding SelectedClass}"
-                                      AutomationProperties.Name="Report class">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding Title}" TextWrapping="NoWrap"
-                                                   TextTrimming="CharacterEllipsis" />
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="2 · ASSIGNMENTS" Style="{StaticResource SectionLabel}"
+                                       Foreground="{DynamicResource TextMutedBrush}" />
+                            <TextBlock Text="Tick as many as the report should cover."
+                                       FontSize="10.5" Margin="0,2,0,0" TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextMutedBrush}" />
                         </StackPanel>
-
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="Student class" Style="{StaticResource FieldLabel}"
-                                       Margin="0,0,0,5" />
-                            <ComboBox Margin="0" HorizontalAlignment="Stretch"
-                                      ItemsSource="{Binding StudentClasses}"
-                                      SelectedItem="{Binding StudentClass}"
-                                      AutomationProperties.Name="Student class filter" />
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="4">
-                            <TextBlock Text="Student" Style="{StaticResource FieldLabel}"
-                                       Margin="0,0,0,5" />
-                            <TextBox Text="{Binding StudentQuery, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Filter by student" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="Select all" Command="{Binding SelectAllCommand}"
+                                    Height="24" Padding="9,1" FontSize="11.5"
+                                    ToolTip="Tick every assignment of this class" />
+                            <Button Content="Clear" Command="{Binding ClearSelectionCommand}"
+                                    Height="24" Padding="9,1" FontSize="11.5" Margin="0"
+                                    ToolTip="Untick everything, so no assignment is included" />
                         </StackPanel>
                     </Grid>
 
-                        <!-- Multi-select assignments: checkboxes, never a
-                             single-select dropdown. A fixed height keeps the
-                             band predictable so the table below always fits. -->
-                        <Border Margin="0,12,0,0" Height="132">
-                            <Border.Style>
-                                <Style TargetType="Border" BasedOn="{StaticResource Panel}">
-                                    <Setter Property="Padding" Value="0" />
-                                </Style>
-                            </Border.Style>
-                            <DockPanel>
-                                <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}"
-                                        Padding="12,6">
-                                    <DockPanel>
-                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
-                                                    VerticalAlignment="Center">
-                                            <Button Content="Select all" Command="{Binding SelectAllCommand}"
-                                                    Height="24" Padding="10,1" FontSize="11.5" />
-                                            <Button Content="Clear" Command="{Binding ClearSelectionCommand}"
-                                                    Height="24" Padding="10,1" FontSize="11.5" Margin="0" />
-                                        </StackPanel>
-                                        <TextBlock Text="Assignments" Style="{StaticResource RowTitle}"
-                                                   VerticalAlignment="Center" />
-                                    </DockPanel>
-                                </Border>
-
-                                <Border DockPanel.Dock="Bottom" Padding="12,6"
-                                        BorderThickness="0,1,0,0"
-                                        BorderBrush="{DynamicResource HairlineBrush}">
-                                    <DockPanel>
-                                        <Border DockPanel.Dock="Right" Style="{StaticResource Chip}"
-                                                Padding="8,2" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding AssignmentCountText}" FontSize="10.5"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <!-- Multi-select assignments: checkboxes, never a
+                         single-select dropdown. -->
+                    <Border Grid.Row="3" Style="{StaticResource Panel}" Padding="0">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding VisibleAssignments}"
+                                          AutomationProperties.Name="Assignments to include">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource ChoiceRow}">
+                                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}">
+                                                <StackPanel MaxWidth="270">
+                                                    <TextBlock Text="{Binding DisplayTitle}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding DisplayTitle}"
+                                                               Foreground="{DynamicResource TextBrush}" />
+                                                    <TextBlock Text="{Binding MetaText}" FontSize="10.5"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding MetaText}"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                </StackPanel>
+                                            </CheckBox>
                                         </Border>
-                                        <TextBlock Text="{Binding SelectionSummary}" FontSize="11"
-                                                   VerticalAlignment="Center" TextWrapping="NoWrap"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    </DockPanel>
-                                </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
 
-                                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                    <ItemsControl ItemsSource="{Binding VisibleAssignments}"
-                                                  AutomationProperties.Name="Assignments to include">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <!-- The theme's checkbox template ignores its
-                                                     own Padding, so the row carries it. -->
-                                                <Border Padding="12,3,8,3">
-                                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}">
-                                                        <StackPanel MaxWidth="320">
-                                                            <TextBlock Text="{Binding DisplayTitle}"
-                                                                       TextWrapping="NoWrap"
-                                                                       TextTrimming="CharacterEllipsis"
-                                                                       Foreground="{DynamicResource TextBrush}" />
-                                                            <TextBlock Text="{Binding MetaText}" FontSize="10.5"
-                                                                       TextWrapping="NoWrap"
-                                                                       TextTrimming="CharacterEllipsis"
-                                                                       Foreground="{DynamicResource TextMutedBrush}" />
-                                                        </StackPanel>
-                                                    </CheckBox>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </ScrollViewer>
-                            </DockPanel>
-                        </Border>
-                    </StackPanel>
-                </StackPanel>
+                    <Border Grid.Row="4" Margin="0,8,0,0" Padding="0,8,0,0"
+                            BorderThickness="0,1,0,0" BorderBrush="{DynamicResource HairlineBrush}">
+                        <DockPanel>
+                            <Border DockPanel.Dock="Right" Style="{StaticResource Chip}"
+                                    Padding="8,2" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding AssignmentCountText}" FontSize="10.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+                            <TextBlock Text="{Binding SelectionSummary}" FontSize="10.5"
+                                       VerticalAlignment="Center" TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding SelectionSummary}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </DockPanel>
+                    </Border>
+                </Grid>
             </Border>
 
             <!-- ============================================================
-                 ROWS
+                 REPORT: the rows the backend returned for exactly this scope.
                  ============================================================ -->
-            <Border Grid.Row="1" Style="{StaticResource TableCard}">
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Style="{StaticResource TableCard}">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
                         <DockPanel>
                             <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Padding="9,2"
                                     VerticalAlignment="Center">
-                                <TextBlock Text="{Binding RowCountText}"
-                                           FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding RowCountText}" FontSize="10.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
-                            <TextBlock Text="Combined report rows" Style="{StaticResource RowTitle}"
-                                       VerticalAlignment="Center" />
-                            <!-- Said once, in the toolbar, instead of an overlay
-                                 that would collide with the header in a short table. -->
-                            <TextBlock Text="Tick the assignments to include, then build the report."
-                                       FontSize="10.5" VerticalAlignment="Center" Margin="14,0,0,0"
+                            <TextBlock DockPanel.Dock="Left" Text="Report"
+                                       Style="{StaticResource RowTitle}" VerticalAlignment="Center" />
+                            <!-- What the current scope covers, in one line, always
+                                 visible next to the rows it produced. -->
+                            <TextBlock Text="{Binding ScopeSummary}" FontSize="10.5"
+                                       VerticalAlignment="Center" Margin="14,0,12,0"
                                        TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                                       Foreground="{DynamicResource TextMutedBrush}"
-                                       Visibility="{Binding Rows.Count,
-                                           Converter={StaticResource ZeroToVis}}" />
+                                       ToolTip="{Binding ScopeSummary}"
+                                       Foreground="{DynamicResource TextMutedBrush}" />
                         </DockPanel>
                     </Border>
 
@@ -215,18 +222,29 @@
                             </DataGrid.Columns>
                         </DataGrid>
 
+                        <Border Style="{StaticResource EmptyState}" MaxWidth="360"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="{Binding Rows.Count, Converter={StaticResource ZeroToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="No report rows yet" Style="{StaticResource EmptyTitle}" />
+                                <TextBlock Text="Tick the assignments on the left, then Build report. Rows appear here with each assignment's marks and the combined percentage."
+                                           Style="{StaticResource EmptyText}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
                     </Grid>
                 </DockPanel>
             </Border>
 
-            <Expander Grid.Row="2" Header="Technical details" IsExpanded="False" Margin="0,10,0,0"
+            <Expander Grid.Row="1" Header="Technical details" IsExpanded="False" Margin="0,10,0,0"
                       Visibility="{Binding HasRawText, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
                     <TextBlock Text="Raw report data, for diagnostics only." FontSize="11"
                                Foreground="{DynamicResource TextMutedBrush}" Margin="0,4,0,6" />
-                    <TextBox Style="{StaticResource JsonBox}" Text="{Binding RawText, Mode=OneWay}" Height="180" />
+                    <TextBox Style="{StaticResource JsonBox}" Text="{Binding RawText, Mode=OneWay}"
+                             Height="140" />
                 </StackPanel>
             </Expander>
+            </Grid>
         </Grid>
     </ui:PageFrame>
 </UserControl>

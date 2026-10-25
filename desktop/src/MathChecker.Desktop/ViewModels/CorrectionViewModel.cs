@@ -45,6 +45,7 @@ public sealed class CorrectionViewModel : PageViewModel
             if (SetProperty(ref _submissionPath, value))
             {
                 OnPropertyChanged(nameof(SubmissionLabel));
+                OnPropertyChanged(nameof(HasSubmission));
             }
         }
     }
@@ -57,9 +58,17 @@ public sealed class CorrectionViewModel : PageViewModel
             if (SetProperty(ref _markSchemePath, value))
             {
                 OnPropertyChanged(nameof(MarkSchemeLabel));
+                OnPropertyChanged(nameof(HasMarkScheme));
             }
         }
     }
+
+    /// <summary>Display only: the row's dot reads the same state the start
+    /// button's CanSubmit does, so a missing file is visible where it is
+    /// missing rather than only as a disabled button.</summary>
+    public bool HasSubmission => SubmissionPath is not null;
+
+    public bool HasMarkScheme => MarkSchemePath is not null;
 
     public string SubmissionLabel => SubmissionPath is null
         ? "No student PDF selected"

@@ -3,88 +3,186 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
 
+    <UserControl.Resources>
+        <!-- A file slot: label, the file itself, and one dot that says whether
+             it is attached. The dot reads the same state the start button does,
+             so "why can't I start?" is answered on the row that is missing. -->
+        <Style x:Key="FileDot" TargetType="Ellipse">
+            <Setter Property="Width" Value="7" />
+            <Setter Property="Height" Value="7" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,7,0" />
+            <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
+        </Style>
+
+        <Style x:Key="FileRow" TargetType="Border" BasedOn="{StaticResource Panel}">
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+    </UserControl.Resources>
+
     <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}"
-                  Description="Attach the student's paper and the mark scheme. The backend queues one correction and the Correction monitor shows it running."
+                  Description="Attach the student's paper and the mark scheme, then start. The upload ends when the backend queues the job; the Correction monitor shows it running."
                   StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
-                  BodyPadding="0,18,0,0">
+                  BodyPadding="0,16,0,0">
         <ui:PageFrame.Actions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
-                <Button Content="Correction monitor" Command="{Binding OpenMonitorCommand}" Margin="0,0,8,0" />
+                <Button Content="Correction monitor" Command="{Binding OpenMonitorCommand}"
+                        ToolTip="Watch this correction run, with its real stage and progress" />
+                <Button Content="Job history" Command="{Binding OpenJobsCommand}"
+                        ToolTip="Every job the backend has run, including this one" />
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" Margin="0" />
             </StackPanel>
         </ui:PageFrame.Actions>
 
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      Padding="0,0,6,0">
+            <StackPanel>
 
-            <!-- ================================================== 1 · files -->
-            <Border Grid.Row="0" Style="{StaticResource Card}" AllowDrop="True" Drop="OnDrop"
-                    DragOver="OnDragOver">
-                <StackPanel>
-                    <TextBlock Text="1 · NEW CORRECTION" Style="{StaticResource SectionLabel}" />
+                <!-- ============================================== 1 · files -->
+                <Border Style="{StaticResource Card}" AllowDrop="True" Drop="OnDrop" DragOver="OnDragOver">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,10">
+                            <TextBlock DockPanel.Dock="Left" Text="1 · ATTACH THE TWO FILES"
+                                       Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                            <TextBlock Text="Both are required · drag a PDF onto this card, or choose below"
+                                       FontSize="10.5" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextMutedBrush}" />
+                        </DockPanel>
 
-                    <Border Background="{DynamicResource SunkenBrush}"
-                            BorderBrush="{DynamicResource HairlineStrongBrush}" BorderThickness="1"
-                            CornerRadius="14" Padding="16,12" Margin="0,10,0,12">
-                        <StackPanel>
-                            <TextBlock Text="Drag a PDF or image here" Style="{StaticResource RowTitle}" />
-                            <TextBlock Text="PDF, PNG, JPG or WEBP up to 200 MB. Drop two files to attach the work and the scheme together, or choose them below."
-                                       Style="{StaticResource CardSubtitle}" Margin="0,3,0,0" />
+                        <Border Style="{StaticResource FileRow}">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="Choose…" Height="30" Padding="12,2"
+                                        VerticalAlignment="Center" Margin="10,0,0,0"
+                                        Command="{Binding PickSubmissionCommand}"
+                                        ToolTip="The student's answered paper: PDF, PNG, JPG or WEBP" />
+                                <TextBlock DockPanel.Dock="Left" Text="STUDENT WORK" Width="104"
+                                           Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Ellipse>
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse" BasedOn="{StaticResource FileDot}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasSubmission}" Value="True">
+                                                        <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Text="{Binding SubmissionLabel}" FontSize="12"
+                                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding SubmissionLabel}"
+                                               Foreground="{DynamicResource TextBrush}" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource FileRow}">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="Choose…" Height="30" Padding="12,2"
+                                        VerticalAlignment="Center" Margin="10,0,0,0"
+                                        Command="{Binding PickMarkSchemeCommand}"
+                                        ToolTip="The mark scheme this paper is marked against" />
+                                <TextBlock DockPanel.Dock="Left" Text="MARK SCHEME" Width="104"
+                                           Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Ellipse>
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse" BasedOn="{StaticResource FileDot}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasMarkScheme}" Value="True">
+                                                        <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Text="{Binding MarkSchemeLabel}" FontSize="12"
+                                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding MarkSchemeLabel}"
+                                               Foreground="{DynamicResource TextBrush}" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <TextBlock Text="PDF, PNG, JPG or WEBP up to 200 MB. Dropping two files at once fills both rows."
+                                   FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextMutedBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ========================================== 2 · name + start -->
+                <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,10">
+                            <TextBlock DockPanel.Dock="Left" Text="2 · NAME IT AND START"
+                                       Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                            <TextBlock Text="The name is optional · the paper is stored as “Student” if you leave it blank"
+                                       FontSize="10.5" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextMutedBrush}" />
+                        </DockPanel>
+
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" Text="Student name" Width="104"
+                                       Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Content="Clear both files" Command="{Binding ClearCommand}"
+                                        Height="34" Padding="12,4" Margin="8,0,0,0"
+                                        ToolTip="Detach the paper and the scheme, keeping the page as it is" />
+                                <Button Content="Start correction" Style="{StaticResource PrimaryButton}"
+                                        Command="{Binding SubmitCommand}" Margin="8,0,0,0"
+                                        ToolTip="Uploads both files and queues one correction job" />
+                            </StackPanel>
+                            <TextBox Text="{Binding StudentName, UpdateSourceTrigger=PropertyChanged}"
+                                     MaxWidth="320" HorizontalAlignment="Left" Margin="0,0,10,0"
+                                     AutomationProperties.Name="Student name" />
+                        </DockPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- =============================================== 3 · follow -->
+                <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock DockPanel.Dock="Left" Text="3 · WATCH IT RUN"
+                                       Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                            <TextBlock Text="UPLOAD TRANSFER ONLY"
+                                       FontSize="10.5" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       TextWrapping="NoWrap"
+                                       Foreground="{DynamicResource TextMutedBrush}" />
+                        </DockPanel>
+
+                        <TextBlock Style="{StaticResource CardSubtitle}"
+                                   Text="The bar below is the upload. The correction itself runs on its own worker card — with the real stage, percentage and elapsed time — on the Correction monitor."
+                                   TextWrapping="Wrap" />
+
+                        <StackPanel Margin="0,10,0,0"
+                                    Visibility="{Binding ProgressText, Converter={StaticResource NullToVisibility}}">
+                            <ProgressBar Height="6" Minimum="0" Maximum="1"
+                                         Value="{Binding Progress, Mode=OneWay}"
+                                         IsIndeterminate="{Binding IsProgressIndeterminate, Mode=OneWay}" />
+                            <TextBlock Text="{Binding ProgressText}" FontSize="11.5" Margin="0,6,0,0"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
-                    </Border>
 
-                    <DockPanel Margin="0,0,0,8">
-                        <TextBlock DockPanel.Dock="Left" Text="Student work" Width="110"
-                                   Style="{StaticResource FieldLabel}" />
-                        <Button DockPanel.Dock="Right" Content="Choose…" Height="34" Padding="12,5"
-                                Command="{Binding PickSubmissionCommand}" Margin="8,0,0,0" />
-                        <TextBox Text="{Binding SubmissionLabel, Mode=OneWay}" IsReadOnly="True" Margin="0" />
-                    </DockPanel>
-
-                    <DockPanel Margin="0,0,0,10">
-                        <TextBlock DockPanel.Dock="Left" Text="Mark scheme" Width="110"
-                                   Style="{StaticResource FieldLabel}" />
-                        <Button DockPanel.Dock="Right" Content="Choose…" Height="34" Padding="12,5"
-                                Command="{Binding PickMarkSchemeCommand}" Margin="8,0,0,0" />
-                        <TextBox Text="{Binding MarkSchemeLabel, Mode=OneWay}" IsReadOnly="True" Margin="0" />
-                    </DockPanel>
-
-                    <WrapPanel>
-                        <TextBlock Text="Student name" Style="{StaticResource FieldLabel}" />
-                        <TextBox Width="220" Text="{Binding StudentName, UpdateSourceTrigger=PropertyChanged}" />
-                        <Button Content="Clear" Command="{Binding ClearCommand}" Height="38" />
-                        <Button Content="Start correction" Style="{StaticResource PrimaryButton}"
-                                Command="{Binding SubmitCommand}" Margin="0" />
-                    </WrapPanel>
-
-                    <!-- Upload transfer only. The correction's own progress is on
-                         the Correction monitor, one card per job. -->
-                    <StackPanel Margin="0,10,0,0"
-                                Visibility="{Binding ProgressText, Converter={StaticResource NullToVisibility}}">
-                        <ProgressBar Height="6" Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}"
-                                     IsIndeterminate="{Binding IsProgressIndeterminate, Mode=OneWay}" />
-                        <TextBlock Text="{Binding ProgressText}" FontSize="11.5" Margin="0,6,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <ItemsControl ItemsSource="{Binding OutcomeFacts}" Margin="0,6,0,0"
+                        <ItemsControl ItemsSource="{Binding OutcomeFacts}" Margin="0,8,0,0"
                                       ItemTemplate="{StaticResource FactRowTemplate}"
                                       Visibility="{Binding HasOutcome, Converter={StaticResource BoolToVis}}" />
-                    </StackPanel>
-                </StackPanel>
-            </Border>
 
-            <!-- ===================================== 2 · where to follow it -->
-            <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,14,0,0" VerticalAlignment="Top">
-                <StackPanel>
-                    <TextBlock Text="2 · FOLLOW THE CORRECTION" Style="{StaticResource SectionLabel}" />
-                    <TextBlock Style="{StaticResource CardSubtitle}" Margin="0,8,0,0"
-                               Text="Every correction the backend runs appears on its own worker card — with the real stage, progress and elapsed time — on the Correction monitor." />
-                    <Button Content="Open the Correction monitor" Command="{Binding OpenMonitorCommand}"
-                            HorizontalAlignment="Left" Margin="0,12,0,0" />
-                </StackPanel>
-            </Border>
-        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <Button Content="Open the Correction monitor" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding OpenMonitorCommand}"
+                                    ToolTip="See this paper's worker card fill in as the backend advances" />
+                            <Button Content="Open job history" Command="{Binding OpenJobsCommand}"
+                                    ToolTip="The queue and every finished job, with its error if it failed" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
     </ui:PageFrame>
 </UserControl>
