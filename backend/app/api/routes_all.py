@@ -1349,6 +1349,10 @@ def _classify_correction(course_id: str, coursework_id: str, *,
     draft: list[str] = []
     unknown: list[str] = []
     submitted = 0
+    # submission id -> why it is not eligible, so a hand-picked selection can
+    # say why one of its papers was refused instead of silently correcting
+    # fewer papers than the teacher ticked.
+    reasons: dict[str, str] = {}
 
     for row in tracking["rows"]:
         name = row.get("student_name") or row.get("student_id") or "?"
@@ -1358,22 +1362,33 @@ def _classify_correction(course_id: str, coursework_id: str, *,
             submitted += 1
         if row.get("synthetic") or status in ("NOT_STARTED", "MISSING", "RECLAIMED"):
             missing.append(name)
+            if sid:
+                reasons[sid] = "was never handed in"
             continue
         if status == "CREATED":
             draft.append(name)
+            if sid:
+                reasons[sid] = "was opened but never handed in"
             continue
         state, attachments = _verified_submission_state(sid) if sid else (None, [])
         if state is None:
             unknown.append(name)
+            if sid:
+                reasons[sid] = ("could not be verified with Google Classroom")
             continue
         if state not in _HANDED_IN_STATES:
             missing.append(name)
+            if sid:
+                reasons[sid] = "was never handed in"
             continue
         if not attachments:
             invalid.append(name)
+            if sid:
+                reasons[sid] = "was handed in without a file the app can read"
             continue
         if sid in active:
             processing.append(name)
+            reasons[sid] = "is already being corrected"
             continue
         entry = {"submission_id": sid, "student_id": row.get("student_id"),
                  "student_name": name,
@@ -1394,12 +1409,15 @@ def _classify_correction(course_id: str, coursework_id: str, *,
                      "earned": result["earned"], "available": result["available"],
                      "percentage": result["percentage"], "needs_review": flagged}
             (needs_review if flagged else already).append(entry)
+            reasons[sid] = ("was corrected but is waiting for a teacher's decision"
+                            if flagged else "was already corrected")
             continue
         eligible.append(entry)
 
     return {
         "coursework_id": coursework_id, "course_id": course_id,
         "sync_warning": sync_warning,
+        "reasons": reasons,
         "total_students": tracking["overview"]["total"],
         "submitted": submitted,
         "eligible": eligible,
@@ -1488,7 +1506,10 @@ def correct_all(course_id: str, coursework_id: str, payload: dict | None = None)
          the rest of the class (§14).
 
     Requires allow-list + mark scheme (unchanged §9 gate).
-    Body (optional): ``{"refresh": false}`` to skip the network refresh.
+    Body (optional): ``{"refresh": false}`` to skip the network refresh,
+    ``{"recheck": true}`` to re-correct papers that already have a result, and
+    ``{"submission_ids": [...]}`` to correct only the papers the teacher ticked.
+    An empty selection is refused: it never means "everything".
     """
     _require_usage_budget()
     refresh = True
@@ -1515,14 +1536,47 @@ def correct_all(course_id: str, coursework_id: str, payload: dict | None = None)
     sync_warning = classified["sync_warning"]
     recheck = bool(isinstance(payload, dict) and payload.get("recheck"))
 
+    # An explicit selection: only these submissions run. ``None`` keeps the
+    # whole-assignment behaviour (every eligible paper); an empty list is a
+    # mistake, not "correct everything".
+    selection: list[str] | None = None
+    requested = payload.get("submission_ids") if isinstance(payload, dict) else None
+    if requested is not None:
+        if not isinstance(requested, list):
+            raise AppError("submission_ids must be a list of submission ids.",
+                           status=400, code="bad_selection")
+        selection = [str(value).strip() for value in requested
+                     if isinstance(value, (str, int)) and str(value).strip()]
+        if not selection:
+            raise AppError("Select at least one paper to correct. Nothing "
+                           "was queued.", status=400, code="empty_selection")
+    wanted = set(selection) if selection is not None else None
+
     # §7: never blindly re-correct a submission that already has a stored
     # result. Already-corrected students are skipped and reported; a recheck
     # (explicit teacher choice) re-corrects them, preserving the old result as
     # a version — the previous correction is never overwritten.
-    to_correct = list(classified["eligible"])
+    to_correct = [row for row in classified["eligible"]
+                  if wanted is None or row["submission_id"] in wanted]
     if recheck:
-        to_correct += list(classified["already_corrected"])
-        to_correct += list(classified["needs_review"])
+        redo = list(classified["already_corrected"]) + list(classified["needs_review"])
+        to_correct += [row for row in redo
+                       if wanted is None or row["submission_id"] in wanted]
+
+    # Ticked papers that cannot run are named with the classifier's reason, so
+    # a partial selection is reported honestly.
+    not_eligible: list[dict] = []
+    if selection is not None:
+        picked = {row["submission_id"] for row in to_correct}
+        reasons = classified.get("reasons", {})
+        for sid in selection:
+            if sid in picked:
+                continue
+            not_eligible.append({
+                "submission_id": sid,
+                "reason": reasons.get(
+                    sid, "is not a submission of this assignment"),
+            })
 
     # Enqueue independently — a failure for one student never stops the rest.
     from ..jobs.manager import DuplicateJobError
@@ -1548,6 +1602,8 @@ def correct_all(course_id: str, coursework_id: str, payload: dict | None = None)
     log_event("api", "whole-assignment correction started",
               course_id=course_id, coursework_id=coursework_id,
               enqueued=len(enqueued), duplicates=len(duplicates),
+              requested=len(selection) if selection is not None else None,
+              not_eligible=len(not_eligible),
               already_corrected=len(classified["already_corrected"]),
               needs_review=len(classified["needs_review"]),
               skipped_missing=len(classified["missing"]),
@@ -1558,6 +1614,8 @@ def correct_all(course_id: str, coursework_id: str, payload: dict | None = None)
     return {
         "enqueued": len(enqueued),
         "jobs": enqueued,
+        "requested": len(selection) if selection is not None else None,
+        "not_eligible": not_eligible,
         "duplicates": len(duplicates),
         "already_corrected": [e["submission_id"] for e in classified["already_corrected"]],
         "needs_review": [e["submission_id"] for e in classified["needs_review"]],

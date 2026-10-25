@@ -81,6 +81,8 @@ public sealed class AutomationViewModel : PageViewModel
         });
         // One command instance: RaiseCanExecuteChanged must reach the button.
         StartCommand = Command(StartAsync, () => CanStart);
+        SelectAllPapersCommand = new RelayCommand(() => SetAllSelected(true));
+        ClearPapersCommand = new RelayCommand(() => SetAllSelected(false));
     }
 
     // ------------------------------------------------------- choose an assignment
@@ -204,9 +206,29 @@ public sealed class AutomationViewModel : PageViewModel
         }
     }
 
-    /// <summary>The papers that will actually enter the queue, by the name the
-    /// backend recorded for the student.</summary>
-    public ObservableCollection<string> PreviewPapers { get; } = new();
+    /// <summary>The papers that will actually enter the queue — one tickable row
+    /// per paper the backend's preview classified as eligible. Every row starts
+    /// ticked, so the default is still "correct everything" while a teacher can
+    /// untick individual students (§per-paper selection).</summary>
+    public ObservableCollection<PreviewPaper> PreviewPapers { get; } = new();
+
+    public int PaperCount => PreviewPapers.Count;
+
+    public int SelectedCount => PreviewPapers.Count(p => p.IsSelected);
+
+    /// <summary>Reads as a sentence, so the button's effect is never a guess.</summary>
+    public string SelectionText => PaperCount == 0
+        ? "No paper can be corrected right now."
+        : SelectedCount == PaperCount
+            ? $"All {PaperCount} paper{(PaperCount == 1 ? string.Empty : "s")} ticked"
+            : $"{SelectedCount} of {PaperCount} ticked · {PaperCount - SelectedCount} left out";
+
+    public RelayCommand SelectAllPapersCommand { get; }
+
+    public RelayCommand ClearPapersCommand { get; }
+
+    private void SetAllSelected(bool selected) => PreviewPapers.ToList()
+        .ForEach(paper => paper.IsSelected = selected);
 
     /// <summary>Handed-in papers that are deliberately skipped, with the
     /// backend's own reason category.</summary>
@@ -225,13 +247,15 @@ public sealed class AutomationViewModel : PageViewModel
 
     public bool HasSyncWarning => !string.IsNullOrWhiteSpace(SyncWarning);
 
-    /// <summary>The backend's gate plus a real number of papers. Both must hold:
-    /// a correction with nothing to correct is not offered.</summary>
-    public bool CanStart => _preview is { CanStart: true, WillCorrect: > 0 };
+    /// <summary>The backend's gate plus at least one ticked paper. Both must
+    /// hold: a correction with nothing selected is not offered.</summary>
+    public bool CanStart => _preview is { CanStart: true } && SelectedCount > 0;
 
-    public string StartText => _preview is null or { WillCorrect: 0 }
+    public string StartText => SelectedCount == 0
         ? "Start correcting"
-        : $"Start correcting {_preview.WillCorrect} paper{(_preview.WillCorrect == 1 ? string.Empty : "s")}";
+        : SelectedCount == PaperCount
+            ? $"Start correcting {SelectedCount} paper{(SelectedCount == 1 ? string.Empty : "s")}"
+            : $"Start correcting {SelectedCount} of {PaperCount} papers";
 
     public AsyncCommand StartCommand { get; }
 
@@ -606,9 +630,7 @@ public sealed class AutomationViewModel : PageViewModel
         PreviewPapers.Clear();
         foreach (var student in preview.Eligible)
         {
-            PreviewPapers.Add(string.IsNullOrWhiteSpace(student.StudentName)
-                ? "A paper with no student name recorded"
-                : student.StudentName!);
+            PreviewPapers.Add(new PreviewPaper(student, OnPaperToggled));
         }
 
         SkippedPapers.Clear();
@@ -648,11 +670,9 @@ public sealed class AutomationViewModel : PageViewModel
         OnPropertyChanged(nameof(HasBlockers));
         OnPropertyChanged(nameof(HasSkippedPapers));
         OnPropertyChanged(nameof(HasSyncWarning));
-        OnPropertyChanged(nameof(CanStart));
-        OnPropertyChanged(nameof(StartText));
+        RefreshSelection();
         OnPropertyChanged(nameof(PreviewSummary));
         OnPropertyChanged(nameof(HasPreview));
-        StartCommand.RaiseCanExecuteChanged();
     }
 
     private void ClearPreview()
@@ -665,11 +685,23 @@ public sealed class AutomationViewModel : PageViewModel
         OnPropertyChanged(nameof(HasBlockers));
         OnPropertyChanged(nameof(HasSkippedPapers));
         OnPropertyChanged(nameof(HasSyncWarning));
+        OnPropertyChanged(nameof(PreviewSummary));
+        RefreshSelection();
+    }
+
+    /// <summary>A row's tick changed, or the rows themselves did: the count, the
+    /// button label and the button's availability all follow.</summary>
+    private void RefreshSelection()
+    {
+        OnPropertyChanged(nameof(PaperCount));
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(SelectionText));
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(StartText));
-        OnPropertyChanged(nameof(PreviewSummary));
         StartCommand.RaiseCanExecuteChanged();
     }
+
+    private void OnPaperToggled(PreviewPaper paper) => RefreshSelection();
 
     // --------------------------------------------------------------- the action
 
@@ -682,13 +714,31 @@ public sealed class AutomationViewModel : PageViewModel
 
         var preview = _preview;
         var assignment = Selected;
+        var ticked = PreviewPapers.Where(paper => paper.IsSelected).ToList();
+        if (ticked.Count == 0)
+        {
+            Error = "Tick at least one paper, or use Select all.";
+            return;
+        }
 
-        // The confirmation repeats the backend's own numbers, and says what is
-        // skipped. Nothing is started without this answer.
+        // The confirmation repeats the backend's own numbers, names the students
+        // whose papers will be queued, and says what is skipped. Nothing is
+        // started without this answer.
+        var names = ticked.Take(12).Select(paper => "• " + paper.Name).ToList();
+        if (ticked.Count > names.Count)
+        {
+            names.Add($"• … and {ticked.Count - names.Count} more");
+        }
+
         var message =
             $"Assignment: {assignment.Title}\n"
             + $"Class: {assignment.ClassText}\n\n"
-            + $"Papers to correct: {preview.WillCorrect}\n"
+            + $"Papers to correct: {ticked.Count}"
+            + (ticked.Count == PreviewPapers.Count
+                ? string.Empty
+                : $" of {PreviewPapers.Count} that could run")
+            + "\n"
+            + string.Join("\n", names) + "\n\n"
             + $"Already corrected (skipped): {preview.Counts.AlreadyCorrected}\n"
             + $"Being corrected (skipped): {preview.Counts.Processing}\n"
             + $"Never handed in (skipped): {preview.Counts.Missing + preview.Counts.Draft}\n\n"
@@ -701,9 +751,10 @@ public sealed class AutomationViewModel : PageViewModel
 
         // The command's own RunAsync owns the busy flag and reports failures;
         // this method only decides what to call and what the outcome was.
-        var result = await Session.Api.CorrectAllAsync(
+        var result = await Session.Api.CorrectAllPapersAsync(
             assignment.CourseId ?? preview.CourseId ?? string.Empty,
-            assignment.Id, refresh: true);
+            assignment.Id, refresh: true,
+            ticked.Select(paper => paper.SubmissionId).ToList());
 
         ResultText = Describe(result, preview);
         OnPropertyChanged(nameof(ResultText));
@@ -716,33 +767,39 @@ public sealed class AutomationViewModel : PageViewModel
     }
 
     /// <summary>What the backend actually queued, said plainly. A partial run is
-    /// reported as partial: the numbers come from the response, not from hope.</summary>
-    private static string Describe(JsonElement raw, CorrectAllPreviewDto preview)
+    /// reported as partial: the numbers come from the response, not from hope.
+    /// Papers that were ticked but refused are named with the backend's reason.</summary>
+    private static string Describe(CorrectAllResultDto result, CorrectAllPreviewDto preview)
     {
-        int Get(string name) =>
-            raw.ValueKind == JsonValueKind.Object && raw.TryGetProperty(name, out var value)
-                && value.TryGetInt32(out var number) ? number : 0;
-
-        int CountArray(string name) =>
-            raw.ValueKind == JsonValueKind.Object && raw.TryGetProperty(name, out var value)
-                && value.ValueKind == JsonValueKind.Array ? value.GetArrayLength() : 0;
-
-        var enqueued = Get("enqueued");
-        var duplicates = CountArray("duplicates");
-        var failed = CountArray("enqueue_failed");
-
-        var text = enqueued == 0
+        var requested = result.Requested ?? 0;
+        var text = result.Enqueued == 0
             ? "Nothing was queued."
-            : $"Queued {enqueued} paper{(enqueued == 1 ? string.Empty : "s")}.";
+            : $"Queued {result.Enqueued} paper{(result.Enqueued == 1 ? string.Empty : "s")}"
+              + (requested > 0 && requested != result.Enqueued
+                  ? $" of the {requested} you ticked."
+                  : ".");
 
-        if (duplicates > 0)
+        if (result.Duplicates > 0)
         {
-            text += $" {duplicates} were already in the queue.";
+            text += $" {result.Duplicates} were already in the queue.";
         }
 
-        if (failed > 0)
+        if (result.EnqueueFailed.Count > 0)
         {
-            text += $" {failed} could not be queued — open Correction monitor for the error.";
+            text += $" {result.EnqueueFailed.Count} could not be queued — "
+                    + "open Correction monitor for the error.";
+        }
+
+        if (result.NotEligible.Count > 0)
+        {
+            var reasons = result.NotEligible
+                .Select(entry => string.IsNullOrWhiteSpace(entry.Reason)
+                    ? "cannot be corrected"
+                    : entry.Reason!)
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+            text += $" {result.NotEligible.Count} ticked paper"
+                    + $"{(result.NotEligible.Count == 1 ? string.Empty : "s")} "
+                    + "could not run: " + string.Join("; ", reasons) + ".";
         }
 
         var skipped = preview.Counts.Missing + preview.Counts.Draft;
@@ -872,6 +929,49 @@ public sealed class AutomationViewModel : PageViewModel
     public override void OnActivated() => _timer.Start();
 
     public override void OnDeactivated() => _timer.Stop();
+}
+
+/// <summary>
+/// One paper in the Auto-correct review: a student the backend's preview marked
+/// eligible, with the tick that decides whether it enters the queue. It starts
+/// ticked (the whole-assignment default) and notifies the page on every change,
+/// so the start button's count is never stale.
+/// </summary>
+public sealed class PreviewPaper
+{
+    private readonly Action<PreviewPaper> _changed;
+    private bool _isSelected = true;
+
+    public PreviewPaper(CorrectAllStudentDto dto, Action<PreviewPaper> changed)
+    {
+        _changed = changed;
+        SubmissionId = dto.SubmissionId ?? string.Empty;
+        Name = string.IsNullOrWhiteSpace(dto.StudentName)
+            ? "A paper with no student name recorded"
+            : dto.StudentName!;
+    }
+
+    /// <summary>The backend's own submission id: what the start call sends.</summary>
+    public string SubmissionId { get; }
+
+    public string Name { get; }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value)
+            {
+                return;
+            }
+
+            _isSelected = value;
+            _changed(this);
+        }
+    }
+
+    public override string ToString() => Name;
 }
 
 /// <summary>

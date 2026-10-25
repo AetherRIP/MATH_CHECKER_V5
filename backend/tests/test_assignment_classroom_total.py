@@ -261,3 +261,80 @@ def test_correct_all_recheck_corrects_everything(client, monkeypatch):
     assert sorted(enqueued) == ["s1", "s2"]
     assert body["recheck"] is True
     assert body["enqueued"] == 2
+
+
+# ------------------------------------------------- hand-picked papers only
+
+def _silent_service(monkeypatch) -> list[str]:
+    """Enqueue recorder: proves exactly which submissions were queued."""
+    enqueued: list[str] = []
+
+    class FakeService:
+        def enqueue_classroom_submission(self, **kwargs):
+            enqueued.append(kwargs["submission_id"])
+            return {"id": f"job-{kwargs['submission_id']}"}
+
+    import app.api.routes_all as ra
+    monkeypatch.setattr(ra, "_correction_service", lambda: FakeService())
+    return enqueued
+
+
+def test_correct_all_corrects_only_the_ticked_papers(client, monkeypatch):
+    seed_assignment()
+    _mark_scheme()
+    enqueued = _silent_service(monkeypatch)
+
+    r = client.post("/api/classroom/courses/c1/assignments/w1/correct-all",
+                    json={"refresh": False, "submission_ids": ["s2"]})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert enqueued == ["s2"], "a paper the teacher did not tick was queued"
+    assert body["enqueued"] == 1
+    assert body["requested"] == 1
+    assert body["not_eligible"] == []
+
+
+def test_correct_all_selection_reports_why_a_ticked_paper_was_refused(client, monkeypatch):
+    seed_assignment()
+    _mark_scheme()
+    add_result("u1", "s1")          # s1 already has a result
+    enqueued = _silent_service(monkeypatch)
+
+    r = client.post("/api/classroom/courses/c1/assignments/w1/correct-all",
+                    json={"refresh": False, "submission_ids": ["s1", "s2", "ghost"]})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # Only the genuinely eligible tick runs; the rest are named with a reason.
+    assert enqueued == ["s2"]
+    refused = {e["submission_id"]: e["reason"] for e in body["not_eligible"]}
+    assert "already corrected" in refused["s1"]
+    assert "not a submission" in refused["ghost"]
+    assert body["already_corrected"] == ["s1"]
+
+
+def test_correct_all_selection_with_recheck_reruns_a_ticked_corrected_paper(
+        client, monkeypatch):
+    seed_assignment()
+    _mark_scheme()
+    add_result("u1", "s1")
+    enqueued = _silent_service(monkeypatch)
+
+    r = client.post("/api/classroom/courses/c1/assignments/w1/correct-all",
+                    json={"refresh": False, "recheck": True,
+                          "submission_ids": ["s1"]})
+    assert r.status_code == 200, r.text
+    assert enqueued == ["s1"]
+    assert r.json()["not_eligible"] == []
+
+
+def test_correct_all_refuses_an_empty_selection(client, monkeypatch):
+    seed_assignment()
+    _mark_scheme()
+    enqueued = _silent_service(monkeypatch)
+
+    r = client.post("/api/classroom/courses/c1/assignments/w1/correct-all",
+                    json={"refresh": False, "submission_ids": []})
+    assert r.status_code == 400, r.text
+    assert r.json()["code"] == "empty_selection"
+    # An empty selection never means "correct the whole class".
+    assert enqueued == []

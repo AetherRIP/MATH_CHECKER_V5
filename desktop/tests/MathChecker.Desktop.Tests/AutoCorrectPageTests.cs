@@ -95,6 +95,24 @@ public class AutoCorrectPageTests
          "sync_warning":null,"refreshed":true,"recheck":false}
         """;
 
+    /// <summary>One paper ticked, one queued — the shape of a per-paper run.</summary>
+    private const string OnePaperBody = """
+        {"enqueued":1,"jobs":["j9"],"requested":1,"not_eligible":[],"duplicates":0,
+         "already_corrected":[],"needs_review":[],"processing":[],"skipped_missing":[],
+         "skipped_draft":[],"invalid":[],"unknown":[],"enqueue_failed":[],
+         "total_students":78,"sync_warning":null,"refreshed":true,"recheck":false}
+        """;
+
+    /// <summary>The backend refused part of the selection: it must be reported.</summary>
+    private const string RefusedPaperBody = """
+        {"enqueued":1,"jobs":["j9"],"requested":2,
+         "not_eligible":[{"submission_id":"s2","reason":"was already corrected"}],
+         "duplicates":0,"already_corrected":["s2"],"needs_review":[],"processing":[],
+         "skipped_missing":[],"skipped_draft":[],"invalid":[],"unknown":[],
+         "enqueue_failed":[],"total_students":78,"sync_warning":null,
+         "refreshed":true,"recheck":false}
+        """;
+
     [Fact]
     public async Task Only_classroom_assignments_are_listed_with_the_backend_counts()
     {
@@ -139,7 +157,11 @@ public class AutoCorrectPageTests
 
             Assert.True(page.HasPreview);
             Assert.Equal(2, page.PreviewPapers.Count);
-            Assert.Contains("Ada Lovelace", page.PreviewPapers);
+            Assert.Contains(page.PreviewPapers, paper => paper.Name == "Ada Lovelace");
+            // Every eligible paper starts ticked: the default is unchanged.
+            Assert.All(page.PreviewPapers, paper => Assert.True(paper.IsSelected));
+            Assert.Equal(2, page.SelectedCount);
+            Assert.Contains("All 2 papers ticked", page.SelectionText);
             Assert.Contains("2 of 9", page.PreviewSummary);
             Assert.False(page.HasBlockers);
             Assert.True(page.CanStart);
@@ -222,6 +244,95 @@ public class AutoCorrectPageTests
             Assert.Contains("Queued 2 papers.", page.ResultText);
             Assert.Contains("skipped because nothing was handed in", page.ResultText);
             Assert.Contains("1 waiting", page.QueueSummary);
+        }
+    }
+
+    [Fact]
+    public async Task Unticking_a_paper_sends_only_the_ticked_submission_ids()
+    {
+        var handler = new RouteHandler { CorrectAll = OnePaperBody };
+        using (handler)
+        {
+            var (session, _) = await SessionAsync(handler);
+            var dialogs = (ConfirmingDialogs)session.Dialogs;
+            var page = new AutomationViewModel(session);
+            await page.LoadAsync();
+
+            page.Selected = page.Items.Single(a => a.Id == "cw-1");
+            await WaitUntilAsync(() => page.HasPreview);
+
+            // Leave the second student out of this run.
+            page.PreviewPapers.Single(p => p.Name == "Ben Bray").IsSelected = false;
+            Assert.Equal(1, page.SelectedCount);
+            Assert.Contains("1 of 2 ticked", page.SelectionText);
+            Assert.Equal("Start correcting 1 of 2 papers", page.StartText);
+            Assert.True(page.CanStart);
+
+            page.StartCommand.Execute(null);
+            await WaitUntilAsync(() => page.HasResult);
+
+            // The confirmation names the one paper that will run.
+            var question = Assert.Single(dialogs.Asked);
+            Assert.Contains("Papers to correct: 1 of 2 that could run", question);
+            Assert.Contains("• Ada Lovelace", question);
+            Assert.DoesNotContain("Ben Bray", question);
+
+            // The request carries exactly that submission id — nothing else.
+            var post = handler.Requests.Last(r => r.Method == "POST");
+            Assert.Contains("\"submission_ids\":[\"s1\"]", post.Body ?? string.Empty);
+            Assert.DoesNotContain("s2", post.Body ?? string.Empty);
+
+            Assert.Contains("Queued 1 paper", page.ResultText);
+        }
+    }
+
+    [Fact]
+    public async Task Unticking_every_paper_leaves_nothing_to_start()
+    {
+        var handler = new RouteHandler();
+        using (handler)
+        {
+            var (session, _) = await SessionAsync(handler);
+            var page = new AutomationViewModel(session);
+            await page.LoadAsync();
+
+            page.Selected = page.Items.Single(a => a.Id == "cw-1");
+            await WaitUntilAsync(() => page.HasPreview);
+
+            page.ClearPapersCommand.Execute(null);
+
+            Assert.Equal(0, page.SelectedCount);
+            Assert.False(page.CanStart);
+            Assert.Equal("Start correcting", page.StartText);
+            Assert.Contains("0 of 2 ticked", page.SelectionText);
+
+            // Select all puts the whole-assignment default back.
+            page.SelectAllPapersCommand.Execute(null);
+            Assert.Equal(2, page.SelectedCount);
+            Assert.True(page.CanStart);
+            Assert.Equal("Start correcting 2 papers", page.StartText);
+        }
+    }
+
+    [Fact]
+    public async Task A_ticked_paper_the_backend_refuses_is_reported_with_its_reason()
+    {
+        var handler = new RouteHandler { CorrectAll = RefusedPaperBody };
+        using (handler)
+        {
+            var (session, _) = await SessionAsync(handler);
+            var page = new AutomationViewModel(session);
+            await page.LoadAsync();
+
+            page.Selected = page.Items.Single(a => a.Id == "cw-1");
+            await WaitUntilAsync(() => page.HasPreview);
+
+            page.StartCommand.Execute(null);
+            await WaitUntilAsync(() => page.HasResult);
+
+            Assert.Contains("Queued 1 paper of the 2 you ticked.", page.ResultText);
+            Assert.Contains("1 ticked paper could not run", page.ResultText);
+            Assert.Contains("already corrected", page.ResultText);
         }
     }
 
@@ -309,6 +420,8 @@ public class AutoCorrectPageTests
     {
         public string Preview { get; set; } = PreviewBody;
 
+        public string CorrectAll { get; set; } = CorrectAllBody;
+
         public List<RecordedRequest> Requests { get; } = new();
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
@@ -325,7 +438,7 @@ public class AutoCorrectPageTests
             var path = request.RequestUri.AbsolutePath;
             var json =
                 path.EndsWith("/correct-all/preview", StringComparison.Ordinal) ? Preview
-                : path.EndsWith("/correct-all", StringComparison.Ordinal) ? CorrectAllBody
+                : path.EndsWith("/correct-all", StringComparison.Ordinal) ? CorrectAll
                 : path.EndsWith("/automation/status", StringComparison.Ordinal) ? StatusBody
                 : path.EndsWith("/automation/jobs", StringComparison.Ordinal) ? AutomationJobsBody
                 : path.EndsWith("/automation/log", StringComparison.Ordinal) ? LogBody

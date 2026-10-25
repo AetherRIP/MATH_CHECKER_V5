@@ -24,6 +24,14 @@ public sealed class CorrectAllStudentDto
     public string? SubmissionId { get; set; }
     public string? StudentId { get; set; }
     public string? StudentName { get; set; }
+
+    /// <summary>Present on already-corrected / needs-review entries: what that
+    /// paper scored last time. Absent on the papers still to be corrected.</summary>
+    public string? ResultId { get; set; }
+    public double? Earned { get; set; }
+    public double? Available { get; set; }
+    public double? Percentage { get; set; }
+    public bool NeedsReview { get; set; }
 }
 
 public sealed class CorrectAllPreviewDto
@@ -45,10 +53,23 @@ public sealed class CorrectAllPreviewDto
 
 /// <summary>What the backend actually queued, so the page reports the real
 /// outcome instead of a generic "done".</summary>
+/// <summary>A paper the teacher ticked that the backend refused to queue, with
+/// its own reason. A partial selection is reported, never silently shrunk.</summary>
+public sealed class CorrectAllNotEligibleDto
+{
+    public string? SubmissionId { get; set; }
+    public string? Reason { get; set; }
+}
+
 public sealed class CorrectAllResultDto
 {
     public int Enqueued { get; set; }
     public List<string> Jobs { get; set; } = new();
+
+    /// <summary>How many papers the request asked for; null for a
+    /// whole-assignment run that named none.</summary>
+    public int? Requested { get; set; }
+    public List<CorrectAllNotEligibleDto> NotEligible { get; set; } = new();
     public int Duplicates { get; set; }
     public List<string> Processing { get; set; } = new();
     public List<string> SkippedMissing { get; set; } = new();

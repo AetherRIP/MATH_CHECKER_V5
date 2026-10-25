@@ -249,23 +249,45 @@
                                             ToolTip="Queue exactly these papers; one failure never stops the rest" />
                                 </StackPanel>
                                 <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="PAPERS THAT WILL BE CORRECTED"
+                                    <TextBlock Text="PAPERS TO CORRECT"
                                                Style="{StaticResource SectionLabel}" />
-                                    <TextBlock Text="Each paper is its own queued job."
+                                    <TextBlock Text="{Binding SelectionText}"
                                                FontSize="10.5" Margin="0,2,0,0"
                                                Foreground="{DynamicResource TextMutedBrush}" />
                                 </StackPanel>
                             </DockPanel>
 
+                            <!-- Per-paper selection: every eligible paper starts
+                                 ticked, and unticking one keeps it out of the
+                                 queue entirely. -->
+                            <DockPanel Margin="0,10,0,0">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button Content="Select all" Command="{Binding SelectAllPapersCommand}"
+                                            Height="26" Padding="10,2"
+                                            ToolTip="Tick every paper that can be corrected" />
+                                    <Button Content="Select none" Command="{Binding ClearPapersCommand}"
+                                            Height="26" Padding="10,2" Margin="0"
+                                            ToolTip="Untick everything; nothing will be queued" />
+                                </StackPanel>
+                                <TextBlock Text="Untick a student to leave that paper out of this run."
+                                           FontSize="10.5" VerticalAlignment="Center"
+                                           TextWrapping="Wrap" Margin="0,0,10,0"
+                                           Foreground="{DynamicResource TextMutedBrush}" />
+                            </DockPanel>
+
                             <Border Style="{StaticResource TableCard}" Margin="0,8,0,0" MaxHeight="180">
                                 <Grid>
                                     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,8">
-                                        <ItemsControl ItemsSource="{Binding PreviewPapers}">
+                                        <ItemsControl ItemsSource="{Binding PreviewPapers}"
+                                                      AutomationProperties.Name="Papers to correct">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock Text="{Binding}" FontSize="11.5" Margin="0,2"
-                                                               TextWrapping="NoWrap"
-                                                               TextTrimming="CharacterEllipsis" />
+                                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                              AutomationProperties.Name="{Binding Name}"
+                                                              Margin="0,1">
+                                                        <TextBlock Text="{Binding Name}" FontSize="11.5"
+                                                                   TextWrapping="Wrap" />
+                                                    </CheckBox>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>

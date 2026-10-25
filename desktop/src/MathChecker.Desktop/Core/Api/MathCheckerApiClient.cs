@@ -674,11 +674,38 @@ public sealed partial class MathCheckerApiClient : IDisposable
         GetAsync<CorrectAllPreviewDto>(
             $"assignments/{Uri.EscapeDataString(courseworkId)}/correct-all/preview", cancellationToken);
 
+    /// <summary>Start a correction. <paramref name="submissionIds"/> names the
+    /// exact papers to queue; null means every eligible paper (the backend's
+    /// whole-assignment behaviour), and an empty list is refused by the backend
+    /// rather than silently correcting the class.</summary>
     public Task<JsonElement> CorrectAllAsync(string courseId, string courseworkId, bool refresh,
+        IReadOnlyCollection<string>? submissionIds = null,
         CancellationToken cancellationToken = default) =>
         SendJsonRawAsync(HttpMethod.Post,
             $"classroom/courses/{Uri.EscapeDataString(courseId)}/assignments/{Uri.EscapeDataString(courseworkId)}/correct-all",
-            new { refresh }, cancellationToken);
+            submissionIds is null
+                ? new { refresh }
+                : (object)new { refresh, submission_ids = submissionIds.ToArray() },
+            cancellationToken);
+
+    /// <summary>Typed variant of <see cref="CorrectAllAsync"/>: the response's
+    /// own numbers, so the page reports what really ran.</summary>
+    public async Task<CorrectAllResultDto> CorrectAllPapersAsync(string courseId,
+        string courseworkId, bool refresh, IReadOnlyCollection<string>? submissionIds,
+        CancellationToken cancellationToken = default)
+    {
+        var raw = await CorrectAllAsync(courseId, courseworkId, refresh, submissionIds,
+            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return raw.Deserialize<CorrectAllResultDto>(Json.Options)
+                   ?? new CorrectAllResultDto();
+        }
+        catch (JsonException)
+        {
+            return new CorrectAllResultDto();
+        }
+    }
 
     /// <summary>Allow-list toggle. The backend reads it from the query string.</summary>
     public Task<JsonElement> SetAllowlistAsync(string courseId, string courseworkId, bool allowed,
