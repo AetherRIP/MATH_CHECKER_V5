@@ -110,12 +110,20 @@ def test_off_does_not_disable_manual_correction_or_the_site(client):
 
     # The website itself still answers ...
     assert client.get("/api/dashboard").status_code == 200
-    # ... and the manual AI correction queue still accepts work.
+    # ... and the manual AI correction queue still accepts work. (A real,
+    # readable PDF: uploads are validated on their CONTENT now, so a header
+    # string pretending to be a document is refused before it is queued.)
+    def _pdf() -> bytes:
+        from pypdf import PdfWriter
+        writer = PdfWriter()
+        writer.add_blank_page(width=200, height=200)
+        buf = io.BytesIO()
+        writer.write(buf)
+        return buf.getvalue()
+
     files = {
-        "submission": ("student.pdf", io.BytesIO(b"%PDF-1.4 mock student"),
-                       "application/pdf"),
-        "mark_scheme": ("scheme.pdf", io.BytesIO(b"%PDF-1.4 mock scheme"),
-                        "application/pdf"),
+        "submission": ("student.pdf", io.BytesIO(_pdf()), "application/pdf"),
+        "mark_scheme": ("scheme.pdf", io.BytesIO(_pdf()), "application/pdf"),
     }
     response = client.post("/api/corrections/manual", files=files,
                            data={"student_name": "Manual Student"})

@@ -96,6 +96,29 @@ class _UsageRecordingClient:
         return getattr(self._inner_client, name)
 
 
+def _emit(message: str | None = None, progress: float | None = None,
+          stage: str | None = None) -> None:
+    """Write one progress event to stdout (the result is the last line).
+
+    The orchestrator reads these as they are produced and records them on the
+    job row, so the desktop shows the stage the engine is really in rather than
+    a single "starting" state for the whole run. Flushed immediately: a
+    buffered event would arrive only after the work it describes.
+    """
+    event: dict = {"type": "stage"}
+    if message:
+        event["message"] = message
+    if stage:
+        event["stage"] = stage
+    if progress is not None:
+        event["progress"] = progress
+    try:
+        sys.stdout.write(json.dumps(event, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+    except Exception:  # noqa: BLE001 — progress must never break a correction
+        pass
+
+
 def _run(job: dict) -> dict:
     started = time.time()
     from app.engine.legacy_marking import (  # trusted engine (verbatim)
@@ -115,6 +138,16 @@ def _run(job: dict) -> dict:
     submission_paths = job["submission_paths"]
     mark_scheme_path = job.get("mark_scheme_path")
     question_paper_path = job.get("question_paper_path")
+
+    # How many page images this marking request will carry. The request
+    # timeout grows with it (client_proxy.timeout_for_pages): a 41-page paper
+    # needs minutes, and a 70-page booklet must not inherit a budget sized for
+    # 15 pages. Counting is reading the document index, not the pages.
+    from app.engine.pdf_inspect import page_images as _page_images
+
+    request_pages = (sum(_page_images(p) for p in submission_paths)
+                     + _page_images(mark_scheme_path)
+                     + _page_images(question_paper_path))
 
     # Mock/demo mode travels with the job because this child is a separate
     # interpreter that re-reads config.toml (which does not record the
@@ -138,7 +171,7 @@ def _run(job: dict) -> dict:
         from app.gemini.key_manager import KeyManager
         inner_client = KeyAwareClient(
             KeyManager(), preferred_fp=job.get("leased_fingerprint"),
-            job_id=job.get("job_id"))
+            job_id=job.get("job_id"), pages=request_pages)
         client = _UsageRecordingClient(inner_client, job.get("job_id"))
 
     def _upload(path, purpose: str = "submission"):
@@ -153,9 +186,11 @@ def _run(job: dict) -> dict:
                 path, purpose=purpose, shared=(purpose == "mark_scheme"))
         return client.files.upload(file=path)
 
+    _emit("Uploading the paper to the AI service", progress=0.15)
     remote_students = [_upload(p, "submission") for p in submission_paths]
     remote_scheme = _upload(mark_scheme_path, "mark_scheme")
     remote_question = _upload(question_paper_path, "question")
+    _emit("Paper uploaded — reading the mark scheme", progress=0.2)
 
     try:
         # Mark-scheme blueprint: official question structure, extracted once
@@ -163,7 +198,16 @@ def _run(job: dict) -> dict:
         # marks therefore do not change between runs of the same mark scheme.
         blueprint, blueprint_meta = (None, {"source": "unavailable"})
         if mark_scheme_path:
-            blueprint, blueprint_meta = get_blueprint(client, mark_scheme_path)
+            blueprint, blueprint_meta = get_blueprint(
+                client, mark_scheme_path,
+                status_callback=lambda message: _emit(message))
+
+        if blueprint:
+            _emit(f"Mark scheme read: {len(blueprint.get('questions') or [])} "
+                  "questions", progress=0.35)
+        else:
+            _emit("Mark scheme structure unavailable — marking from the PDFs",
+                  progress=0.35)
 
         model_chain = mhs.ordered_models(job["primary_models"])
         raw, marking_model = grade_with_model(
@@ -172,9 +216,12 @@ def _run(job: dict) -> dict:
             student_file=remote_students,
             mark_scheme_file=remote_scheme,
             question_file=remote_question,
-            status_callback=None,
+            # "Marking with <model>" while the single request runs; the pool
+            # appends the elapsed time, so a long wait is visibly alive.
+            status_callback=lambda message: _emit(message),
             blueprint=blueprint,
         )
+        _emit(f"First correction received from {marking_model}", progress=0.7)
         mhs.record_success(marking_model, model_chain)
         mhs.save()
         result = normalise_result(raw)
@@ -240,6 +287,7 @@ def _run(job: dict) -> dict:
                 if not may_retry:
                     last_error = block_reason
                     break
+                _emit("Checking questions the first pass missed")
                 outcome = recover_missing.run_recovery_round(
                     client=client, missing=missing_here,
                     student_remote=remote_students,
@@ -324,6 +372,20 @@ def _run(job: dict) -> dict:
             except Exception as audit_error:
                 audit_warning = str(audit_error)
 
+        # Evidence consistency (deterministic, no API call): a mark that the
+        # result itself says has no student answer behind it is withdrawn, and
+        # contradictory full/partial awards are sent to review.  This runs
+        # AFTER blueprint reconciliation, which normalises every question to
+        # VALID, so the verdict survives to persistence.
+        from app.engine.mark_integrity import enforce_evidence
+        result, integrity_report = enforce_evidence(result)
+        if integrity_report["changed"] or integrity_report["review_questions"]:
+            blueprint_report["integrity"] = integrity_report
+            blueprint_report["review_required"] = True
+            blueprint_report["review_warnings"] = (
+                list(blueprint_report.get("review_warnings") or [])
+                + list(integrity_report["warnings"]))
+
         earned, available, percentage = calculate_totals(result)
         totals = {
             "earned": earned,
@@ -348,6 +410,8 @@ def _run(job: dict) -> dict:
         if job.get("double_check_enabled", True) and \
                 double_check.should_trigger(earned, available):
             dc_triggered = True
+            _emit("Running an independent second correction (high score)",
+                  progress=0.85)
             try:
                 raw2, second_marking_model = grade_with_model(
                     client=client,
@@ -366,6 +430,7 @@ def _run(job: dict) -> dict:
                 )
                 second_result = normalise_result(raw2)
                 second_result, _ = apply_blueprint(second_result, blueprint)
+                second_result, _integrity2 = enforce_evidence(second_result)
             except Exception as exc:  # noqa: BLE001 — a failed check must not
                 # discard the valid first correction (§13).
                 dc_error = str(exc)[:800]
@@ -381,6 +446,8 @@ def _run(job: dict) -> dict:
                  triggered=dc_triggered)
 
         groups = make_group_rows(result["questions"])
+
+        _emit("Saving the result", progress=0.95)
 
         key_fp = inner_client.current_fingerprint() if inner_client else None
         if inner_client is not None:

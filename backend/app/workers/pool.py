@@ -49,6 +49,29 @@ def cleanup_job_files(job_id: str) -> None:
     _svc_cleanup(job_id)
 
 
+def _plain_stage(message: str) -> str:
+    """The engine's status text without emoji, for a desktop list column."""
+    text = "".join(ch for ch in message if ch.isprintable()).strip()
+    while text and not text[0].isalnum():
+        text = text[1:].lstrip()
+    return " ".join(text.split())[:200]
+
+
+def _stage_status(message: str) -> str | None:
+    """The pipeline status a stage message belongs to (None = keep current)."""
+    text = message.lower()
+    if "saving the result" in text:
+        return "SAVING"
+    if "checking questions" in text or "second correction" in text:
+        return "VERIFYING"
+    if "uploading" in text:
+        return "UPLOADING"
+    if "marking with" in text or "reading the mark scheme" in text \
+            or "mark scheme read" in text:
+        return "MARKING"
+    return None
+
+
 def _fmt_pct(pct: float | None) -> str:
     try:
         return f"{float(pct):.2f}%"
@@ -216,6 +239,14 @@ class WorkerPool:
         # Jobs the teacher explicitly asked to reprocess despite a stored
         # result (§23): the guard honours this as a deliberate override.
         self._force_reprocess: set[str] = set()
+        # Live stage text and its start time per running job, for the elapsed
+        # clock appended while a long AI request is in flight.
+        self._active_stage: dict[str, tuple[str, float]] = {}
+        self._heartbeat_at: dict[str, float] = {}
+        # Terminal/raw-SQL transitions this loop has already pushed to the
+        # live listeners, so a state is announced exactly once.
+        self._published: dict[str, tuple] = {}
+        self._publish_since: float = time.time() - 5.0
         self._thread: threading.Thread | None = None
         self.set_size(max(1, worker_count))
 
@@ -295,6 +326,7 @@ class WorkerPool:
             try:
                 self._collect_finished()
                 self._dispatch_queued()
+                self._publish_changes()
             except Exception:
                 log.exception("pool loop iteration failed")
 
@@ -387,6 +419,8 @@ class WorkerPool:
                     "updated_at = ? WHERE id = ?",
                     ("STARTING", worker.worker_id, time.time(), time.time(), job_row["id"]),
                 )
+            self._report(job_row["id"], status="PREPARING",
+                         stage="Preparing the PDFs", progress=0.0)
             try:
                 self._launch(worker, dict(job_row))
             except (WaitForApiError, NoKeysError) as exc:
@@ -510,7 +544,10 @@ class WorkerPool:
             double_check_enabled=(cfg.double_check.enabled
                                   and not job.get("is_remark")),
         )
-        worker.start_job(wjob)
+        worker.start_job(
+            wjob,
+            on_progress=lambda event: self._on_child_stage(job["id"], event),
+        )
         # record queue-wait metric
         if job.get("created_at"):
             with self._metrics_lock:
@@ -801,6 +838,7 @@ class WorkerPool:
     def _collect_finished(self) -> None:
         with self._lock:
             busy = [w for w in self._workers if w.state.status == "PROCESSING"]
+        self._heartbeat(busy)
         for worker in busy:
             try:
                 result = worker.poll_result(timeout=0.0)
@@ -809,6 +847,7 @@ class WorkerPool:
                 continue
             if result is None:
                 continue
+            self._active_stage.pop(worker.state.current_job_id or "", None)
             try:
                 self._handle_result(worker, result)
             except Exception:
@@ -822,6 +861,108 @@ class WorkerPool:
                     pass
                 self._cleanup_workspace(worker)
                 worker.mark_idle()
+
+    # -- live progress ------------------------------------------------------
+
+    def _report(self, job_id: str, *, stage: str | None = None,
+                progress: float | None = None, status: str | None = None,
+                heartbeat: bool = False) -> None:
+        """Publish one genuine stage transition to the job row and listeners.
+
+        Uses the JobManager so ``/jobs/stream`` hears it: writing the row with
+        raw SQL here (as this pool used to) left the desktop showing the state
+        it heard at enqueue time for the whole run.
+        """
+        now_ts = time.time()
+        if not hasattr(self, "_active_stage"):
+            # A bare instance (unit tests exercise staging without starting
+            # the pool) still reports; progress state is optional, not a
+            # precondition for preparing a job.
+            self._active_stage = {}
+        if stage is not None and not heartbeat:
+            # Only a genuine stage change restarts the elapsed clock; a
+            # heartbeat must append to the same base text, never to its own
+            # previous output.
+            self._active_stage[job_id] = (stage, now_ts)
+        try:
+            from ..jobs.manager import JobManagerHolder
+            JobManagerHolder.instance().report_progress(
+                job_id, stage=stage, progress=progress, status=status,
+                # A heartbeat only re-stamps the elapsed clock; recording it
+                # would fill the stage history with the same stage 12 times.
+                record_event=not heartbeat)
+        except Exception:  # noqa: BLE001 — progress must never fail a job
+            log.exception("progress report failed for %s", job_id)
+            if stage is not None:
+                db.execute(
+                    "UPDATE correction_jobs SET stage_detail = ?, updated_at = ? "
+                    "WHERE id = ?", (stage[:300], now_ts, job_id))
+
+    def _on_child_stage(self, job_id: str, event: dict) -> None:
+        """A stage the correction engine reported from inside the child."""
+        message = str(event.get("message") or event.get("stage") or "").strip()
+        if not message:
+            return
+        fraction = event.get("progress")
+        try:
+            progress = float(fraction) if fraction is not None else None
+        except (TypeError, ValueError):
+            progress = None
+        plain = _plain_stage(message)
+        self._report(job_id, stage=plain, progress=progress,
+                     status=_stage_status(plain))
+
+    def _publish_changes(self) -> None:
+        """Announce state written outside :meth:`_report` (terminal states,
+        retries, parks and cancellations) to the live listeners.
+
+        The pool writes those rows itself, so without this sweep the desktop
+        would hear about them only when it refreshed — the same class of bug
+        that left a running job looking frozen.
+        """
+        now_ts = time.time()
+        try:
+            rows = db.query(
+                "SELECT id, status, stage_detail, progress FROM correction_jobs "
+                "WHERE updated_at >= ?", (self._publish_since - 2.0,))
+        except Exception:  # noqa: BLE001
+            return
+        for row in rows:
+            key = (row["status"], row["stage_detail"], row["progress"])
+            if self._published.get(row["id"]) == key:
+                continue
+            self._published[row["id"]] = key
+            try:
+                from ..jobs.manager import JobManagerHolder
+                JobManagerHolder.instance().publish(row["id"])
+            except Exception:  # noqa: BLE001
+                pass
+        if len(self._published) > 500:
+            self._published = dict(list(self._published.items())[-200:])
+        self._publish_since = now_ts
+
+    def _heartbeat(self, busy: list) -> None:
+        """Keep an honest 'still working' clock on the current stage.
+
+        While a single AI request runs there is no measurable sub-progress, so
+        the stage keeps its real name and only the elapsed time is appended —
+        real information, no invented percentage. The stage text is only
+        rewritten every few seconds, never on every loop tick.
+        """
+        now_ts = time.time()
+        for worker in busy:
+            job_id = worker.state.current_job_id or ""
+            entry = self._active_stage.get(job_id)
+            if entry is None:
+                continue
+            base, started = entry
+            elapsed = now_ts - started
+            if elapsed < 5 or now_ts - self._heartbeat_at.get(job_id, 0.0) < 5:
+                continue
+            self._heartbeat_at[job_id] = now_ts
+            minutes, seconds = divmod(int(elapsed), 60)
+            clock = f"{minutes}m {seconds:02d}s" if minutes else f"{seconds}s"
+            self._report(job_id, stage=f"{base} · {clock}", heartbeat=True)
 
     @staticmethod
     def _resolve_student_identity(job: dict) -> tuple[str | None, str | None]:
@@ -865,10 +1006,16 @@ class WorkerPool:
                 "final": None, "error": None, "question_differences": [],
                 "verification": None,
             }
+        from ..engine.mark_integrity import enforce_evidence
+        result.result, _integrity_first = enforce_evidence(result.result)
+        if result.second_result is not None:
+            result.second_result, _integrity_second = enforce_evidence(
+                result.second_result)
         combined = double_check.combine(
             result.result, result.second_result,
             second_marking_model=result.second_marking_model,
-            error=result.double_check_error)
+            error=result.double_check_error,
+            first_marking_model=result.marking_model)
         combined["verification"] = None
         if result.second_result is not None:
             combined["verification"] = verify_result(result.second_result)
@@ -904,6 +1051,16 @@ class WorkerPool:
             # legacy normalised result + deterministic verification + totals,
             # now behind the result guard so a suspicious run can never
             # silently overwrite a valid stored result (§7).
+            from ..engine.mark_integrity import enforce_evidence
+            result.result, integrity_report = enforce_evidence(result.result)
+            if (integrity_report["changed"]
+                    or integrity_report["review_questions"]):
+                result.blueprint_report = dict(result.blueprint_report or {})
+                result.blueprint_report["integrity"] = integrity_report
+                result.blueprint_report["review_required"] = True
+                result.blueprint_report["review_warnings"] = (
+                    list(result.blueprint_report.get("review_warnings") or [])
+                    + list(integrity_report["warnings"]))
             verification_first = verify_result(result.result, result.blueprint_report)
             verification = verification_first
             earned, available, percentage = legacy.calculate_totals(result.result)
@@ -923,8 +1080,16 @@ class WorkerPool:
             # "honestly" produces a 0/150 that looks like a verified failure.
             submission_quality = assess_submission_quality(
                 result.result, verification_first)
+            # The model that actually marked this paper must be named: when a
+            # 503/timeout pushes the chain onto the fallback model, the marks
+            # are not the ones the primary would have given (measured 70 vs 76
+            # on the same paper), so the result is stored but flagged instead
+            # of passing as routine.
+            configured = list(get_config().gemini.primary_models or [])
             confidence, confidence_reasons = assess_confidence(
-                final_result, verification, earned, available)
+                final_result, verification, earned, available,
+                marking_model=result.marking_model,
+                primary_model=configured[0] if configured else None)
             if submission_quality["review"]:
                 confidence_reasons = list(confidence_reasons) + [
                     f"Submission quality ({submission_quality['quality']}): {r}"
@@ -961,8 +1126,14 @@ class WorkerPool:
                 # Teacher review when EITHER the result guard OR the
                 # double-check comparison asks for it (§6: large disagreement
                 # or a failed check is never silently applied).
-                review_flag = 1 if (decision.review_required
-                                    or dc["review_required"]) else 0
+                from ..config import is_trusted_marking_model
+                review_flag = 1 if (
+                    decision.review_required
+                    or dc["review_required"]
+                    or verification.get("review_required")
+                    or verification.get("status") not in (None, "VALID")
+                    or not is_trusted_marking_model(result.marking_model)
+                ) else 0
                 if job.get("is_remark") and existing:
                     # ---- remark: record the attempt, apply NOTHING (§Remark)
                     # The re-mark is stored in full as a PENDING attempt so the

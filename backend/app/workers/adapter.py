@@ -150,6 +150,7 @@ class CorrectionWorker:
         self._stdout_data = ""
         self._leased_fp: str | None = None
         self._last_error: Exception | None = None
+        self._on_progress = None
 
     def workspace_dir(self) -> Path:
         self.workspace.mkdir(parents=True, exist_ok=True)
@@ -181,8 +182,13 @@ class CorrectionWorker:
         self.state.fingerprint = None
         self._last_error = None
 
-    def start_job(self, job: WorkerJob) -> None:
-        """Launch the child process running the trusted engine (§10)."""
+    def start_job(self, job: WorkerJob, on_progress=None) -> None:
+        """Launch the child process running the trusted engine (§10).
+
+        ``on_progress`` receives each stage event the child writes to stdout
+        (``{"type": "stage", ...}``) as it happens, so the pool can record and
+        publish real progress instead of waiting for the final result.
+        """
         self.workspace_dir()
         payload = job.__dict__.copy()
         payload["worker_id"] = self.worker_id
@@ -224,6 +230,7 @@ class CorrectionWorker:
         # the OS pipe buffer, and a child blocked writing to a full pipe
         # would never exit if stdout were only read after it dies.
         self._stdout_data = ""
+        self._on_progress = on_progress
         self._reader = threading.Thread(
             target=self._drain_stdout, name=f"{self.worker_id}-stdout", daemon=True)
         self._reader.start()
@@ -255,10 +262,36 @@ class CorrectionWorker:
                 pass
 
     def _drain_stdout(self) -> None:
-        """Collect the child's stdout until EOF (runs on a helper thread)."""
+        """Read the child's stdout line by line until EOF.
+
+        Stage events are handed to the pool the moment they arrive; the last
+        non-event line is the job result the pool polls for. Reading line by
+        line (instead of one blocking ``read()``) is what turns the child's
+        progress into something the UI can show while the AI call runs.
+        """
+        proc = self._process
+        if proc is None or proc.stdout is None:
+            return
         try:
-            if self._process is not None and self._process.stdout is not None:
-                self._stdout_data = self._process.stdout.read() or ""
+            for raw in proc.stdout:
+                line = raw.strip()
+                if not line:
+                    continue
+                event = None
+                if line.startswith("{"):
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        event = None
+                if isinstance(event, dict) and event.get("type") == "stage":
+                    callback = getattr(self, "_on_progress", None)
+                    if callback is not None:
+                        try:
+                            callback(event)
+                        except Exception:  # noqa: BLE001 — never break the drain
+                            pass
+                    continue
+                self._stdout_data = line
         except (OSError, ValueError):
             self._stdout_data = ""
 

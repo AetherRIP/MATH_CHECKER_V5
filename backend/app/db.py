@@ -271,6 +271,27 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if job_cols and "is_remark" not in job_cols:
         conn.execute(
             "ALTER TABLE correction_jobs ADD COLUMN is_remark INTEGER NOT NULL DEFAULT 0")
+    # What the teacher actually queued. Without these the worker dashboard can
+    # only show "Student" and a status: the uploaded filename and page count
+    # lived in pending_manual_files, which terminal cleanup deletes.
+    for col, ddl in (("paper_name", "TEXT"), ("page_count", "INTEGER")):
+        if job_cols and col not in job_cols:
+            conn.execute(f"ALTER TABLE correction_jobs ADD COLUMN {col} {ddl}")
+
+    # The stages a job really passed through, with the time each one was seen.
+    # The dashboard's detail panel shows this history; nothing here is derived
+    # after the fact - a row is written when the backend reports the stage.
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS job_stage_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            status TEXT,
+            stage TEXT,
+            progress REAL,
+            at REAL NOT NULL);
+        CREATE INDEX IF NOT EXISTS idx_job_stage_events_job
+            ON job_stage_events(job_id, at);
+    """)
     version_cols = {row[1] for row in conn.execute("PRAGMA table_info(result_versions)")}
     if version_cols and "pending" not in version_cols:
         conn.execute(

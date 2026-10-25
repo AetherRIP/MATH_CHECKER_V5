@@ -74,15 +74,68 @@ def _effective_progress(row: dict | None) -> dict | None:
     """
     if not row:
         return row
+    status = str(row.get("status") or "").strip().upper()
+    if status == COMPLETED:
+        # A completed job is 100% by definition: real worker stages leave a
+        # measured 0.95 behind, and the last 5% is the save that just finished.
+        row["progress"] = 1.0
+        return row
+    if status in (FAILED, CANCELLED):
+        # A failed or cancelled job did NOT finish its work, so it must not
+        # render as a full bar. Keep whatever was really completed.
+        try:
+            row["progress"] = min(1.0, max(0.0, float(row.get("progress") or 0.0)))
+        except (TypeError, ValueError):
+            row["progress"] = 0.0
+        return row
     try:
         stored = float(row.get("progress") or 0.0)
     except (TypeError, ValueError):
         stored = 0.0
     if stored <= 0.0:
-        mapped = STAGE_PROGRESS.get(str(row.get("status") or "").strip().upper())
-        if mapped is not None:
+        mapped = STAGE_PROGRESS.get(status)
+        if mapped is not None and mapped < 1.0:
             row["progress"] = mapped
     return row
+
+
+def record_stage_event(job_id: str, *, status: str | None, stage: str | None,
+                       progress: float | None) -> None:
+    """Append one real stage transition to a job's history.
+
+    Written only when the backend itself moves a job on, so the dashboard's
+    "previous stages" list is evidence rather than a reconstruction. A repeated
+    identical stage is not recorded twice (the pool re-reports heartbeats), and
+    a history is capped so a very long job cannot grow it without bound.
+    """
+    if not job_id or (not stage and not status):
+        return
+    try:
+        last = db.query_one(
+            "SELECT stage, status FROM job_stage_events WHERE job_id = ? "
+            "ORDER BY id DESC LIMIT 1", (job_id,))
+        if last and last["stage"] == stage and last["status"] == status:
+            return
+        db.execute(
+            "INSERT INTO job_stage_events(job_id, status, stage, progress, at) "
+            "VALUES(?,?,?,?,?)",
+            (job_id, status, (stage or "")[:300], progress, time.time()))
+        db.execute(
+            "DELETE FROM job_stage_events WHERE job_id = ? AND id NOT IN "
+            "(SELECT id FROM job_stage_events WHERE job_id = ? "
+            " ORDER BY id DESC LIMIT 60)", (job_id, job_id))
+    except Exception:  # noqa: BLE001 - history is diagnostic, never load-bearing
+        pass
+
+
+def stage_history(job_id: str) -> list[dict]:
+    """Every stage the backend recorded for this job, oldest first."""
+    try:
+        return [dict(row) for row in db.query(
+            "SELECT status, stage, progress, at FROM job_stage_events "
+            "WHERE job_id = ? ORDER BY at ASC, id ASC", (job_id,))]
+    except Exception:  # noqa: BLE001
+        return []
 
 
 class DuplicateJobError(RuntimeError):
@@ -146,11 +199,71 @@ class JobManager:
     def add_stage_listener(self, listener) -> None:
         self._stage_listeners.append(listener)
 
+    def publish(self, job_id: str) -> None:
+        """Push a job's current state to the live (SSE) listeners.
+
+        The WorkerPool owns execution and writes some columns with its own SQL;
+        without this call its transitions never reached ``/jobs/stream``, so a
+        client that is listening (the desktop Jobs page) kept showing the state
+        it heard at enqueue time until the user refreshed.
+        """
+        job = self.get(job_id)
+        if job:
+            self._publish_stage(job)
+
+    def report_progress(self, job_id: str, *, stage: str | None = None,
+                        progress: float | None = None,
+                        status: str | None = None,
+                        record_event: bool = True) -> None:
+        """Record a genuine stage transition for a job the pool is running.
+
+        ``progress`` is only ever a value the worker measured (a stage that
+        really finished); it is clamped to the stored value so a job's bar can
+        never go backwards, and it is never used to fake a percentage while a
+        request is in flight. Every call publishes, so listeners see the change
+        immediately instead of polling.
+        """
+        row = db.row_to_dict(db.query_one(
+            "SELECT status, progress FROM correction_jobs WHERE id = ?", (job_id,)
+        ))
+        if not row:
+            return
+        current_status = str(row.get("status") or "")
+        if current_status not in ACTIVE_STATUSES:
+            return  # a terminal job is never reopened by a late event
+
+        sets = ["updated_at = ?"]
+        params: list = [time.time()]
+        if stage is not None:
+            sets.append("stage_detail = ?")
+            params.append(stage[:300])
+        if status is not None and status != current_status:
+            sets.append("status = ?")
+            params.append(status)
+        if progress is not None:
+            try:
+                stored = float(row.get("progress") or 0.0)
+                measured = max(stored, min(0.999, max(0.0, float(progress))))
+            except (TypeError, ValueError):
+                measured = None
+            if measured is not None and measured > stored:
+                sets.append("progress = ?")
+                params.append(measured)
+        params.append(job_id)
+        db.execute(f"UPDATE correction_jobs SET {', '.join(sets)} WHERE id = ?", params)
+        if record_event and (stage is not None
+                             or (status is not None and status != current_status)):
+            record_stage_event(job_id, status=status or current_status, stage=stage,
+                               progress=progress)
+        self.publish(job_id)
+
     # -- enqueue / query ------------------------------------------------------
 
     def enqueue(self, *, submission_id: str | None, coursework_id: str | None,
                 course_id: str | None, student_id: str | None,
-                student_name: str | None, is_remark: bool = False) -> dict:
+                student_name: str | None, is_remark: bool = False,
+                paper_name: str | None = None,
+                page_count: int | None = None) -> dict:
         now_ts = time.time()
         job_id = uuid.uuid4().hex
         try:
@@ -160,12 +273,13 @@ class JobManager:
                     INSERT INTO correction_jobs(
                         id, submission_id, coursework_id, course_id, student_id,
                         student_name, status, created_at, updated_at, max_attempts,
-                        is_remark)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                        is_remark, paper_name, page_count)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (job_id, submission_id, coursework_id, course_id,
                      student_id, student_name, QUEUED, now_ts, now_ts,
-                     self._max_attempts, 1 if is_remark else 0),
+                     self._max_attempts, 1 if is_remark else 0,
+                     paper_name, page_count),
                 )
         except sqlite3.IntegrityError as exc:
             existing = db.query_one(
@@ -175,6 +289,7 @@ class JobManager:
             )
             raise DuplicateJobError(existing["id"] if existing else None) from exc
         job = self.get(job_id)
+        record_stage_event(job_id, status=QUEUED, stage="Queued", progress=0.0)
         log_event("jobs", "job enqueued", job_id=job_id,
                   submission_id=submission_id, student=student_name)
         self._publish_stage(job)
