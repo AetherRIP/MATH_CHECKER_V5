@@ -266,7 +266,7 @@
                 </Border>
 
                 <Border Background="{DynamicResource AccentSoftBrush}" BorderBrush="{DynamicResource AccentLineBrush}"
-                        BorderThickness="1" CornerRadius="{StaticResource PillRadius}" Padding="14,7"
+                        BorderThickness="1" CornerRadius="{StaticResource ControlRadius}" Padding="14,9"
                         Margin="0,0,0,10" HorizontalAlignment="Left"
                         Effect="{DynamicResource CardShadowEffect}"
                         Visibility="{Binding Toast, Converter={StaticResource NullToVisibility}}">
