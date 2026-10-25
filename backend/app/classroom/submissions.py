@@ -502,6 +502,277 @@ def tracking_rows(course_id: str | None = None,
     }
 
 
+# ------------------------------------------------ assignment roster (detail page)
+
+#: What the Assignment Details page reports for one student. These are NOT the
+#: 14 raw submission states: they answer the question a teacher asks about the
+#: assignment (did they hand it in?), and they are computed from the same rows
+#: the status table shows, so the cards can never disagree with the table.
+COMPLETED = "COMPLETED"
+NOT_COMPLETED = "NOT_COMPLETED"
+MISSING = "MISSING"
+UNKNOWN = "UNKNOWN"
+
+COMPLETION_LABELS = {
+    COMPLETED: "Completed",
+    NOT_COMPLETED: "Not completed",
+    MISSING: "Missing",
+    UNKNOWN: "Unknown",
+}
+
+#: Statuses that only exist BECAUSE the student handed work in. A correction
+#: failure is one of them: a failed marking run must never erase the fact that
+#: the paper was submitted.
+_SUBMITTED_STATUSES = frozenset({
+    "SUBMITTED", "SUBMITTED_LATE", "EDITED_AFTER_SUBMISSION", "RETURNED",
+    "PROCESSING", "CORRECTED", "GRADED", "FAILED",
+})
+
+
+_EDIT_AFTER_SUBMISSION = (
+    "The student changed the work after handing it in; the latest version is "
+    "what Classroom holds.")
+
+
+def completion_bucket(row: dict) -> tuple[str, str | None]:
+    """Classify one tracking row as Completed / Not completed / Missing / Unknown.
+
+    Pure function of the row, so the reason string can be tested without a
+    database. A draft (assignment opened, nothing handed in) is NOT completed,
+    and a student with no submission is NOT "missing" when the roster confirms
+    they are enrolled — they are simply not completed.
+    """
+    status = (row.get("status") or "").strip().upper()
+    quality = (row.get("data_quality") or "").strip().upper()
+
+    if row.get("sync_error"):
+        return MISSING, ("This record could not be synchronized, so its "
+                         "submission state is unverified.")
+    if quality == "ERROR":
+        return MISSING, ("The backend recorded an error for this student, so "
+                         "the submission cannot be reconciled.")
+    if not row.get("student_id"):
+        return MISSING, "The submission carries no student identifier."
+    if not status:
+        return UNKNOWN, "No submission state has been stored for this student."
+    if status in _SUBMITTED_STATUSES:
+        return COMPLETED, (_EDIT_AFTER_SUBMISSION
+                           if status == "EDITED_AFTER_SUBMISSION" else None)
+    if status == "INVALID":
+        return NOT_COMPLETED, ("Work was handed in but it cannot be read, so it "
+                               "does not count as a completed submission.")
+    if status == "CREATED":
+        return NOT_COMPLETED, ("The assignment was opened but nothing was "
+                               "handed in.")
+    if status == "RECLAIMED":
+        return NOT_COMPLETED, ("The student took the work back, so there is no "
+                               "submission to mark.")
+    if status == "NOT_STARTED":
+        return NOT_COMPLETED, None
+    if status == "MISSING":
+        return MISSING, ("No usable submission record was stored for this "
+                         "student.")
+    return UNKNOWN, (f"The stored submission state “{status}” is not one this "
+                     "application can interpret.")
+
+
+def correction_view(row: dict) -> dict:
+    """Where V5's own correction of this student's paper stands.
+
+    Kept separate from completion: a paper can be completed (handed in) and
+    still be uncorrected, and a failed correction never un-submits it.
+    """
+    job = row.get("job") or {}
+    result = row.get("result") or {}
+    status = (job.get("status") or "").strip().upper()
+
+    if result:
+        partial = result.get("partial") or {}
+        return {
+            "state": "CORRECTED",
+            "label": "Corrected",
+            "job_status": status or None,
+            "earned": result.get("earned"),
+            "available": result.get("available"),
+            "percentage": result.get("percentage"),
+            # A partial result has no publishable score; say so instead of
+            # presenting the coverage as a mark. ``partial_summary`` returns
+            # None for a complete correction, a block for an incomplete one.
+            "partial": bool(partial),
+            "error": None,
+        }
+    if status == "FAILED":
+        return {"state": "FAILED", "label": "Correction failed",
+                "job_status": status, "earned": None, "available": None,
+                "percentage": None, "partial": False,
+                "error": job.get("error") or "The correction did not finish."}
+    if status:
+        return {"state": "PROCESSING", "label": "Being corrected",
+                "job_status": status, "earned": None, "available": None,
+                "percentage": None, "partial": False, "error": None}
+    return {"state": "NOT_CORRECTED", "label": "Not corrected",
+            "job_status": None, "earned": None, "available": None,
+            "percentage": None, "partial": False, "error": None}
+
+
+def _attachment_summary(raw: Any) -> list[dict]:
+    """Only the parts of an attachment a teacher needs, never provider ids."""
+    items = raw if isinstance(raw, list) else []
+    out = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        out.append({"title": item.get("title") or item.get("name"),
+                    "link": item.get("alternateLink") or item.get("link"),
+                    "mime_type": item.get("mimeType") or item.get("mime_type")})
+    return out
+
+
+def assignment_roster(coursework_id: str,
+                      now_ts: float | None = None) -> dict:
+    """The Assignment Details view: every expected student, classified.
+
+    One query path (`tracking_rows`) feeds both the per-student rows and the
+    summary counts, so the cards and the table cannot drift apart. Duplicate
+    submission resources are collapsed by the read model already: the table is
+    keyed by submission id and roster students without one get a single
+    synthetic row.
+    """
+    now_ts = time.time() if now_ts is None else now_ts
+    data = tracking_rows(coursework_id=coursework_id, now_ts=now_ts)
+    overview = data["overview"]
+
+    # One student is one row. Classroom normally keeps one submission per
+    # student, but a re-submission resource (or a stale duplicate row) must not
+    # count twice: the newest REAL row wins, and a synthetic roster row is only
+    # used when no submission row exists at all.
+    def rank(row: dict) -> tuple:
+        return (0 if row.get("synthetic") else 1,
+                str(row.get("update_time") or ""),
+                str(row.get("creation_time") or ""),
+                str(row.get("submission_id") or ""))
+
+    unique: dict[str, dict] = {}
+    duplicates = 0
+    for row in data["rows"]:
+        key = row.get("student_id") or row.get("submission_id") or ""
+        current = unique.get(key)
+        if current is None:
+            unique[key] = row
+            continue
+        duplicates += 1
+        if rank(row) > rank(current):
+            unique[key] = row
+    rows = list(unique.values())
+
+    counts = {COMPLETED: 0, NOT_COMPLETED: 0, MISSING: 0, UNKNOWN: 0}
+    students: list[dict] = []
+    submitted = corrected = failed = invalid = awaiting = 0
+    stale = sync_errors = 0
+
+    for row in rows:
+        bucket, reason = completion_bucket(row)
+        counts[bucket] += 1
+        correction = correction_view(row)
+        is_submitted = (row.get("status") or "").upper() in _SUBMITTED_STATUSES
+        submitted += 1 if is_submitted else 0
+        if correction["state"] == "CORRECTED":
+            corrected += 1
+        elif correction["state"] == "FAILED":
+            failed += 1
+        elif is_submitted:
+            awaiting += 1
+        invalid += 1 if (row.get("status") or "").upper() == "INVALID" else 0
+        stale += 1 if row.get("stale") else 0
+        sync_errors += 1 if row.get("sync_error") else 0
+
+        students.append({
+            "student_id": row.get("student_id"),
+            "name": row.get("display_name") or row.get("student_name"),
+            "classroom_name": row.get("classroom_name"),
+            "email": row.get("student_email"),
+            "status": row.get("status"),
+            "status_label": row.get("status_label"),
+            "raw_state": row.get("raw_state"),
+            "completion": bucket,
+            "completion_label": COMPLETION_LABELS[bucket],
+            "completion_reason": reason,
+            "submitted": is_submitted,
+            "submitted_at": row.get("creation_time") or row.get("state_changed_at"),
+            "late": bool(row.get("late")),
+            "attachments": _attachment_summary(row.get("attachments")),
+            "correction": correction,
+            "max_points": row.get("max_points"),
+            "assigned_grade": row.get("assigned_grade"),
+            "draft_grade": row.get("draft_grade"),
+            "quality": row.get("data_quality"),
+            "stale": bool(row.get("stale")),
+            "sync_error": row.get("sync_error"),
+            "last_synced_at": row.get("last_synced_at"),
+            "synthetic": bool(row.get("synthetic")),
+            "submission_id": None if row.get("synthetic") else row.get("submission_id"),
+        })
+
+    students.sort(key=lambda s: ((s["name"] or "").casefold(), s["student_id"] or ""))
+
+    expected = len(students)
+    last_sync = overview.get("last_sync") or last_tracking_sync(coursework_id)
+    cw = db.query_one("SELECT sync_state FROM coursework WHERE id = ?",
+                      (coursework_id,))
+    assignment_state = (cw["sync_state"] if cw else None) or "ACTIVE"
+
+    warnings: list[str] = []
+    if duplicates:
+        warnings.append(f"{duplicates} extra submission record"
+                        f"{'s' if duplicates != 1 else ''} were merged"
+                        " into the newest one for the same student.")
+    if expected == 0:
+        warnings.append("No students are recorded for this assignment yet. "
+                        "Sync Google Classroom to read its roster.")
+    if last_sync is None:
+        warnings.append("This assignment has never been synchronized, so its "
+                        "student records are not verifiable.")
+    if stale:
+        warnings.append(f"{stale} student record{'s' if stale != 1 else ''} "
+                        "were last synchronized more than "
+                        f"{_STALE_AFTER_SECONDS // 60} minutes ago.")
+    if sync_errors:
+        warnings.append(f"{sync_errors} student record{'s' if sync_errors != 1 else ''} "
+                        "could not be synchronized and are classified as missing.")
+    if assignment_state == "DELETED_IN_CLASSROOM":
+        warnings.append("This assignment no longer exists in Google Classroom. "
+                        "The rows below are the last records kept locally.")
+
+    return {
+        "coursework_id": coursework_id,
+        "students": students,
+        "summary": {
+            "expected": expected,
+            "completed": counts[COMPLETED],
+            "not_completed": counts[NOT_COMPLETED],
+            "missing": counts[MISSING],
+            "unknown": counts[UNKNOWN],
+            "completion_percentage": (round(100.0 * counts[COMPLETED] / expected, 1)
+                                      if expected else None),
+            "submitted": submitted,
+            "corrected": corrected,
+            "failed": failed,
+            "invalid": invalid,
+            "awaiting_correction": max(0, awaiting),
+            "stale": stale,
+            "sync_errors": sync_errors,
+            "duplicate_records": duplicates,
+        },
+        "sync": {
+            "last_sync": last_sync,
+            "stale_after_seconds": _STALE_AFTER_SECONDS,
+            "assignment_state": assignment_state,
+            "roster_known": expected > 0,
+        },
+        "warnings": warnings,
+    }
+
+
 def submission_detail(submission_id: str) -> dict | None:
     """Full detail: row + state-event timeline + attachments + V5 history."""
     row = db.query_one(

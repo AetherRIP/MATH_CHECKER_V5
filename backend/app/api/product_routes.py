@@ -237,6 +237,34 @@ def assignment_detail(coursework_id: str):
             "capabilities": _assignment_capabilities(item)}
 
 
+@router.get("/assignments/{coursework_id}/students")
+def assignment_students(coursework_id: str):
+    """Assignment Details: the expected roster with each student's status.
+
+    The per-student rows and the summary counts come from ONE read model
+    (``classroom.submissions.assignment_roster``), so the summary cards can
+    never disagree with the table below them. Completion (did the student
+    hand work in?) is reported separately from correction (has V5 marked
+    it?), and a record the backend could not reconcile is reported as
+    Missing rather than guessed.
+    """
+    rows = _assignment_rows(coursework_id=coursework_id)
+    if not rows:
+        raise AppError("That assignment is not in the local database. Sync "
+                       "Google Classroom first.", status=404, code="not_found")
+    from ..classroom import submissions as cs
+    roster = cs.assignment_roster(coursework_id)
+    item = rows[0]
+    return {
+        "assignment": item,
+        "capabilities": _assignment_capabilities(item),
+        "students": roster["students"],
+        "summary": roster["summary"],
+        "sync": roster["sync"],
+        "warnings": roster["warnings"],
+    }
+
+
 def _assignment_capabilities(item: dict) -> dict:
     info = item.get("management") or {}
     managed = bool(item.get("managed"))
