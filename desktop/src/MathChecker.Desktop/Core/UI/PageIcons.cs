@@ -28,6 +28,7 @@ public static class PageIcons
         ["classes"] = "\uE716",     // People
         ["students"] = "\uE77B",    // Contact
         ["assignments"] = "\uE8A5", // Document
+        ["assignment"] = "\uE8FD",  // BulletedList (one assignment's roster)
         ["settings"] = "\uE713",    // Settings
         ["ai"] = "\uE945",          // Lightning
         ["prompts"] = "\uE8A5",     // Document

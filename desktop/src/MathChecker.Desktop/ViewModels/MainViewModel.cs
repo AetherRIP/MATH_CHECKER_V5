@@ -431,6 +431,10 @@ public sealed class MainViewModel : ObservableObject
         Add(new ClassesViewModel(_session) { Group = "People" });
         Add(new StudentsViewModel(_session) { Group = "People" });
         Add(new AssignmentsViewModel(_session) { Group = "People" });
+        // The details page opens from a row, but it is a real page: it keeps
+        // its assignment across a refresh and can be reached from the People
+        // tab strip without going back through the list.
+        Add(new AssignmentDetailViewModel(_session) { Group = "People" });
 
         Add(new SettingsViewModel(_session) { Group = "Config" });
         Add(new AiKeysViewModel(_session) { Group = "Config" });

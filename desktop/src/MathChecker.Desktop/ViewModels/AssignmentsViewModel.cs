@@ -23,7 +23,20 @@ public sealed class AssignmentsViewModel : PageViewModel
     public AssignmentsViewModel(AppSession session)
         : base(session, "assignments", "Assignments")
     {
+        // An assignment is a link, not just a row: the name column is a button
+        // and the toolbar action opens the selected one. Both go through the
+        // same method, so there is one way into the details page.
+        OpenAssignmentCommand = new RelayCommand(parameter =>
+            OpenDetails(parameter as AssignmentDto ?? Selected));
+        OpenSelectedCommand = new RelayCommand(() => OpenDetails(Selected),
+            () => HasSelection);
     }
+
+    /// <summary>Opens the clicked row's details page.</summary>
+    public RelayCommand OpenAssignmentCommand { get; }
+
+    /// <summary>Opens the selected row's details page.</summary>
+    public RelayCommand OpenSelectedCommand { get; }
 
     /// <summary>Classroom coursework is mirrored here, so this page syncs it.</summary>
     public override bool SyncsFromClassroom => true;
@@ -72,6 +85,7 @@ public sealed class AssignmentsViewModel : PageViewModel
             }
 
             OnPropertyChanged(nameof(HasSelection));
+            OpenSelectedCommand.RaiseCanExecuteChanged();
             if (value is not null)
             {
                 _ = LoadMarkSchemeAsync(value.Id);
@@ -183,6 +197,19 @@ public sealed class AssignmentsViewModel : PageViewModel
         await LoadAsync();
         Status = "Local assignment created.";
     }, success: null);
+
+    /// <summary>Loads the details page for one assignment. The page reads the
+    /// identity it was opened with, so this cannot show another assignment.
+    /// </summary>
+    public void OpenDetails(AssignmentDto? assignment)
+    {
+        if (assignment is null || string.IsNullOrWhiteSpace(assignment.Id))
+        {
+            return;
+        }
+
+        Session.OpenAssignment(assignment.Id);
+    }
 
     public AsyncCommand RecheckMarkSchemeCommand => Command(async () =>
     {

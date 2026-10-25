@@ -1,0 +1,398 @@
+<UserControl x:Class="MathChecker.Desktop.Views.AssignmentDetailView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
+    <UserControl.Resources>
+        <!-- The completion chip: one colour per backend bucket, so "Missing" can
+             never be read as "Not completed" at a glance. -->
+        <Style x:Key="CompletionChip" TargetType="Border" BasedOn="{StaticResource Chip}">
+            <Setter Property="Background" Value="{DynamicResource SunkenBrush}" />
+            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Completion}" Value="COMPLETED">
+                    <Setter Property="Background" Value="{DynamicResource SuccessSurfaceBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Completion}" Value="NOT_COMPLETED">
+                    <Setter Property="Background" Value="{DynamicResource WarningSurfaceBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Completion}" Value="MISSING">
+                    <Setter Property="Background" Value="{DynamicResource DangerSurfaceBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="CompletionText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Completion}" Value="COMPLETED">
+                    <Setter Property="Foreground" Value="{DynamicResource SuccessTextBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Completion}" Value="NOT_COMPLETED">
+                    <Setter Property="Foreground" Value="{DynamicResource WarningTextBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Completion}" Value="MISSING">
+                    <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- One roster row. A list item (not a card) so keyboard navigation and
+             the automation tree behave; the template decides the layout. -->
+        <Style x:Key="RosterRow" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Row" Background="Transparent"
+                                BorderBrush="{DynamicResource RowHairlineBrush}"
+                                BorderThickness="0,0,0,1" Padding="14,9">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource SurfaceHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource SurfaceSelectedBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The theme wraps every TextBlock; these cells must stay on one line
+             and ellipsize instead of colliding with the next column. -->
+        <Style x:Key="CellLine" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+
+        <Style x:Key="CellStrong" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        </Style>
+
+        <Style x:Key="ColumnLabel" TargetType="TextBlock" BasedOn="{StaticResource SectionLabel}">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+        </Style>
+
+        <Style x:Key="CounterLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <Style x:Key="CounterValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="22" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+        </Style>
+    </UserControl.Resources>
+
+    <ui:PageFrame Eyebrow="{Binding HeaderEyebrow}" Title="{Binding Heading}"
+                  Description="{Binding HeaderDescription}"
+                  StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
+                  Sync="{Binding SyncService}"
+                  BodyPadding="0,14,0,0">
+        <ui:PageFrame.Actions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
+                <Button Content="Back to assignments" Command="{Binding BackCommand}" />
+                <Button Content="Refresh" Command="{Binding RefreshCommand}" Margin="0"
+                        ToolTip="Re-read this assignment and its roster from the backend" />
+            </StackPanel>
+        </ui:PageFrame.Actions>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- ============================================================
+                 Summary: every figure is computed from the same rows the table
+                 below renders.
+                 ============================================================ -->
+            <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,10" Padding="16,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel>
+                        <TextBlock Text="EXPECTED" Style="{StaticResource CounterLabel}" />
+                        <TextBlock Text="{Binding ExpectedText}" Style="{StaticResource CounterValue}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="COMPLETED" Style="{StaticResource CounterLabel}" />
+                        <TextBlock Text="{Binding CompletedText}" Style="{StaticResource CounterValue}"
+                                   Foreground="{DynamicResource SuccessTextBrush}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="NOT COMPLETED" Style="{StaticResource CounterLabel}" />
+                        <TextBlock Text="{Binding NotCompletedText}" Style="{StaticResource CounterValue}"
+                                   Foreground="{DynamicResource WarningTextBrush}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="3">
+                        <TextBlock Text="MISSING" Style="{StaticResource CounterLabel}" />
+                        <TextBlock Text="{Binding MissingText}" Style="{StaticResource CounterValue}"
+                                   Foreground="{DynamicResource DangerTextBrush}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Text="UNKNOWN" Style="{StaticResource CounterLabel}" />
+                        <TextBlock Text="{Binding UnknownText}" Style="{StaticResource CounterValue}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="5" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                Margin="16,0,0,0">
+                        <TextBlock Text="{Binding CompletionText}" FontSize="11.5"
+                                   HorizontalAlignment="Right" TextWrapping="NoWrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding CorrectedText, StringFormat={}{0} corrected}"
+                                   FontSize="10.5" HorizontalAlignment="Right" Margin="0,3,0,0"
+                                   TextWrapping="NoWrap"
+                                   Foreground="{DynamicResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding CorrectionDetailText}" FontSize="10.5"
+                                   HorizontalAlignment="Right" Margin="0,2,0,0"
+                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding SyncText}" FontSize="10.5"
+                                   HorizontalAlignment="Right" Margin="0,2,0,0"
+                                   TextWrapping="NoWrap"
+                                   Foreground="{DynamicResource TextMutedBrush}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ============================================================
+                 The assignment's own record. Collapsed by default so the
+                 roster keeps the height, but never a second screen away.
+                 ============================================================ -->
+            <Expander Grid.Row="1" Header="Assignment record" Margin="0,0,0,10"
+                      Visibility="{Binding HasFacts, Converter={StaticResource BoolToVis}}">
+                <Border Style="{StaticResource Card}" Margin="0,4,0,0" Padding="14,10">
+                    <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Facts}"
+                                      ItemTemplate="{StaticResource FactRowTemplate}" />
+                    </ScrollViewer>
+                </Border>
+            </Expander>
+
+            <!-- ============================================================
+                 Warnings: what the backend could not verify, in its own words.
+                 ============================================================ -->
+            <Border Grid.Row="2" Style="{StaticResource WarningBanner}" Margin="0,0,0,10"
+                    Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVis}}">
+                <ItemsControl ItemsSource="{Binding Warnings}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" FontSize="11.5" TextWrapping="Wrap" Margin="0,1"
+                                       Foreground="{DynamicResource WarningTextBrush}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+
+            <!-- ============================================================
+                 Filters. Changing one never edits a record; it only narrows
+                 which of the backend's rows are shown.
+                 ============================================================ -->
+            <Border Grid.Row="3" Style="{StaticResource FilterBar}" Margin="0,0,0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" MinWidth="120" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="150" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="176" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="112" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="Search" Style="{StaticResource FieldLabel}"
+                               VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBox Grid.Column="1" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="Search students on this assignment" />
+
+                    <TextBlock Grid.Column="2" Text="Status" Style="{StaticResource FieldLabel}"
+                               VerticalAlignment="Center" Margin="12,0,8,0" />
+                    <ComboBox Grid.Column="3" ItemsSource="{Binding StatusFilters}"
+                              SelectedItem="{Binding StatusFilter}"
+                              AutomationProperties.Name="Completion filter" />
+
+                    <TextBlock Grid.Column="4" Text="Correction" Style="{StaticResource FieldLabel}"
+                               VerticalAlignment="Center" Margin="12,0,8,0" />
+                    <ComboBox Grid.Column="5" ItemsSource="{Binding CorrectionFilters}"
+                              SelectedItem="{Binding CorrectionFilter}"
+                              AutomationProperties.Name="Correction filter" />
+
+                    <TextBlock Grid.Column="6" Text="Sort" Style="{StaticResource FieldLabel}"
+                               VerticalAlignment="Center" Margin="12,0,8,0" />
+                    <ComboBox Grid.Column="7" ItemsSource="{Binding Sorts}" SelectedItem="{Binding SortBy}"
+                              AutomationProperties.Name="Sort students" />
+
+                    <Border Grid.Column="8" Style="{StaticResource Chip}" Padding="9,3"
+                            VerticalAlignment="Center" Margin="12,0,0,0">
+                        <TextBlock Text="{Binding ShownText}" FontSize="10.5" TextWrapping="NoWrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- ============================================================
+                 The roster table.
+                 ============================================================ -->
+            <Border Grid.Row="4" Style="{StaticResource TableCard}">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3*" />
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="2*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Student" Style="{StaticResource ColumnLabel}" />
+                            <TextBlock Grid.Column="1" Text="Handed in" Style="{StaticResource ColumnLabel}"
+                                       Margin="12,0" />
+                            <TextBlock Grid.Column="2" Text="Correction" Style="{StaticResource ColumnLabel}"
+                                       Margin="0,0,12,0" />
+                            <TextBlock Grid.Column="3" Text="Status" Style="{StaticResource ColumnLabel}" />
+                        </Grid>
+                    </Border>
+
+                    <Grid>
+                        <ListBox ItemsSource="{Binding Items}" ItemContainerStyle="{StaticResource RosterRow}"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 AutomationProperties.Name="Students on this assignment">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="3*" />
+                                            <ColumnDefinition Width="2*" />
+                                            <ColumnDefinition Width="2*" />
+                                            <ColumnDefinition Width="2*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Identity: long names and addresses
+                                             ellipsize instead of pushing the
+                                             facts off the row. -->
+                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource CellStrong}"
+                                                       ToolTip="{Binding Name}" />
+                                            <TextBlock Text="{Binding StudentIdText}"
+                                                       Style="{StaticResource CellLine}" Margin="0,2,0,0"
+                                                       FontFamily="{StaticResource MonoFont}"
+                                                       FontSize="10" ToolTip="{Binding StudentIdText}" />
+                                            <TextBlock Text="{Binding EmailText}" Style="{StaticResource CellLine}"
+                                                       Margin="0,1,0,0" FontSize="10.5"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       ToolTip="{Binding EmailText}" />
+                                        </StackPanel>
+
+                                        <!-- When the work arrived, and what
+                                             Classroom itself recorded. -->
+                                        <StackPanel Grid.Column="1" Margin="0,0,12,0"
+                                                    VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding SubmittedText}"
+                                                       Style="{StaticResource CellLine}"
+                                                       Foreground="{DynamicResource TextBrush}" />
+                                            <TextBlock Text="{Binding StatusLabel}"
+                                                       Style="{StaticResource CellLine}" Margin="0,3,0,0"
+                                                       FontSize="10.5"
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                            <TextBlock Text="{Binding AttachmentText}"
+                                                       Style="{StaticResource CellLine}" Margin="0,1,0,0"
+                                                       FontSize="10.5"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       ToolTip="{Binding AttachmentText}" />
+                                        </StackPanel>
+
+                                        <!-- V5's own correction, never merged
+                                             with whether the work was handed in. -->
+                                        <StackPanel Grid.Column="2" Margin="0,0,12,0"
+                                                    VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding CorrectionText}"
+                                                       Style="{StaticResource CellLine}"
+                                                       Foreground="{DynamicResource TextBrush}" />
+                                            <TextBlock Text="{Binding MarksText}"
+                                                       Style="{StaticResource CellLine}" Margin="0,3,0,0"
+                                                       FontSize="10.5"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding GradeText, StringFormat=Classroom grade: {0}}"
+                                                       Style="{StaticResource CellLine}" Margin="0,1,0,0"
+                                                       FontSize="10.5"
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                        </StackPanel>
+
+                                        <!-- The bucket the summary cards count. -->
+                                        <StackPanel Grid.Column="3" VerticalAlignment="Center">
+                                            <Border Style="{StaticResource CompletionChip}">
+                                                <TextBlock Text="{Binding CompletionLabel}"
+                                                           Style="{StaticResource CompletionText}" />
+                                            </Border>
+                                            <TextBlock Text="{Binding CompletionReason}"
+                                                       Style="{StaticResource CellLine}" Margin="0,4,0,0"
+                                                       FontSize="10" MaxHeight="26"
+                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       Visibility="{Binding CompletionReason,
+                                                           Converter={StaticResource NullToVisibility}}" />
+                                            <TextBlock Text="{Binding Warning}"
+                                                       Style="{StaticResource CellLine}" Margin="0,3,0,0"
+                                                       FontSize="10" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource DangerTextBrush}"
+                                                       Visibility="{Binding HasWarning,
+                                                           Converter={StaticResource BoolToVis}}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <Border Style="{StaticResource EmptyState}" MaxWidth="420"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="{Binding Items.Count, Converter={StaticResource ZeroToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="No students match" Style="{StaticResource EmptyTitle}" />
+                                <TextBlock Text="Clear the search or the filters. If every count above is zero, sync Google Classroom so this assignment's roster is read."
+                                           Style="{StaticResource EmptyText}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </ui:PageFrame>
+</UserControl>

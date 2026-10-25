@@ -191,6 +191,7 @@ public sealed class ViewSmokeTests
         yield return () => new StudentsView();
         yield return () => new StudentProfileView();
         yield return () => new AssignmentsView();
+        yield return () => new AssignmentDetailView();
         yield return () => new SettingsView();
         yield return () => new AiKeysView();
         yield return () => new PromptsView();

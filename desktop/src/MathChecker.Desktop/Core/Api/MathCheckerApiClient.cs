@@ -573,6 +573,15 @@ public sealed partial class MathCheckerApiClient : IDisposable
     public Task<JsonElement> AssignmentAsync(string courseworkId, CancellationToken cancellationToken = default) =>
         GetJsonAsync($"assignments/{Uri.EscapeDataString(courseworkId)}", cancellationToken);
 
+    /// <summary>The Assignment Details payload: metadata, the expected roster
+    /// with each student's status, and the summary counts computed from those
+    /// same rows. Throws <see cref="ApiException"/> (404) for an assignment the
+    /// local database does not hold.</summary>
+    public Task<AssignmentStudentsDto> AssignmentStudentsAsync(string courseworkId,
+        CancellationToken cancellationToken = default) =>
+        GetAsync<AssignmentStudentsDto>(
+            $"assignments/{Uri.EscapeDataString(courseworkId)}/students", cancellationToken);
+
     public Task<JsonElement> CreateLocalAssignmentAsync(string title, double? maxPoints, string? dueDate,
         string? description, CancellationToken cancellationToken = default) =>
         SendJsonRawAsync(HttpMethod.Post, "assignments/local",

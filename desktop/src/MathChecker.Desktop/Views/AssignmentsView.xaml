@@ -2,6 +2,40 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
+    <UserControl.Resources>
+        <!-- An assignment's name is the way into its own page: a real button,
+             so it is focusable, has a focus ring and does not rely on a
+             double-click nobody can discover. -->
+        <Style x:Key="TitleLink" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Height" Value="Auto" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
     <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}" Description="{Binding Summary}"
                   StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
                   Sync="{Binding SyncService}"
@@ -9,6 +43,12 @@
         <ui:PageFrame.Actions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                <!-- Every assignment opens its own page; this acts on the
+                     selected row, the name column opens the clicked one. -->
+                <Button Content="Open details" Style="{StaticResource PrimaryButton}"
+                        Command="{Binding OpenSelectedCommand}"
+                        IsEnabled="{Binding HasSelection}"
+                        ToolTip="Select an assignment row first" />
                 <!-- Both read the selected assignment's mark scheme. -->
                 <Button Content="Recheck mark scheme" Command="{Binding RecheckMarkSchemeCommand}"
                         IsEnabled="{Binding HasSelection}" ToolTip="Select an assignment row first" />
@@ -40,8 +80,22 @@
                     <DataGrid Style="{StaticResource DataTable}" ui:TableLayout.FillColumn="0" ItemsSource="{Binding Items}"
                               SelectedItem="{Binding Selected}" AutomationProperties.Name="Assignments">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Assignment" Binding="{Binding DisplayTitle}" Width="*" MinWidth="160"
-                                                ElementStyle="{StaticResource CellText}" />
+                            <DataGridTemplateColumn Header="Assignment" Width="*" MinWidth="160">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource TitleLink}"
+                                                Command="{Binding DataContext.OpenAssignmentCommand,
+                                                    RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding}"
+                                                AutomationProperties.Name="{Binding DisplayTitle}"
+                                                ToolTip="Open this assignment's students">
+                                            <TextBlock Text="{Binding DisplayTitle}" FontSize="12.5"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Class" Binding="{Binding CourseLabel}" Width="180"
                                                 ElementStyle="{StaticResource CellText}"
                                                 ui:TableLayout.Priority="1" />

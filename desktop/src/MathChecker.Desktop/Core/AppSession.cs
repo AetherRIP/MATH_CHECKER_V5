@@ -41,6 +41,7 @@ public sealed class AppSession
     public Action<string>? Toast { get; set; }
 
     private string? _pendingResultId;
+    private string? _pendingAssignmentId;
 
     /// <summary>
     /// Opens one correction in the marking desk. Navigation is a page key, so
@@ -59,6 +60,26 @@ public sealed class AppSession
         var resultId = _pendingResultId;
         _pendingResultId = null;
         return resultId;
+    }
+
+    /// <summary>
+    /// Opens one assignment's details page. The identity travels the same way
+    /// as a result id: the page key is the destination and the identity is
+    /// consumed by that page's load, so "open this assignment" can never land
+    /// on another.
+    /// </summary>
+    public void OpenAssignment(string courseworkId)
+    {
+        _pendingAssignmentId = courseworkId;
+        GoTo("assignment");
+    }
+
+    /// <summary>The assignment the next details load should show, if any.</summary>
+    public string? TakePendingAssignmentId()
+    {
+        var id = _pendingAssignmentId;
+        _pendingAssignmentId = null;
+        return id;
     }
 
     public void GoTo(string pageKey) => Navigate?.Invoke(pageKey);
