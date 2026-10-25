@@ -49,10 +49,13 @@ class CorrectionService:
             is_remark=is_remark,
         )
 
-    def enqueue_manual_pdf(self, *, student_name: str) -> dict:
+    def enqueue_manual_pdf(self, *, student_name: str,
+                           paper_name: str | None = None,
+                           page_count: int | None = None) -> dict:
         return self._enqueue(
             submission_id=None, coursework_id=None, course_id=None,
             student_id=None, student_name=student_name,
+            paper_name=paper_name, page_count=page_count,
         )
 
     def _enqueue(self, **kwargs) -> dict:
@@ -65,12 +68,20 @@ class CorrectionService:
             student_id=kwargs.get("student_id"),
             student_name=kwargs.get("student_name"),
             is_remark=bool(kwargs.get("is_remark")),
+            paper_name=kwargs.get("paper_name"),
+            page_count=kwargs.get("page_count"),
         )
 
     def get_correction_status(self, job_id: str) -> dict | None:
         job = db.row_to_dict(db.query_one(
             "SELECT * FROM correction_jobs WHERE id = ?", (job_id,)
         ))
+        if job:
+            # Same status -> progress normalisation the job list uses: the
+            # detail endpoint is what the Corrections page polls, so a job that
+            # finished at a stored 0.95 must read as 100% here too.
+            from ..jobs.manager import _effective_progress
+            job = _effective_progress(job)
         if job and job.get("result_id"):
             job["result"] = self.get_result(job["result_id"])
         return job
@@ -156,7 +167,14 @@ class CorrectionService:
             # job reaches a terminal state so retries can re-read them (§11:
             # cleanup happens in cleanup_job_files, called by the manager).
             stage("UPLOADING", "Uploading to Gemini…")
-            client = _make_client()
+            # Size the request budget to what actually gets sent: every page of
+            # the submission, the question paper (when present) and the scheme.
+            from .pdf_inspect import page_images
+            scheme_local = self._mark_scheme_local_path(job)
+            request_pages = (sum(page_images(p) for p in local_paths)
+                             + page_images(question_local)
+                             + page_images(scheme_local))
+            client = _make_client(pages=request_pages)
             remote_students: list = []
             remote_question = None
             for path, name in zip(local_paths, filenames):
@@ -181,6 +199,8 @@ class CorrectionService:
                         status_callback=lambda msg: stage("MARKING", msg),
                     )
                     result = legacy.normalise_result(raw_result)
+                    from .mark_integrity import enforce_evidence
+                    result, _integrity = enforce_evidence(result)
 
                     # High-score double-check (§2/§3): while the uploaded files
                     # are still remote, re-run the SAME trusted engine
@@ -206,8 +226,10 @@ class CorrectionService:
                                         "MARKING", "Double-check: " + msg),
                                     sampling=_dc.SECOND_PASS_SAMPLING,
                                 )
+                                _second = legacy.normalise_result(raw2)
+                                _second, _ = enforce_evidence(_second)
                                 dc_outcome = {
-                                    "second_result": legacy.normalise_result(raw2),
+                                    "second_result": _second,
                                     "second_marking_model": second_model,
                                     "error": None,
                                 }
@@ -319,35 +341,46 @@ class CorrectionService:
 
     # -- mark scheme ----------------------------------------------------------------
 
-    def _get_mark_scheme(self, job: dict, client):
-        """Upload the assignment mark scheme (cached per coursework on disk)."""
-        coursework_id = job.get("coursework_id")
-        scheme_dir = _mark_scheme_dir()
-        scheme_dir.mkdir(parents=True, exist_ok=True)
+    def _mark_scheme_local_path(self, job: dict) -> str | None:
+        """Local file of this job's mark scheme, if one is on disk.
 
+        Shared by the upload (``_get_mark_scheme``) and the request-size
+        estimate, so the page budget counts the SAME file that is uploaded.
+        """
+        coursework_id = job.get("coursework_id")
         if coursework_id:
-            cached = scheme_dir / f"{coursework_id}.pdf"
+            cached = _mark_scheme_dir() / f"{coursework_id}.pdf"
             if cached.exists():
-                return client.upload_file(str(cached))
+                return str(cached)
             pending = db.query_one(
                 "SELECT path FROM pending_mark_schemes WHERE coursework_id = ?",
                 (coursework_id,),
             )
             if pending and Path(pending["path"]).exists():
-                return client.upload_file(pending["path"])
-            raise RuntimeError(
-                "No mark scheme has been uploaded for this assignment yet. "
-                "Upload it on the Classroom page before starting corrections."
-            )
+                return pending["path"]
+            return None
 
         pending = db.query_one(
             "SELECT path FROM pending_manual_files WHERE job_id = ? AND kind = 'mark_scheme'",
             (job["id"],),
         )
-        if not pending or not Path(pending["path"]).exists():
+        if pending and Path(pending["path"]).exists():
+            return pending["path"]
+        return None
+
+    def _get_mark_scheme(self, job: dict, client):
+        """Upload the assignment mark scheme (cached per coursework on disk)."""
+        _mark_scheme_dir().mkdir(parents=True, exist_ok=True)
+        path = self._mark_scheme_local_path(job)
+        if path is None:
+            if job.get("coursework_id"):
+                raise RuntimeError(
+                    "No mark scheme has been uploaded for this assignment yet. "
+                    "Upload it on the Classroom page before starting corrections."
+                )
             raise RuntimeError("No mark scheme uploaded for this correction.")
         # Local copy is kept until terminal cleanup so retries can re-upload.
-        return client.upload_file(pending["path"])
+        return client.upload_file(path)
 
     def cleanup_job_files(self, job_id: str) -> None:
         cleanup_job_files(job_id)
@@ -387,15 +420,23 @@ class CorrectionService:
                 result, double_check_outcome.get("second_result"),
                 second_marking_model=double_check_outcome.get(
                     "second_marking_model"),
-                error=double_check_outcome.get("error"))
+                error=double_check_outcome.get("error"),
+                first_marking_model=marking_model)
             if dc["final_result"] is not result:
                 verification = verify_result(dc["final_result"])
             if dc["second_result"] is not None:
                 dc["verification"] = verify_result(dc["second_result"])
             earned, available, percentage = dc["final"]
 
+        # Same rule as the worker pool: a paper marked by the fallback model
+        # rather than the configured primary is stored but never presented as
+        # a routine result — the two models do not award the same partial
+        # credit, so its total is not reproducible on a healthy primary.
+        _configured = list(get_config().gemini.primary_models or [])
         confidence, confidence_reasons = assess_confidence(
-            dc["final_result"], verification, earned, available)
+            dc["final_result"], verification, earned, available,
+            marking_model=marking_model,
+            primary_model=_configured[0] if _configured else None)
         # Submission-quality validation (§9) mirrors the worker-pool path: a
         # blank/unreadable/wrong-assignment submission is never a trusted score.
         submission_quality = assess_submission_quality(result, verification_first)
@@ -421,8 +462,14 @@ class CorrectionService:
                 force=False,
             )
             # Review when EITHER the guard OR the double-check asks for it.
-            review_flag = 1 if (decision.review_required
-                                or dc["review_required"]) else 0
+            from ..config import is_trusted_marking_model
+            review_flag = 1 if (
+                decision.review_required
+                or dc["review_required"]
+                or verification.get("review_required")
+                or verification.get("status") not in (None, "VALID")
+                or not is_trusted_marking_model(marking_model)
+            ) else 0
             # ---- remark: record the attempt, apply NOTHING (§Remark) --------
             # A re-mark must never destroy a valid correction, so it is stored
             # as a PENDING attempt for the teacher to accept or dismiss. The
@@ -565,9 +612,15 @@ def _mark_scheme_dir() -> Path:
     return data_dir() / "mark_schemes"
 
 
-def _make_client():
+def _make_client(pages: int = 0):
+    """A key-rotating client whose request budget matches the paper's size.
+
+    ``pages`` is the number of page images the marking request will carry; the
+    proxy turns it into a per-request timeout (a 41-page paper needs minutes,
+    a 70-page booklet more). 0 keeps the configured floor.
+    """
     from ..gemini.client_proxy import KeyAwareClient
-    return KeyAwareClient(KeyManagerHolder.instance())
+    return KeyAwareClient(KeyManagerHolder.instance(), pages=pages)
 
 
 def cleanup_job_files(job_id: str) -> None:
@@ -637,6 +690,18 @@ def cleanup_job_files(job_id: str) -> None:
             from ..gemini.tester import KeyManagerHolder
             client = KeyAwareClient(KeyManagerHolder.instance())
             for entry in files:
+                if file_registry.remote_held_by_other_active_jobs(
+                        entry["remote_name"], job_id, _ACTIVE_JOB_STATUSES):
+                    # Eight simultaneous corrections of one paper share a single
+                    # upload; the first job to finish used to delete it and the
+                    # others then died on 403 PERMISSION_DENIED. The last job
+                    # holding the file deletes it.
+                    log_event("engine.service",
+                              "provider file kept for another active job",
+                              job_id=job_id,
+                              remote=entry["remote_name"],
+                              purpose=entry["purpose"])
+                    continue
                 client.delete_remote_for_key(entry["fingerprint"],
                                             entry["remote_name"])
         file_registry.clear_job_files(job_id)

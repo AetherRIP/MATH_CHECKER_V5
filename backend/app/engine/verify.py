@@ -63,12 +63,35 @@ def partial_summary(verification: dict | None) -> dict | None:
     }
 
 
+def _over(question: dict) -> bool:
+    """Does this row claim more marks than its own maximum?"""
+    try:
+        return float(question.get("awarded_marks") or 0) > \
+            float(question.get("max_marks") or 0)
+    except (TypeError, ValueError):
+        return False
+
+
+def _add_warning(warnings: list[str], text: str) -> None:
+    """Append a warning once. The same condition can be reached twice (a
+    question-level reason and a blueprint-level one); reporting it twice reads
+    as two separate problems."""
+    if text and text not in warnings:
+        warnings.append(text)
+
+
 def verify_result(result: dict, blueprint_report: dict | None = None) -> dict:
     """Return the legacy result plus a ``verification`` report.
 
     Recomputes totals with the legacy ``calculate_totals`` (which reads
     per-question awarded/max marks) and compares against any totals the
     pipeline stored; never alters question-level marks.
+
+    ``earned`` is the sum the questions actually claim, even when that exceeds
+    ``available`` (a broken model response can award 5 marks out of 4). It is
+    NOT clamped here — silently lowering a mark is exactly what this module
+    must never do — so a score above the paper's maximum stays visible and is
+    reported as ``over_available`` with an explicit warning instead.
     """
     anomalies: list[str] = []
     warnings: list[str] = []
@@ -211,13 +234,77 @@ def verify_result(result: dict, blueprint_report: dict | None = None) -> dict:
     for note in result.get("uncertainties", []) or []:
         warnings.append(f"Marker flagged: {note}")
 
-    status = STATUS_VALID if not anomalies and not review_questions else STATUS_REVIEW
+    # 6b. The mark scheme's OWN verification verdict travels with the result.
+    #
+    # A scheme the app itself could not verify (NEEDS_REPAIR / NEEDS_MANUAL_
+    # REVIEW) makes the whole correction untrusted.  This used to append a
+    # warning while leaving the result status VALID, so TEST 2/3 were stored
+    # with review_required=0 even though the blueprint had 37 anomalies and
+    # explicitly said "no expected answer" for every question.
+    #
+    # The audit that decides whether the extracted structure is trustworthy
+    # records NEEDS_REPAIR (or NEEDS_MANUAL_REVIEW) when its independent checks
+    # did not confirm the scheme — a printed total that disagrees with its
+    # parts, a page range that could not be read, and so on. That verdict
+    # reached the stored result only as an unread field inside
+    # ``verification.blueprint``, so a paper marked against a scheme the app had
+    # itself refused to vouch for read as an ordinary, valid correction. It is
+    # surfaced here as a warning — appended after the per-question reasons so
+    # the existing warning order is unchanged — with the marks untouched.
+    scheme_review_required = False
+    if blueprint_report:
+        scheme_state = str(blueprint_report.get("verification_state")
+                           or "").upper()
+        completeness = blueprint_report.get("completeness") or {}
+        scheme_review_required = bool(
+            blueprint_report.get("review_required")
+            or blueprint_report.get("review_warnings"))
+        if scheme_state in ("NEEDS_REPAIR", "NEEDS_MANUAL_REVIEW",
+                            "REPAIRING", "REVERIFYING"):
+            scheme_review_required = True
+            detail = ""
+            verdict_text = str(completeness.get("verdict") or "").strip()
+            if completeness.get("unresolved") and verdict_text:
+                detail = f" ({verdict_text})"
+            _add_warning(
+                warnings,
+                f"The mark scheme structure this paper was marked against is "
+                f"{scheme_state}{detail}: the app's own check did not confirm "
+                f"the scheme. The marks are unchanged, but verify the scheme "
+                f"before the grade is used.")
+
+    # 7. A score above the paper's maximum can only come from a question
+    #    claiming more than its own allowance. It is REPORTED, never clamped:
+    #    the awarded number stays exactly what the marking produced, and the
+    #    difference is named so "8 / 7" can never be read as a routine mark.
+    over_available = max(0, earned - available)
+    if over_available:
+        offenders = [
+            f"question {q.get('question_number')} "
+            f"({q.get('awarded_marks')} of {q.get('max_marks', 0)})"
+            for q in questions
+            if _over(q)
+        ]
+        _add_warning(
+            warnings,
+            f"The awarded total ({earned:g}) exceeds the {available:g} marks "
+            f"available by {over_available:g}"
+            + (f" — {', '.join(offenders)}" if offenders else "")
+            + ". No mark has been changed: this correction needs a human "
+              "decision before the score is used.")
+
+    status = (STATUS_VALID if not anomalies and not review_questions
+              and not scheme_review_required else STATUS_REVIEW)
 
     return {
         "status": status,
+        "review_required": status == STATUS_REVIEW,
         "verified": len(anomalies) == 0,
+        # earned/available are the awarded and maximum sums as they stand;
+        # over_available is the part of `earned` that has no marks behind it.
         "earned": earned,
         "available": available,
+        "over_available": over_available,
         "percentage": round(percentage, 2),
         "provisional_grade": provisional_grade,
         "anomalies": anomalies,

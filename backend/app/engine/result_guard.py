@@ -83,15 +83,35 @@ def percentage_of(earned, available) -> float:
 
 
 def assess_confidence(result: dict, verification: dict, earned: int,
-                      available: int) -> tuple[str, list[str]]:
+                      available: int, *, marking_model: str | None = None,
+                      primary_model: str | None = None) -> tuple[str, list[str]]:
     """Return ``(level, reasons)`` for one freshly produced result.
 
     Deterministic validation of the AI output *before* it is trusted:
     impossible values, missing structure, and structural review signals from
     the verification layer all reduce confidence. This never changes a mark —
     it only decides how much a human should look at it.
+
+    ``marking_model`` / ``primary_model`` make a MODEL SWITCH visible. The
+    same paper re-run on the same model is reproducible (measured: five runs
+    of a 15-page scan against a 26-page scheme, identical per-question marks),
+    but the configured fallback model is not interchangeable with the primary:
+    on that paper gemini-3.8-flash awarded 70/103 and gemini-3.6-flash 76/103,
+    differing on 10 of 31 questions. When a 503/timeout pushes the engine onto
+    the fallback, the marks are still saved — they are simply never presented
+    as a routine result, because a repeat run on a healthy primary would not
+    reproduce them.
     """
     reasons: list[str] = []
+    switched = bool(marking_model and primary_model
+                    and marking_model != primary_model)
+    if switched:
+        reasons.append(
+            f"Marked by {marking_model} instead of the configured primary "
+            f"{primary_model}, which was unavailable. Different models award "
+            f"different partial credit for the same answer, so a repeat run "
+            f"can produce a different total; review (or re-run once the "
+            f"primary is healthy) before releasing this grade.")
 
     # --- Hard validation failures: the result cannot be trusted at all. ------
     failed = False
@@ -128,6 +148,9 @@ def assess_confidence(result: dict, verification: dict, earned: int,
                        f"reported.")
 
     if verification.get("status") != "VALID" or anomalies:
+        return LOW, reasons
+
+    if switched:
         return LOW, reasons
 
     warnings = verification.get("warnings") or []

@@ -193,16 +193,17 @@ def test_submission_review_confidence_is_untrusted():
 # Independent second correction: a DIFFERENT model leads the second pass
 # ---------------------------------------------------------------------------
 
-def test_second_pass_rotates_to_a_different_model():
+def test_second_pass_uses_only_other_models():
     from app.engine.double_check import second_pass_models
     chain = ["m1", "m2", "m3"]
-    assert second_pass_models(chain, "m1") == ["m2", "m3", "m1"]
-    assert second_pass_models(chain, "m2") == ["m3", "m1", "m2"]
+    assert second_pass_models(chain, "m1") == ["m2", "m3"]
+    assert second_pass_models(chain, "m2") == ["m1", "m3"]
 
 
-def test_second_pass_keeps_fallback_when_only_one_model():
+def test_second_pass_refuses_to_reuse_the_first_model():
     from app.engine.double_check import second_pass_models
-    assert second_pass_models(["m1"], "m1") == ["m1"]
+    # No independent model means no confirmation, not a self-confirmation.
+    assert second_pass_models(["m1"], "m1") == []
     assert second_pass_models([], "m1") == []
     # Unknown first model: chain unchanged.
     assert second_pass_models(["m1", "m2"], "zzz") == ["m1", "m2"]

@@ -157,6 +157,24 @@ class TestChunkAcceptanceGates:
         assert config["response_mime_type"] == "application/json"
         assert config["response_schema"] is si.CHUNK_SCHEMA
 
+    def test_sampling_overrides_reach_the_request(self):
+        """The page-scoped read must run at temperature 0 + a fixed seed.
+
+        At the provider default the same mark scheme was read differently by
+        every request, and because this read is authoritative it replaced the
+        structure: eight simultaneous corrections of one paper produced four
+        different totals (76, 76, 75, 76, 76, 72, 73, 76).
+        """
+        chunk = si.PageChunk(id="p1-1", pages=(1,))
+        client = FakeClient([_Response(payload([question(1)]))])
+        si.extract_chunk(client, chunk, rendered=rendered(chunk), model="m",
+                         config_extra={"temperature": 0.0, "seed": 42})
+        config = client.models.calls[0]["config"]
+        assert config["temperature"] == 0.0
+        assert config["seed"] == 42
+        # The output budget must survive the override, not be replaced by it.
+        assert config["max_output_tokens"] == si.MAX_OUTPUT_TOKENS
+
     def test_page_number_and_index_are_not_confused_with_content(self):
         """The prompt states which pages the images are, in order."""
         chunk = si.PageChunk(id="p6-11", pages=(6, 7, 8, 9, 10, 11))

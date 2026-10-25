@@ -189,11 +189,16 @@ def _worker_result(job_id: str, awarded: int, maximum: int, *,
         job_id=job_id, worker_id="W1", status="COMPLETED", ok=True,
         result={"questions": [{"question_number": "1", "awarded_marks": awarded,
                                "max_marks": maximum}]},
-        marking_model="gemini-test", processing_seconds=1.0,
+        # A real child marks with a configured model; a fake name would now be
+        # read as "marked by a fallback" (result_guard.assess_confidence).
+        marking_model=config.get_config().gemini.primary_models[0],
+        processing_seconds=1.0,
         fingerprint="fp", blueprint_report=None,
         double_check_triggered=(second is not None or dc_error is not None),
         second_result=second,
-        second_marking_model="gemini-test" if second else None,
+        # A genuinely different model: the same-model case is a non-independent
+        # run and has its own regression test (test_mark_integrity.py).
+        second_marking_model="gemini-test-second" if second else None,
         double_check_error=dc_error,
     )
 

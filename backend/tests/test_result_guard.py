@@ -63,6 +63,41 @@ class TestConfidence:
         level, _ = rg.assess_confidence(result, verification, 2, 5)
         assert level == rg.MEDIUM
 
+    def test_primary_model_result_stays_high(self):
+        """Naming the model that marked must not weaken a normal result."""
+        result = _result([_q(1, 5, 5)])
+        level, reasons = rg.assess_confidence(
+            result, _verification(), 5, 5,
+            marking_model="gemini-3.8-flash",
+            primary_model="gemini-3.8-flash")
+        assert level == rg.HIGH
+        assert not any("instead of the configured primary" in r for r in reasons)
+
+    def test_fallback_model_is_never_a_routine_high(self):
+        """A fallback model marks the same paper differently — say so.
+
+        Measured on one 15-page scan against a 26-page scheme: the primary
+        gave 70/103 and the fallback 76/103, differing on 10 of 31 questions.
+        A repeat run on a healthy primary would therefore not reproduce this
+        total, so the marks are kept but the result cannot look routine.
+        """
+        result = _result([_q(1, 5, 5)])
+        level, reasons = rg.assess_confidence(
+            result, _verification(), 5, 5,
+            marking_model="gemini-3.6-flash",
+            primary_model="gemini-3.8-flash")
+        assert level == rg.LOW
+        assert any("instead of the configured primary" in r for r in reasons)
+
+    def test_model_switch_cannot_upgrade_a_low_result(self):
+        result = _result([_q(1, 2, 5)])
+        verification = _verification(status="REVIEW", review=["3"])
+        level, _ = rg.assess_confidence(
+            result, verification, 2, 5,
+            marking_model="gemini-3.6-flash",
+            primary_model="gemini-3.8-flash")
+        assert level == rg.LOW
+
 
 class TestOverwriteProtection:
     def test_insert_when_nothing_stored(self):

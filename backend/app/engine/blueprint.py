@@ -1581,11 +1581,20 @@ def verify_with_inventory(client, mark_scheme_path: str | Path, *,
                                   "attempts": int(((record.get("verification") or {}).get("attempts") or 0)) + 1})
         if status_callback:
             status_callback("Reading the mark scheme page by page…")
+        # Deterministic sampling for the page-scoped read as well: this read is
+        # AUTHORITATIVE (it can replace the stored structure), and at the
+        # provider's default temperature the same scheme was read differently
+        # by every request. Eight simultaneous corrections of one paper then
+        # produced four different totals (76, 76, 75, 76, 76, 72, 73, 76) even
+        # though the marking call itself is reproducible. The extraction stage
+        # already pins temperature 0 + seed; the verification read now matches
+        # it, so two jobs reading the same scheme read the same pages.
         outcome = si.extract_inventory(
             client, path,
             window=int(window or si.CHUNK_WINDOW_PAGES),
             overlap=int(overlap if overlap is not None else si.CHUNK_OVERLAP_PAGES),
             dpi=int(dpi or si.PAGE_DPI),
+            config_extra=dict(legacy.DETERMINISTIC_SAMPLING),
             on_chunk=(lambda chunk_result: status_callback(_chunk_message(chunk_result))
                       if status_callback else None))
     except Exception as exc:  # noqa: BLE001 — nothing is destroyed by a failure

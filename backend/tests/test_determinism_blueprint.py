@@ -519,3 +519,33 @@ class TestMidJobKeyRotation:
         assert [k for k, _ in uploads] == [keys[0], keys[1]]
         # the SAME model was retried on the second key — no model fallback
         assert generates == [(keys[0], "m1"), (keys[1], "m1")]
+
+
+# ------------------------------------------------- 5. page-scoped verification
+class TestInventoryVerificationSampling:
+    """The authoritative page-scoped read must request the same sampling.
+
+    Eight simultaneous corrections once produced four different totals because
+    every verification read of the same mark scheme invented a different
+    structure at the provider's default temperature. The call site is the only
+    thing that can enforce that, so it is asserted directly.
+    """
+
+    def test_verification_read_pins_deterministic_sampling(
+            self, fresh_state, tmp_path, monkeypatch):
+        from app.engine import scheme_inventory as si
+
+        seen: dict = {}
+
+        def fake_extract(client, path, **kwargs):
+            seen.update(kwargs)
+            raise RuntimeError("captured the call")
+
+        monkeypatch.setattr(si, "extract_inventory", fake_extract)
+        path = tmp_path / "scheme.pdf"
+        path.write_bytes(b"%PDF-1.4 fake mark scheme content")
+
+        out = bp.verify_with_inventory(object(), path)
+
+        assert seen.get("config_extra") == dict(legacy.DETERMINISTIC_SAMPLING)
+        assert out["ok"] is False

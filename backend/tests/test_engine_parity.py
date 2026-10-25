@@ -119,7 +119,7 @@ def _launch_both(parity_env) -> tuple:
         def lease_key(self):
             return f"fp-{self.tag}"
 
-        def start_job(self, wjob):
+        def start_job(self, wjob, on_progress=None):
             captured.append(wjob)
 
     pool = WorkerPool(worker_count=1)

@@ -59,6 +59,7 @@ DISAGREE_SECOND_LOWER = "SECOND_LOWER"      # second < first within threshold
 DISAGREE_SECOND_HIGHER = "SECOND_HIGHER"    # low-score check: second > first within threshold
 DISAGREE_MAJOR = "MAJOR_DISAGREEMENT"       # the two passes differ far more than allowed
 DISAGREE_UNKNOWN = "UNKNOWN"                # second correction failed
+DISAGREE_NOT_INDEPENDENT = "NOT_INDEPENDENT"  # both passes used the same model
 
 # Which suspicious end of the scale triggered the check (§7).
 DIRECTION_HIGH = "HIGH"   # first looked suspiciously high (catch inflated marks)
@@ -74,25 +75,19 @@ SECOND_PASS_SAMPLING: dict = {"temperature": 0.0, "seed": 20260101}
 
 
 def second_pass_models(model_chain: list[str], first_model: str | None) -> list[str]:
-    """Model chain for the SECOND pass, led by a DIFFERENT model when possible.
+    """Model chain for the SECOND pass: only models that are genuinely OTHER.
 
-    Why: at temperature 0 the same model given the same inputs tends to return
-    the same marks, which would make the double-check a confirmation by
-    construction instead of an independent evaluation (the observed "recheck
-    always agrees" failure). Rotating to the next healthy model in the chain
-    gives a genuinely different evaluation of the same evidence; if every other
-    model fails, the chain still falls back to the first pass's model (a weak
-    check is better than none, and the disagreement logic still applies).
+    At temperature 0 the same model given the same inputs repeats its reading
+    of the page; a re-run of it is a confirmation by construction, not an
+    independent check.  Live evidence: TEST 3's two 103/103 passes both fell
+    through the same 503s to ``gemini-3.5-flash-lite`` and were stored as
+    MATCHING.  If no other model is configured/healthy the double-check must
+    fail honestly (and the result go to review), never re-ask the first model.
     """
     models = [m for m in (model_chain or []) if m]
-    if not models:
+    if not models or not first_model:
         return models
-    if first_model and first_model in models and len(models) > 1:
-        idx = models.index(first_model)
-        rotated = models[idx + 1:] + models[:idx + 1]
-        # The first-pass model stays in the chain as the LAST resort.
-        return rotated
-    return models
+    return [m for m in models if m != first_model]
 
 
 def threshold() -> float:
@@ -349,7 +344,8 @@ def _decide_low(first_earned: int, first_available: int, first_percentage: float
 
 def combine(first_result: dict, second_result: dict | None,
             second_marking_model: str | None = None,
-            error: str | None = None) -> dict:
+            error: str | None = None,
+            first_marking_model: str | None = None) -> dict:
     """Shared persistence-side helper: combine a first correction with the
     outcome of its independent double-check into the state to persist.
 
@@ -408,6 +404,29 @@ def combine(first_result: dict, second_result: dict | None,
         error=None,
         question_differences=decision.question_differences,
     )
+
+    # A "second opinion" from the SAME model is not independent: at
+    # temperature 0 it repeats the first pass's reading of the page.  This is
+    # exactly how a fabricated 103/103 was certified as MATCHING when both
+    # passes fell through the same 503s to gemini-3.5-flash-lite.  Keep the
+    # marks, but never present that as a confirmed score.
+    from ..config import is_trusted_marking_model
+    same_model = bool(first_marking_model and second_marking_model
+                      and first_marking_model == second_marking_model)
+    weak_model = bool(second_marking_model
+                      and not is_trusted_marking_model(second_marking_model))
+    if same_model or weak_model:
+        why = ("the same model" if same_model
+               else "a lightweight model")
+        note = (f"The independent second correction used {why} "
+                f"({second_marking_model}), so it cannot confirm the first "
+                f"pass. Both corrections are preserved and a teacher must "
+                f"review the score before it is used.")
+        out["status"] = STATUS_REVIEW_REQUIRED
+        out["disagreement_status"] = DISAGREE_NOT_INDEPENDENT
+        out["review_required"] = True
+        out["reason"] = (note if not out.get("reason")
+                         else f"{out['reason']} {note}")
     return out
 
 

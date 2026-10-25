@@ -52,7 +52,10 @@ def _worker_result(job_id: str, awarded: int, maximum: int):
         job_id=job_id, worker_id="w1", status="COMPLETED", ok=True,
         result={"questions": [{"question_number": 1, "awarded_marks": awarded,
                                "max_marks": maximum}]},
-        marking_model="gemini-test", processing_seconds=1.0,
+        # A real child marks with a configured model; a fake name would now be
+        # read as "marked by a fallback" (result_guard.assess_confidence).
+        marking_model=config.get_config().gemini.primary_models[0],
+        processing_seconds=1.0,
         fingerprint="fp", blueprint_report=None,
     )
 
