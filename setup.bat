@@ -10,6 +10,8 @@ rem Windows, so start.bat ignores it and falls back to a system Python that
 rem may not have the dependencies. This script fixes that: a foreign venv is
 rem MOVED ASIDE (never deleted) and a proper Windows venv is created.
 setlocal EnableExtensions
+rem Set MC5_NONINTERACTIVE=1 when this file is driven by a script (setup_windows.ps1):
+rem every "pause" then returns immediately instead of waiting for a keypress.
 cd /d "%~dp0"
 
 rem --- find Python ---------------------------------------------------------
@@ -22,7 +24,7 @@ if not defined PYEXE (
   echo   Install Python 3.12 or later from https://www.python.org/downloads/
   echo   and tick "Add Python to PATH", then run setup.bat again.
   echo.
-  pause
+  if not "%MC5_NONINTERACTIVE%"=="1" pause
   exit /b 1
 )
 
@@ -42,7 +44,7 @@ if not exist "%~dp0.venv\Scripts\python.exe" (
   echo.
   echo   Could not create the virtual environment. See the messages above.
   echo.
-  pause
+  if not "%MC5_NONINTERACTIVE%"=="1" pause
   exit /b 1
 )
 
@@ -57,9 +59,64 @@ if errorlevel 1 (
   echo   Dependency installation failed. Check your internet connection and
   echo   run setup.bat again.
   echo.
-  pause
+  if not "%MC5_NONINTERACTIVE%"=="1" pause
   exit /b 1
 )
+
+rem --- Microsoft Visual C++ runtime ----------------------------------------
+rem Several dependencies ship compiled extensions (PyMuPDF, cryptography,
+rem Pillow). Windows does not include their C++ runtime by default, and a fresh
+rem Windows installation has no MSVCP140.dll: pip installs successfully and the
+rem import then fails with "DLL load failed while importing _extra". PyMuPDF is
+rem what reads and renders mark-scheme PDFs, so this cannot be left to chance.
+if exist "%SystemRoot%\System32\msvcp140.dll" goto :vc_runtime_ok
+echo.
+echo   WARNING: the Microsoft Visual C++ 2015-2022 x64 runtime is missing
+echo   ^(System32\msvcp140.dll was not found^). PyMuPDF, cryptography and Pillow
+echo   need it; PDF features fail to import until it is installed.
+echo   Install it once with administrator approval, then run setup.bat again:
+echo.
+echo       winget install --id Microsoft.VCRedist.2015+.x64
+echo.
+:vc_runtime_ok
+
+rem --- the web interface is generated, never shipped ------------------------
+rem frontend\dist is git-ignored (it is build output), so a fresh clone has no
+rem interface to serve: the server starts and every page is empty. Build it
+rem here when Node.js is available, and say exactly what to run when it is not.
+if exist "%~dp0frontend\dist\index.html" goto :ui_ready
+where npm >nul 2>nul
+if errorlevel 1 goto :ui_no_node
+echo   Building the web interface into frontend\dist ...
+pushd "%~dp0frontend"
+call npm ci
+if errorlevel 1 goto :ui_build_failed
+call npm run build
+if errorlevel 1 goto :ui_build_failed
+popd
+goto :ui_ready
+:ui_build_failed
+popd
+echo.
+echo   The interface build failed. See the messages above, then run:
+echo       cd frontend
+echo       npm ci
+echo       npm run build
+goto :ui_ready
+:ui_no_node
+if exist "%~dp0frontend\dist\index.html" goto :ui_ready
+echo.
+echo   NOTE: frontend\dist is missing and npm was not found, so there is no
+echo   web interface to serve yet - the server would start and the browser
+echo   would show an empty page. Install Node.js 20 or later from
+echo   https://nodejs.org/ or with: winget install OpenJS.NodeJS.LTS
+echo   Then run:
+echo.
+echo       cd frontend
+echo       npm ci
+echo       npm run build
+echo.
+:ui_ready
 
 rem --- automatic startup: OFF unless it is asked for ----------------------
 rem Setup does NOT register automatic startup. A boot-time SYSTEM task runs
@@ -96,8 +153,11 @@ echo.
 echo   Setup complete.
 echo     * Start the app now with:  start.bat
 rem (setup does not touch startup; run 'setup.bat /autostart' to add it)
-echo     * The frontend is prebuilt in frontend\dist; only run "npm install"
-echo       and "npm run build" inside frontend\ if you change the UI code.
+echo     * The web interface is generated build output in frontend\dist.
+echo       Rebuild it only after changing UI code:
+echo           cd frontend
+echo           npm ci
+echo           npm run build
 echo.
-pause
+if not "%MC5_NONINTERACTIVE%"=="1" pause
 endlocal

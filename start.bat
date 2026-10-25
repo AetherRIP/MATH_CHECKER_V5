@@ -168,7 +168,7 @@ echo   ^(frontend\dist\index.html is missing^). The server will start, but the
 echo   browser will show an empty page. Build it once, then run this file again:
 echo.
 echo       cd frontend
-echo       npm install
+echo       npm ci
 echo       npm run build
 echo.
 :ui_ready

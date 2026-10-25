@@ -17,7 +17,11 @@ reportlab>=4.0
 # PDF text extraction for mark-scheme analysis (app/engine/mark_scheme.py).
 # Required: without it analyse_document() reports "no PDF text extractor
 # available" and every mark-scheme reconstruction degrades silently.
-pymupdf>=1.24
+# Upper bound: PyMuPDF 2.0 is a new major that additionally pulls pymupdf-layout,
+# pymupdf4llm, onnxruntime and numpy into the runtime (the bundled release grows
+# by ~40 MB). The code and the suite were written and verified against the 1.x
+# API, so stay on that line; requirements-lock.txt records the exact build.
+pymupdf>=1.24,<2
 # Submission file validation + PDF/image orientation normalization.
 pypdf>=4.0
 Pillow>=10.0

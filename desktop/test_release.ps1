@@ -64,7 +64,7 @@ function Save-WindowShot([IntPtr]$handle, [string]$path) {
     return $path
 }
 
-$exeSource = Join-Path $Stage 'desktop\MATH_CHECKER_V5.exe'
+$exeSource = Join-Path $Stage 'desktop\V5.exe'
 if (-not (Test-Path $exeSource)) {
     throw "No staged release at $Stage. Run desktop\build_release.ps1 first."
 }
@@ -77,7 +77,7 @@ Write-Host "  $Stage -> $tempRoot"
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 & robocopy $Stage $tempRoot /E /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
-$exe = Join-Path $tempRoot 'desktop\MATH_CHECKER_V5.exe'
+$exe = Join-Path $tempRoot 'desktop\V5.exe'
 $dataDir = Join-Path $tempRoot 'data'
 
 $settingsPath = Join-Path $env:APPDATA 'MathCheckerDesktop\settings.json'
@@ -159,7 +159,7 @@ try {
     Write-Host "`n== A second launch must not open a second client" -ForegroundColor Cyan
     $second = Start-Process -FilePath $exe -PassThru
     Start-Sleep -Seconds 6
-    $instances = @(Get-Process -Name 'MATH_CHECKER_V5' -ErrorAction SilentlyContinue)
+    $instances = @(Get-Process -Name 'V5' -ErrorAction SilentlyContinue)
     Check 'single instance is enforced' ($instances.Count -eq 1) ("instances={0}" -f $instances.Count)
     if (-not $second.HasExited) { $second.Kill() }
 
@@ -259,7 +259,7 @@ make(sys.argv[2], ["Mark scheme", "Q1  2 marks", "Q2  2 marks"])
     Check 'backend port is closed after exit' (-not $portOpen) ("127.0.0.1:{0}" -f $Port)
 } finally {
     if ($proc -and -not $proc.HasExited) { $proc.Kill() }
-    Get-Process -Name 'MATH_CHECKER_V5' -ErrorAction SilentlyContinue | Stop-Process -Force
+    Get-Process -Name 'V5' -ErrorAction SilentlyContinue | Stop-Process -Force
     if ($hadSettings) {
         Move-Item $backupPath $settingsPath -Force
         Write-Host '  settings restored' -ForegroundColor DarkGray

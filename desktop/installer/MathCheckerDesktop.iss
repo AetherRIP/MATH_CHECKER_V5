@@ -17,7 +17,7 @@
 #define AppName "MATH_CHECKER_V5"
 #define AppVersion "1.0.0"
 #define AppPublisher "Math Checker"
-#define AppExeName "MATH_CHECKER_V5.exe"
+#define AppExeName "V5.exe"
 #define AppId "{{2C8E1F4A-9B37-4D51-8A6E-6F0D4B71C2E9}"
 
 [Setup]

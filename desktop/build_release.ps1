@@ -14,9 +14,13 @@
 #   <root>\backend\           existing backend package (unchanged)
 #   <root>\runtime\python.exe bundled Python with the backend's dependencies
 #   <root>\desktop\           the published WPF client
+#   <root>\start_desktop.bat  one file for the recipient to double-click
 #
 # The client walks up from its own folder looking for main.py and uses
-# <root>\runtime\python.exe, so no machine-wide Python install is needed.
+# <root>\runtime\python.exe, so no machine-wide Python install is needed. The
+# launcher at the root is the repository's own start_desktop.bat: it detects
+# this layout (main.py + desktop\V5.exe + runtime\python.exe beside it) and
+# starts the client, never a build, so the recipient needs no .NET or Python.
 
 [CmdletBinding()]
 param(
@@ -37,13 +41,34 @@ if ([string]::IsNullOrWhiteSpace($BackendRuntime)) {
 
 function Step([string]$text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 
+# A "dotnet" on PATH is not proof of an SDK: a runtime-only install answers to
+# the same name and then fails "publish" with "No .NET SDKs were found", which
+# used to leave an old release in artifacts. Probe each host for an SDK and use
+# the first one that has it.
+function Resolve-Dotnet {
+    $candidates = @()
+    $onPath = Get-Command dotnet -ErrorAction SilentlyContinue
+    if ($onPath) { $candidates += $onPath.Source }
+    if ($env:DOTNET_ROOT) { $candidates += (Join-Path $env:DOTNET_ROOT 'dotnet.exe') }
+    $candidates += (Join-Path $env:USERPROFILE '.dotnet\dotnet.exe')
+    $candidates += (Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe')
+    foreach ($candidate in $candidates) {
+        if (-not $candidate -or -not (Test-Path $candidate)) { continue }
+        $sdks = & $candidate --list-sdks 2>$null
+        if ($LASTEXITCODE -eq 0 -and $sdks) { return $candidate }
+    }
+    throw 'No .NET SDK was found (only a runtime, if anything). Install the .NET 10 SDK from https://dotnet.microsoft.com/download and run this script again.'
+}
+
+$dotnet = Resolve-Dotnet
+
 Step 'Publishing the WPF client (self-contained, no .NET install needed)'
 $stage = Join-Path $Output 'MATH_CHECKER_V5'
 $clientDir = Join-Path $stage 'desktop'
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $clientDir -Force | Out-Null
 
-& dotnet publish (Join-Path $desktopDir 'src\MathChecker.Desktop\MathChecker.Desktop.csproj') `
+& $dotnet publish (Join-Path $desktopDir 'src\MathChecker.Desktop\MathChecker.Desktop.csproj') `
     -c $Configuration -r $Runtime --self-contained true `
     -p:PublishSingleFile=false -p:EnableCompressionInSingleFile=false `
     -o $clientDir
@@ -64,13 +89,26 @@ if (-not (Test-Path (Join-Path $BackendRuntime 'python.exe'))) {
     throw "No bundled Python runtime at $BackendRuntime. Build it with MathChecker_Distribution\build_release.bat, or pass -BackendRuntime <folder containing python.exe>."
 }
 Copy-Item $BackendRuntime (Join-Path $stage 'runtime') -Recurse
+# The bundled runtime carries caches from the machine that built it; they are
+# regenerable and must not travel with the product.
+Get-ChildItem $stage -Recurse -Directory -Filter '__pycache__' -ErrorAction SilentlyContinue |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+Step 'Copying the one-click launcher'
+# The same file the checkout uses. Inside a release it takes the packaged
+# branch (it starts the client beside it) instead of building from source, so
+# one script serves both and there is nothing separate to keep in sync.
+$launcher = Join-Path $repoRoot 'start_desktop.bat'
+if (-not (Test-Path $launcher)) { throw "No launcher at $launcher" }
+Copy-Item $launcher $stage -Force
 
 Step 'Checking the release layout'
 $required = @(
     'main.py',
     'backend\app\main.py',
     'runtime\python.exe',
-    'desktop\MATH_CHECKER_V5.exe'
+    'desktop\V5.exe',
+    'start_desktop.bat'
 )
 foreach ($relative in $required) {
     $path = Join-Path $stage $relative
@@ -103,6 +141,15 @@ if ($SkipInstaller) {
     Write-Host ("  {0}" -f (Join-Path $Output 'MATH_CHECKER_V5_Setup.exe'))
 } else {
     Step 'Inno Setup 6 was not found: the installer was not built'
+    # A Setup.exe left by an earlier build installs THAT client, i.e. an older
+    # interface than the stage beside it. Say so loudly instead of letting a
+    # stale installer be handed out as if it matched this build.
+    $staleSetup = Join-Path $Output 'MATH_CHECKER_V5_Setup.exe'
+    if (Test-Path $staleSetup) {
+        $stamp = (Get-Item $staleSetup).LastWriteTime
+        Write-Host ("  WARNING: {0} was built {1:yyyy-MM-dd HH:mm} and still contains the older client." -f $staleSetup, $stamp) -ForegroundColor Yellow
+        Write-Host '           Do not ship it until it is rebuilt with Inno Setup 6.' -ForegroundColor Yellow
+    }
     Write-Host '  Install Inno Setup 6 (https://jrsoftware.org/isdl.php), then run:'
     Write-Host ("  iscc /DSourceDir=`"{0}`" /DOutputDir=`"{1}`" `"{2}`"" -f `
         $stage, $Output, (Join-Path $desktopDir 'installer\MathCheckerDesktop.iss'))
@@ -112,7 +159,7 @@ Step 'Done'
 $manifest = [ordered]@{
     product = 'MATH_CHECKER_V5'
     version = '1.0.0'
-    executable = 'desktop\MATH_CHECKER_V5.exe'
+    executable = 'desktop\V5.exe'
     portableFolder = 'MATH_CHECKER_V5'
     runtime = $Runtime
     selfContained = $true

@@ -6,8 +6,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <!-- The release executable is the product: MATH_CHECKER_V5.exe. -->
-    <AssemblyName>MATH_CHECKER_V5</AssemblyName>
+    <!-- The release executable is the product: V5.exe. The assembly name is
+         what Windows shows as the process name, so it is the product name
+         people double-click - keep it short. The namespaces stay
+         MathChecker.Desktop; only the executable is renamed. -->
+    <AssemblyName>V5</AssemblyName>
     <RootNamespace>MathChecker.Desktop</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\installer\app.ico</ApplicationIcon>
