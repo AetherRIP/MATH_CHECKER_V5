@@ -173,6 +173,97 @@ public sealed class JobDto
 
     public JsonElement? Bandwidth { get; set; }
 
+    /// <summary>Provider requests this correction actually sent, counted
+    /// where they are sent (detail endpoint). Zero for jobs recorded before
+    /// the ledger existed — which is shown as "not recorded", never as 0.</summary>
+    public JsonElement? AiUsage { get; set; }
+
+    /// <summary>Generation attempts across every worker attempt of this job
+    /// (list endpoint).</summary>
+    public int AiRequests { get; set; }
+
+    /// <summary>"2 AI requests · marking 2 · 1 upload" — or empty when the job
+    /// has no ledger (older rows, still-running first attempt).</summary>
+    public string AiRequestsText
+    {
+        get
+        {
+            var usage = AiUsage;
+            if (usage is null || usage.Value.ValueKind != JsonValueKind.Object)
+            {
+                return AiRequests > 0 ? $"{AiRequests} requests" : string.Empty;
+            }
+
+            var element = usage.Value;
+            var total = Int(element, "requests");
+            var stages = new List<string>();
+            if (element.TryGetProperty("by_stage", out var byStage)
+                && byStage.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var item in byStage.EnumerateObject())
+                {
+                    var count = item.Value.ValueKind == JsonValueKind.Number
+                        ? item.Value.GetInt32() : 0;
+                    if (count > 0)
+                    {
+                        stages.Add($"{item.Name.Replace('_', ' ')} {count}");
+                    }
+                }
+            }
+
+            var text = total == 1 ? "1 AI request" : $"{total} AI requests";
+            if (stages.Count > 0)
+            {
+                text += " · " + string.Join(", ", stages);
+            }
+
+            // Uploads and file lookups are provider calls too, but they are
+            // not marking work: named separately so the numbers add up.
+            var others = new List<string>();
+            if (element.TryGetProperty("by_kind", out var byKind)
+                && byKind.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var item in byKind.EnumerateObject())
+                {
+                    var count = item.Value.ValueKind == JsonValueKind.Number
+                        ? item.Value.GetInt32() : 0;
+                    if (count <= 0 || item.Name == "generate")
+                    {
+                        continue;
+                    }
+
+                    var label = item.Name == "file_get" ? "file lookup" : item.Name;
+                    others.Add($"{count} {label}{(count == 1 ? string.Empty : "s")}");
+                }
+            }
+
+            if (others.Count > 0)
+            {
+                text += " · " + string.Join(", ", others);
+            }
+
+            var skipped = Int(element, "skipped");
+            if (skipped > 0)
+            {
+                text += $" · {skipped} not sent (provider cooling)";
+            }
+
+            if (element.TryGetProperty("budget_exceeded", out var over)
+                && over.ValueKind == JsonValueKind.True)
+            {
+                text += " · stopped by the request budget";
+            }
+
+            return text;
+        }
+    }
+
+    private static int Int(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt32()
+            : 0;
+
     /// <summary>"75 / 103 · 72.8%" for a completed job whose result is loaded,
     /// otherwise empty. Marks are never shown from a job that has not
     /// finished marking and validating.</summary>
@@ -492,6 +583,93 @@ public sealed class ReviewListDto
     public int Total { get; set; }
 }
 
+/// <summary>
+/// One coded reason a correction was escalated: what happened, which pipeline
+/// stage produced it, the question it concerns, and what the teacher can do.
+/// The backend supplies the codes; this class only turns them into words, so a
+/// review never says just "low confidence".
+/// </summary>
+public sealed class ReviewReasonDto
+{
+    public string Code { get; set; } = string.Empty;
+    public string? Stage { get; set; }
+    public string? Severity { get; set; }
+    public string? Question { get; set; }
+    public string? Detail { get; set; }
+    public string? Action { get; set; }
+
+    /// <summary>True when the code was recovered from reasons this result
+    /// already stored, rather than recorded by the run itself.</summary>
+    public bool Derived { get; set; }
+
+    public string ProvenanceText => Derived
+        ? "Recovered from this result's stored reasons"
+        : string.Empty;
+
+    /// <summary>The stage line, saying when the code was recovered rather
+    /// than recorded, so a reader knows how much to trust the label.</summary>
+    public string StageLine => string.IsNullOrWhiteSpace(ProvenanceText)
+        ? StageText
+        : $"{StageText}  ·  {ProvenanceText}";
+
+    /// <summary>True for a reason that genuinely needs a person.</summary>
+    public bool NeedsHuman => string.Equals(Severity, "review", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A short heading: the code in plain words, and the question.</summary>
+    public string Title => string.IsNullOrWhiteSpace(Question)
+        ? HumanCode
+        : $"{HumanCode} · Q{Question}";
+
+    public string HumanCode => Code switch
+    {
+        "QUESTION_UNMARKED" => "Question not marked",
+        "SUBQUESTION_UNMARKED" => "Subquestion not marked",
+        "SUBQUESTION_CONFLICT" => "Two rows claim the same subquestion",
+        "QUESTION_FLAGGED" => "The marking flagged this question",
+        "SCHEME_DISAGREEMENT" => "The mark scheme disagrees with the maths",
+        "MARK_SCHEME_CONTRADICTED" => "The mark scheme contradicts itself",
+        "MARK_SCHEME_UNVERIFIED" => "The mark scheme was never confirmed",
+        "MARK_ABOVE_MAXIMUM" => "More marks than the question allows",
+        "NEGATIVE_MARK" => "A negative mark",
+        "STORED_TOTAL_MISMATCH" => "The stored total did not add up",
+        "OVER_AVAILABLE" => "More than the paper's maximum",
+        "EXTRA_QUESTION" => "A question the scheme does not declare",
+        "MAX_MARKS_CORRECTED" => "A maximum was corrected from the scheme",
+        "UNATTRIBUTED_ROWS" => "Rows with no subquestion",
+        "UNMATCHED_ROW" => "A row matched no scheme question",
+        "AWARD_CLAMPED" => "An award was clamped to its maximum",
+        "MISSING_BREAKDOWN" => "No marking-point breakdown",
+        "ZERO_MAX_MARKS" => "A question with no marks",
+        "MARKER_UNCERTAINTY" => "The marker recorded a doubt",
+        "CODE_COUNT_OVER_MAX" => "More marking points than marks",
+        "NO_QUESTIONS" => "Nothing was marked",
+        "MODEL_FALLBACK" => "Marked by the fallback model",
+        "VALIDATION_REVIEW" => "The checks asked for a review",
+        "SUBMISSION_QUALITY" => "The submission looks wrong",
+        "CORRECTION_REVIEW" => "The correction asked for a review",
+        _ => Core.UI.PayloadFacts.KeyLabel(Code),
+    };
+
+    public string StageText => Stage switch
+    {
+        "extraction" => "extraction",
+        "mapping" => "question mapping",
+        "marking" => "marking",
+        "validation" => "validation",
+        "mark_scheme" => "mark scheme",
+        _ => Stage ?? string.Empty,
+    };
+
+    public string SeverityText => NeedsHuman ? "Needs you" : "Note";
+
+    public string ActionText => string.IsNullOrWhiteSpace(Action) ? string.Empty : Action!;
+
+    /// <summary>One line for the queue's Reason column.</summary>
+    public string ShortText => string.IsNullOrWhiteSpace(Question)
+        ? HumanCode
+        : $"Q{Question}: {HumanCode}";
+}
+
 public sealed class ReviewItemDto
 {
     public string Id { get; set; } = string.Empty;
@@ -511,9 +689,24 @@ public sealed class ReviewItemDto
     public int AutomationHold { get; set; }
     public JsonElement? Partial { get; set; }
 
+    /// <summary>The coded reasons the engine recorded for this escalation.</summary>
+    public List<ReviewReasonDto> ReviewReasons { get; set; } = new();
+
+    public bool HasReviewReasons => ReviewReasons.Count > 0;
+
+    /// <summary>"2 reasons" / "1 reason" — never a bare count.</summary>
+    public string ReasonsHeading => ReviewReasons.Count == 1
+        ? "1 reason"
+        : $"{ReviewReasons.Count} reasons";
+
     public string ScoreText => $"{Earned?.ToString("0.#") ?? "—"} / {Available?.ToString("0.#") ?? "—"}";
     public string CreatedText => EpochTime.Format(CreatedAt);
-    public string ReasonsText => Json.Flatten(ConfidenceReasons);
+
+    /// <summary>The coded reason when the engine recorded one, otherwise the
+    /// confidence prose the older rows carry.</summary>
+    public string ReasonsText => ReviewReasons.Count > 0
+        ? string.Join(" · ", ReviewReasons.Select(r => r.ShortText))
+        : Json.Flatten(ConfidenceReasons);
 
     /// <summary>"HIGH" is an engine token; a person reads "High confidence".</summary>
     public string ConfidenceText => string.IsNullOrWhiteSpace(Confidence)
@@ -1017,6 +1210,32 @@ public sealed class ApiUsageDto
     public int Failovers { get; set; }
     public int Cooldowns { get; set; }
     public JsonElement? ByClass { get; set; }
+
+    /// <summary>Measured AI requests per correction (per-job ledger).</summary>
+    public AiUsageSummaryDto? Ai { get; set; }
+}
+
+public sealed class AiUsageSummaryDto
+{
+    public int Papers { get; set; }
+    public int Requests { get; set; }
+    public double? Average { get; set; }
+    public int? Median { get; set; }
+    public int? Max { get; set; }
+    public int BudgetExceeded { get; set; }
+    public int Skipped { get; set; }
+    public bool Unavailable { get; set; }
+    public Dictionary<string, int> Stages { get; set; } = new();
+
+    /// <summary>"2.0 per correction (15 corrections, max 6)" — or an explicit
+    /// "not measured yet" so the desk never shows a fabricated 0.</summary>
+    public string Text => Unavailable
+        ? "No correction has recorded its AI requests yet."
+        : $"{Average:0.##} per correction · {Requests} requests across {Papers} "
+          + $"corrections · max {Max}"
+          + (BudgetExceeded > 0
+              ? $" · {BudgetExceeded} stopped by the request budget"
+              : string.Empty);
 }
 
 public sealed class SettingsDto
@@ -1145,9 +1364,26 @@ public sealed class SetupChecksDto
 public sealed class AuthStatusDto
 {
     public bool PublicMode { get; set; }
+
+    /// <summary>The backend's authoritative "you must sign in": public mode, or
+    /// a local sign-in requirement backed by an account that exists. It is
+    /// false during first-run setup (nothing to sign in with), so a fresh
+    /// install goes straight to setup instead of asking for a password nobody
+    /// has been given. null when an older backend did not send it.</summary>
+    public bool? Required { get; set; }
+
+    /// <summary>The local sign-in setting alone (true by default, even when no
+    /// account exists). Never gate the UI on this: use <see cref="Required"/>.</summary>
     public bool LoginRequired { get; set; }
+
     public bool Authenticated { get; set; }
+
+    /// <summary>The backend's "configured": any account (or a legacy local
+    /// password) to authenticate against.</summary>
+    [JsonPropertyName("configured")]
     public bool HasAccount { get; set; }
+
+    [JsonPropertyName("username")]
     public string? User { get; set; }
     public string? Role { get; set; }
     public string? CsrfToken { get; set; }

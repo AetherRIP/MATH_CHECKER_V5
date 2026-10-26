@@ -155,6 +155,11 @@ $launchCommand = "set `"PATH=$env:SystemRoot\system32;$env:SystemRoot`" && " +
 Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') -ArgumentList '/c', $launchCommand -WindowStyle Hidden
 $windowed = Wait-Until { (Get-Process V5 -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }).Count -gt 0 } $TimeoutSeconds
 Check 'application window opened' $windowed "within ${TimeoutSeconds}s"
+# A fresh install has no account, so it must not be asked for one: the sign-in
+# dialog used to appear here and could never be satisfied.
+$titles = @(Get-Process V5 -ErrorAction SilentlyContinue | ForEach-Object { $_.MainWindowTitle })
+$prompts = @($titles | Where-Object { $_ -match 'Sign in' })
+Check 'no sign-in prompt on a fresh install' ($prompts.Count -eq 0) ($titles -join '; ')
 
 $backend = $null
 $healthy = Wait-Until {

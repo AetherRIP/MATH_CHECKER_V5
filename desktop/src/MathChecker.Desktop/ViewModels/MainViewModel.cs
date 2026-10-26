@@ -5,6 +5,7 @@ using MathChecker.Desktop.Core.Backend;
 using MathChecker.Desktop.Core.Mvvm;
 using MathChecker.Desktop.Core.Sync;
 using MathChecker.Desktop.Core.UI;
+using MathChecker.Desktop.Models;
 
 namespace MathChecker.Desktop.ViewModels;
 
@@ -333,7 +334,7 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             var auth = await _session.Api.RefreshSessionAsync().ConfigureAwait(true);
-            if (auth.LoginRequired && !auth.Authenticated)
+            if (RequiresSignIn(auth))
             {
                 var signedIn = Views.SignInWindow.Prompt(_session, auth);
                 if (!signedIn)
@@ -356,6 +357,19 @@ public sealed class MainViewModel : ObservableObject
                      ?? Pages.First();
         Current = target;
     }
+
+    /// <summary>
+    /// Does this launch need a sign-in before anything else?
+    ///
+    /// The decision belongs to the backend: <c>required</c> is false during
+    /// first-run setup, when there is no account to sign in with. Gating on the
+    /// raw <c>login_required</c> setting instead asked a brand-new installation
+    /// for a password it had never created, which left the window unusable.
+    /// The fallback keeps an older backend safe: a local requirement plus an
+    /// account to authenticate against still prompts.
+    /// </summary>
+    internal static bool RequiresSignIn(AuthStatusDto auth) =>
+        !auth.Authenticated && (auth.Required ?? (auth.LoginRequired && auth.HasAccount));
 
     private async Task OfferFirstRunSetupAsync()
     {

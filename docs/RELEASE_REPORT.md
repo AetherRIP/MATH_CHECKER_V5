@@ -8,8 +8,8 @@ comes from the artefacts in `release\` and from the verification runs listed in
 
 | Item | Path | Size | SHA-256 |
 |---|---|---|---|
-| Installer | `release\MathChecker-Setup-x64-1.0.0.exe` | 78.0 MB | `0dfa8cff60f1ab17201106dad1196811461e51408dff13c5e5212ac7fb4571d5` |
-| Portable ZIP | `release\MathChecker-Portable-x64-1.0.0.zip` | 107.3 MB | `1ecc60ec1361aac31a2744f52ba3566080035b26149802843bcbf29607424222` |
+| Installer | `release\MathChecker-Setup-x64-1.0.0.exe` | 78.0 MB | `611ffb411109dd8ab2c16fcdfef8bca56a3de5c5aac7d437c02f34999e17bb1e` |
+| Portable ZIP | `release\MathChecker-Portable-x64-1.0.0.zip` | 107.3 MB | `bc6343273bd54b5424c987dc456008c96917234141693728576f2f277da814b3` |
 | Staged tree (input to both) | `desktop\artifacts\MATH_CHECKER_V5` | 258.5 MB | — |
 | Build record | `release\release_manifest.json` | — | — |
 
@@ -87,10 +87,10 @@ Recorded in `release\release_manifest.json`:
 
 ### Desktop test suite
 
-`dotnet test desktop\tests\MathChecker.Desktop.Tests` → **260 passed, 0 failed,
-0 skipped** (2 m 10 s).
+`dotnet test desktop\tests\MathChecker.Desktop.Tests` → **265 passed, 0 failed,
+0 skipped** (2 m 9 s).
 
-### Installer verification — `desktop\verify_installer.ps1`, 32 checks, 0 failed
+### Installer verification — `desktop\verify_installer.ps1`, 33 checks, 0 failed
 
 Silent install of `MathChecker-Setup-x64-1.0.0.exe` into a fresh temp folder,
 with `%LOCALAPPDATA%\MathChecker` moved aside first so the launch is a genuine
@@ -101,7 +101,10 @@ first launch:
   “Math Checker 1.0.0” with the matching registry version; no `data\` folder
   inside the installation; no developer path inside the installed binaries;
 * launched through `cmd` with `PATH` reduced to `System32` and `DOTNET_ROOT`,
-  `MC5_DATA_DIR`, `MC5_DEMO`, `MC5_LOGIN_REQUIRED` cleared — the window opened,
+  `MC5_DATA_DIR`, `MC5_DEMO`, `MC5_LOGIN_REQUIRED` cleared — the window opened
+  with the main window on top and **no sign-in prompt** (a fresh install has no
+  account; an earlier build gated the UI on the raw `login_required` setting
+  and asked for a password that could not exist),
   its backend came from the installed folder
   (`…\runtime\python.exe main.py --serve 8642`), answered `/api/health`, created
   `%LOCALAPPDATA%\MathChecker\app.db`, reported the per-user data folder, and
@@ -165,7 +168,7 @@ Then verify the artefact itself:
 powershell -ExecutionPolicy Bypass -File desktop\verify_installer.ps1
 ```
 
-It exits 0 only if all 32 checks pass and leaves a timestamped report in
+It exits 0 only if all 33 checks pass and leaves a timestamped report in
 `docs\logs\INSTALLER_VERIFY_*.txt`.
 
 ## Installer size
