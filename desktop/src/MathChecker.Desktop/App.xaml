@@ -21,6 +21,7 @@
             <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
             <conv:ZeroToVisibilityConverter x:Key="ZeroToVis" />
             <conv:NonZeroToVisibilityConverter x:Key="NonZeroToVis" />
+            <conv:OrdinalConverter x:Key="Ordinal" />
 
             <!-- View-model to view mapping. Navigation shows a view model; WPF
                  picks the view. Adding a page never changes the shell. -->

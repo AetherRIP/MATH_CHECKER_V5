@@ -50,12 +50,16 @@ public sealed class ClassroomViewModel : PageViewModel
     public ClassroomViewModel(AppSession session)
         : base(session, "classroom", "Classroom")
     {
+        // The four tabs are the order a teacher works in, so they are numbered
+        // like the steps on the correction pages: connect, choose the
+        // assignment, read its submissions, write the marks back. The page's
+        // body prints the detail line of the open step under the tab strip.
         Tabs = new ObservableCollection<ClassroomTabVm>
         {
-            new("connection", "Connection", "Account, sync and the backend's last answer"),
-            new("assignments", "Assignments", "Allow-list, mark scheme and bulk correction"),
-            new("submissions", "Submissions", "Every paper in the chosen assignment"),
-            new("grades", "Grades", "Write draft marks back to Google Classroom"),
+            new("connection", "1 · Connection", "Signing in to the teacher's Google account, syncing, and the backend's last answer."),
+            new("assignments", "2 · Assignments", "The chosen assignment: allow-listing it, its mark scheme, and correcting it in bulk."),
+            new("submissions", "3 · Submissions", "Every paper Google reports for the chosen assignment."),
+            new("grades", "4 · Grades", "Writing corrected marks back to Google Classroom as drafts."),
         };
         _selectedTab = Tabs[0];
     }

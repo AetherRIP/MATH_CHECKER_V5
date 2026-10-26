@@ -83,9 +83,16 @@
                 </StackPanel>
             </Border>
 
-            <ListBox Grid.Row="1" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}"
-                     Style="{StaticResource SpaceTabs}" Margin="0,0,0,14"
-                     AutomationProperties.Name="Classroom sections" />
+            <!-- The numbered steps, then one line saying what the open step
+                 covers: the tabs named a section but never what it was for. -->
+            <StackPanel Grid.Row="1" Margin="0,0,0,14">
+                <ListBox ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}"
+                         Style="{StaticResource SpaceTabs}"
+                         AutomationProperties.Name="Classroom sections" />
+                <TextBlock Text="{Binding SelectedTab.Detail}" FontSize="10.5"
+                           Margin="2,7,0,0" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextMutedBrush}" />
+            </StackPanel>
 
             <Grid Grid.Row="2">
 

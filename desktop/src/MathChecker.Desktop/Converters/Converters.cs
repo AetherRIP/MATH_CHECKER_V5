@@ -76,3 +76,18 @@ public sealed class InverseBoolConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value is bool flag ? !flag : true;
 }
+
+/// <summary>Turns a zero-based list index into the number a reader counts from:
+/// ItemsControl.AlternationIndex is 0 for the first card, and a page that
+/// numbers its sections has to print "1" there.
+///
+/// Used with AlternationCount so the numbering survives sections being added
+/// after the page loaded (an import preview appends one).</summary>
+public sealed class OrdinalConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is int index ? (index + 1).ToString(culture) : string.Empty;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}

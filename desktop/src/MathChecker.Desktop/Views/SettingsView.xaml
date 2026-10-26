@@ -2,128 +2,251 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
+
+    <UserControl.Resources>
+        <!-- One field: its label, its box, and — where the value is not obvious
+             on its own — a line saying what it changes. -->
+        <Style x:Key="FieldHint" TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+            <Setter Property="Margin" Value="0,4,0,0" />
+        </Style>
+
+        <Style x:Key="OptionHint" TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+            <Setter Property="Margin" Value="21,2,0,0" />
+        </Style>
+
+        <Style x:Key="FieldBox" TargetType="TextBox">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="MaxWidth" Value="300" />
+        </Style>
+
+        <Style x:Key="NumberBox" TargetType="TextBox">
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Width" Value="86" />
+        </Style>
+
+        <!-- A numbered section of the form: the number and name on the left,
+             one line on the right saying what the section decides. -->
+        <Style x:Key="SectionHead" TargetType="DockPanel">
+            <Setter Property="Margin" Value="0,0,0,12" />
+            <Setter Property="LastChildFill" Value="True" />
+        </Style>
+
+        <Style x:Key="SectionNote" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+        </Style>
+
+        <Style x:Key="FieldLabelWide" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}">
+            <Setter Property="Margin" Value="0,0,12,0" />
+        </Style>
+    </UserControl.Resources>
+
     <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}"
-                  Description="Branding, workers and behaviour. Every value is stored by the backend, not by the desktop client."
+                  Description="Branding, workers and behaviour. Every value is stored by the backend, not by the desktop client — nothing is saved until you press Save settings."
                   StatusText="{Binding Status}" ErrorText="{Binding Error}" IsBusy="{Binding IsBusy}"
-                  BodyPadding="0,18,0,0">
+                  BodyPadding="0,16,0,0">
         <ui:PageFrame.Actions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
-                <Button Content="Refresh" Command="{Binding RefreshCommand}" />
-                <Button Content="Save settings" Style="{StaticResource PrimaryButton}" Command="{Binding SaveCommand}" />
+                <Button Content="Refresh" Command="{Binding RefreshCommand}"
+                        ToolTip="Read the stored values again, discarding unsaved edits" />
+                <Button Content="Save settings" Style="{StaticResource PrimaryButton}"
+                        Command="{Binding SaveCommand}" Margin="0"
+                        ToolTip="Write every section on this page to the backend" />
             </StackPanel>
         </ui:PageFrame.Actions>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      Padding="0,0,6,0">
             <StackPanel>
+
+                <!-- ========================================== 1 · branding -->
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
-                        <TextBlock Text="TEACHER AND REPORT BRANDING" Style="{StaticResource SectionLabel}" />
+                        <DockPanel Style="{StaticResource SectionHead}">
+                            <TextBlock DockPanel.Dock="Left" Text="1 · TEACHER AND REPORT BRANDING"
+                                       Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                            <TextBlock Text="Printed on every exported report" Style="{StaticResource SectionNote}" />
+                        </DockPanel>
 
-                        <Grid Margin="0,12,0,0">
+                        <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" MinWidth="120" />
+                                <ColumnDefinition Width="24" />
                                 <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" MinWidth="120" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Teacher name" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" MaxWidth="280" HorizontalAlignment="Stretch"
-                                     Text="{Binding TeacherName, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock Grid.Column="2" Text="School" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="3" MaxWidth="280" HorizontalAlignment="Stretch"
-                                     Text="{Binding SchoolName, UpdateSourceTrigger=PropertyChanged}" />
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="Teacher name" Style="{StaticResource FieldLabelWide}" />
+                            <TextBox Grid.Column="1" Style="{StaticResource FieldBox}"
+                                     Text="{Binding TeacherName, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Teacher name" />
+                            <TextBlock Grid.Column="3" Text="School" Style="{StaticResource FieldLabelWide}" />
+                            <TextBox Grid.Column="4" Style="{StaticResource FieldBox}"
+                                     Text="{Binding SchoolName, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="School" />
+
+                            <TextBlock Grid.Row="1" Text="Report centre" Style="{StaticResource FieldLabelWide}"
+                                       Margin="0,10,12,0" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Style="{StaticResource FieldBox}"
+                                     Margin="0,10,0,0"
+                                     Text="{Binding CenterName, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Report centre" />
+                            <TextBlock Grid.Row="1" Grid.Column="3" Text="Title"
+                                       Style="{StaticResource FieldLabelWide}" Margin="0,10,12,0" />
+                            <TextBox Grid.Row="1" Grid.Column="4" Style="{StaticResource FieldBox}"
+                                     Margin="0,10,0,0"
+                                     Text="{Binding TeacherTitle, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Teacher title" />
+
+                            <TextBlock Grid.Row="2" Text="Academic year" Style="{StaticResource FieldLabelWide}"
+                                       Margin="0,10,12,0" />
+                            <TextBox Grid.Row="2" Grid.Column="1" Style="{StaticResource FieldBox}"
+                                     Margin="0,10,0,0"
+                                     Text="{Binding AcademicYear, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Academic year" />
+                            <TextBlock Grid.Row="2" Grid.Column="3" Text="Document label"
+                                       Style="{StaticResource FieldLabelWide}" Margin="0,10,12,0" />
+                            <TextBox Grid.Row="2" Grid.Column="4" Style="{StaticResource FieldBox}"
+                                     Margin="0,10,0,0"
+                                     Text="{Binding DocumentLabel, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Document label" />
                         </Grid>
 
-                        <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Report centre" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" MaxWidth="280" HorizontalAlignment="Stretch"
-                                     Text="{Binding CenterName, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock Grid.Column="2" Text="Title" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="3" MaxWidth="280" HorizontalAlignment="Stretch"
-                                     Text="{Binding TeacherTitle, UpdateSourceTrigger=PropertyChanged}" />
-                        </Grid>
-
-                        <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Academic year" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" MaxWidth="280" HorizontalAlignment="Stretch"
-                                     Text="{Binding AcademicYear, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock Grid.Column="2" Text="Document label" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="3" MaxWidth="280" HorizontalAlignment="Stretch"
-                                     Text="{Binding DocumentLabel, UpdateSourceTrigger=PropertyChanged}" />
-                        </Grid>
+                        <TextBlock Text="These four labels appear in the header of every exported PDF and CSV. They do not affect how a paper is marked."
+                                   Style="{StaticResource FieldHint}" Margin="0,12,0,0" />
                     </StackPanel>
                 </Border>
 
+                <!-- =========================================== 2 · workers -->
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
-                        <TextBlock Text="WORKERS AND LIMITS" Style="{StaticResource SectionLabel}" />
-                        <Grid Margin="0,12,0,0">
+                        <DockPanel Style="{StaticResource SectionHead}">
+                            <TextBlock DockPanel.Dock="Left" Text="2 · WORKERS AND LIMITS"
+                                       Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                            <TextBlock Text="How many papers run at once, and what they may use"
+                                       Style="{StaticResource SectionNote}" />
+                        </DockPanel>
+
+                        <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" MinWidth="120" />
+                                <ColumnDefinition Width="24" />
                                 <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" MinWidth="120" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Workers" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Width="70" HorizontalAlignment="Left"
-                                     Text="{Binding Concurrency, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock Grid.Column="2" Text="Max retries" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="3" Width="70" HorizontalAlignment="Left"
-                                     Text="{Binding MaxRetries, UpdateSourceTrigger=PropertyChanged}" />
-                        </Grid>
-                        <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Keep originals (days)" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Width="70" HorizontalAlignment="Left"
-                                     Text="{Binding KeepDays, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock Grid.Column="2" Text="Hourly MB" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="3" Width="80" HorizontalAlignment="Left"
-                                     Text="{Binding HourlyMb, UpdateSourceTrigger=PropertyChanged}" />
-                        </Grid>
-                        <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Daily MB" Style="{StaticResource FieldLabel}" />
-                            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                <TextBox Width="80" Text="{Binding DailyMb, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="0 means unlimited." Style="{StaticResource CardSubtitle}"
-                                           VerticalAlignment="Center" Margin="6,0,0,0" />
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="Workers at once" Style="{StaticResource FieldLabelWide}" />
+                            <TextBox Grid.Column="1" Style="{StaticResource NumberBox}"
+                                     Text="{Binding Concurrency, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Workers at once" />
+                            <TextBlock Grid.Column="3" Text="Retries per paper" Style="{StaticResource FieldLabelWide}" />
+                            <TextBox Grid.Column="4" Style="{StaticResource NumberBox}"
+                                     Text="{Binding MaxRetries, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Retries per paper" />
+
+                            <TextBlock Grid.Row="1" Text="Keep originals" Style="{StaticResource FieldLabelWide}"
+                                       Margin="0,10,12,0" />
+                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
+                                <TextBox Style="{StaticResource NumberBox}"
+                                         Text="{Binding KeepDays, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Keep originals in days" />
+                                <TextBlock Text="days" Style="{StaticResource FieldLabel}" Margin="6,0,0,0" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Grid.Column="3" Text="Bandwidth per hour"
+                                       Style="{StaticResource FieldLabelWide}" Margin="0,10,12,0" />
+                            <StackPanel Grid.Row="1" Grid.Column="4" Orientation="Horizontal" Margin="0,10,0,0">
+                                <TextBox Style="{StaticResource NumberBox}"
+                                         Text="{Binding HourlyMb, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Bandwidth per hour in MB" />
+                                <TextBlock Text="MB" Style="{StaticResource FieldLabel}" Margin="6,0,0,0" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="2" Text="Bandwidth per day" Style="{StaticResource FieldLabelWide}"
+                                       Margin="0,10,12,0" />
+                            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
+                                <TextBox Style="{StaticResource NumberBox}"
+                                         Text="{Binding DailyMb, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Bandwidth per day in MB" />
+                                <TextBlock Text="MB · 0 means unlimited" Style="{StaticResource FieldLabel}"
+                                           Margin="6,0,0,0" />
                             </StackPanel>
                         </Grid>
+
+                        <TextBlock Text="Workers must be between 1 and 8: each one holds an AI call open, and more workers than the key allowance allows simply wait. Templates keep working with any value here."
+                                   Style="{StaticResource FieldHint}" Margin="0,12,0,0" />
                     </StackPanel>
                 </Border>
 
+                <!-- ========================================= 3 · behaviour -->
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
-                        <TextBlock Text="BEHAVIOUR" Style="{StaticResource SectionLabel}" Margin="0,0,0,4" />
-                        <CheckBox Content="Mock marking (no AI calls; results are marked as mock)"
-                                  IsChecked="{Binding MockMode}" />
-                        <CheckBox Content="Debug logging" IsChecked="{Binding Debug}" />
-                        <CheckBox Content="Google Classroom enabled" IsChecked="{Binding ClassroomEnabled}" />
-                        <CheckBox Content="Write draft grades back to Classroom"
-                                  IsChecked="{Binding WriteDraftGrades}" />
+                        <DockPanel Style="{StaticResource SectionHead}">
+                            <TextBlock DockPanel.Dock="Left" Text="3 · BEHAVIOUR AND APPEARANCE"
+                                       Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                            <TextBlock Text="What the backend may do, and how this window looks"
+                                       Style="{StaticResource SectionNote}" />
+                        </DockPanel>
 
-                        <TextBlock Text="APPEARANCE" Style="{StaticResource SectionTitle}" Margin="0,16,0,6" />
-                        <StackPanel Orientation="Horizontal">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="150" />
+                                <ColumnDefinition Width="24" />
+                                <ColumnDefinition Width="*" MinWidth="150" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel>
+                                <CheckBox Content="Mock marking"
+                                          IsChecked="{Binding MockMode}"
+                                          ToolTip="Corrects without calling the AI provider" />
+                                <TextBlock Text="No AI calls at all. Every result is stored and labelled as mock."
+                                           Style="{StaticResource OptionHint}" />
+
+                                <CheckBox Content="Google Classroom enabled" Margin="0,12,0,0"
+                                          IsChecked="{Binding ClassroomEnabled}"
+                                          ToolTip="Turns the Classroom pages and sync on or off" />
+                                <TextBlock Text="Shows the Classroom pages and allows synchronization."
+                                           Style="{StaticResource OptionHint}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
+                                <CheckBox Content="Debug logging"
+                                          IsChecked="{Binding Debug}"
+                                          ToolTip="Writes verbose backend logs" />
+                                <TextBlock Text="Verbose backend logs. Slower, and useful only when diagnosing a fault."
+                                           Style="{StaticResource OptionHint}" />
+
+                                <CheckBox Content="Write draft grades back" Margin="0,12,0,0"
+                                          IsChecked="{Binding WriteDraftGrades}"
+                                          ToolTip="Allows pushes to Google Classroom; nothing is released to students" />
+                                <TextBlock Text="Allows pushing marks to Classroom. They stay drafts; nothing is released."
+                                           Style="{StaticResource OptionHint}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Border Style="{StaticResource Divider}" Margin="0,14,0,12" />
+
+                        <TextBlock Text="APPEARANCE" Style="{StaticResource SectionLabel}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <RadioButton Content="Light" GroupName="appearance"
                                          Style="{StaticResource SegmentToggle}"
                                          IsChecked="{Binding IsLightTheme, Mode=OneWay}"
@@ -135,17 +258,23 @@
                                          Command="{Binding DarkThemeCommand}"
                                          AutomationProperties.Name="Dark appearance" />
                         </StackPanel>
-                        <TextBlock Text="Applies immediately and is remembered for the next launch."
-                                   Style="{StaticResource CardSubtitle}" Margin="0,6,0,0" />
+                        <TextBlock Text="Applies immediately and is remembered for the next launch. It is saved on its own: the Save button above is not needed for this."
+                                   Style="{StaticResource FieldHint}" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>
 
+                <!-- ============================================ 4 · facts -->
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
-                        <TextBlock Text="WHAT THE BACKEND REPORTS" Style="{StaticResource SectionLabel}"
-                                   Margin="0,0,0,6" />
-                        <TextBlock Text="Read-only facts gathered by the backend at startup."
-                                   Style="{StaticResource CardSubtitle}" Margin="0,0,0,6" />
+                        <DockPanel Style="{StaticResource SectionHead}">
+                            <TextBlock DockPanel.Dock="Left" Text="4 · WHAT THE BACKEND REPORTS"
+                                       Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                            <TextBlock Text="Read-only — saving this page does not change these"
+                                       Style="{StaticResource SectionNote}" />
+                        </DockPanel>
+
+                        <TextBlock Text="Gathered by the backend at startup, so a value here reflects the running installation rather than anything you can type."
+                                   Style="{StaticResource FieldHint}" Margin="0,0,0,10" />
                         <ItemsControl ItemsSource="{Binding ReadOnlyFacts}"
                                       ItemTemplate="{StaticResource FactRowTemplate}" />
                     </StackPanel>
