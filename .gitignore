@@ -57,6 +57,10 @@ MathChecker_Distribution/previous_builds/
 desktop/**/bin/
 desktop/**/obj/
 desktop/artifacts/
+# The finished installer/ZIP/checksums are build output (~190 MB): reproducible
+# with desktop\build_release.ps1 and too large for history. The configuration
+# that produces them (desktop\installer, desktop\build_release.ps1) is tracked.
+release/
 desktop/**/TestResults/
 *.trx
 .vs/
