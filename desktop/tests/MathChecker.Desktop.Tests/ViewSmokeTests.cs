@@ -105,41 +105,6 @@ public sealed class ViewSmokeTests
         });
     }
 
-    [Fact]
-    public void A_chosen_course_hides_the_placeholder_instead_of_drawing_over_it()
-    {
-        RunOnSta(() =>
-        {
-            // The placeholder is drawn ON TOP of the combo box, so it must
-            // collapse the moment a course is selected. It stayed visible for a
-            // selected object (the converter only recognised strings), which
-            // painted "Choose a course" over the course's own name.
-            var course = new MathChecker.Desktop.Models.ClassroomCourseDto
-            {
-                Id = "c1",
-                Name = "WBIS - O Level Mathematics - Mr. Abanout Akram",
-                Section = "Set 1",
-            };
-            var view = new ClassroomView
-            {
-                DataContext = new ClassroomTargetStub
-                {
-                    Courses = new[] { course },
-                    SelectedCourse = course,
-                },
-            };
-            view.Width = 1280;
-            view.Height = 800;
-            view.Measure(new Size(1280, 800));
-            view.Arrange(new Rect(0, 0, 1280, 800));
-            view.UpdateLayout();
-
-            var placeholder = FindText(view, "Choose a course");
-            Assert.NotNull(placeholder);
-            Assert.Equal(Visibility.Collapsed, placeholder!.Visibility);
-        });
-    }
-
     [Theory]
     [InlineData(1200, 3)]
     [InlineData(900, 3)]
@@ -172,6 +137,49 @@ public sealed class ViewSmokeTests
         Assert.Equal(96, TableLayout.FillWidth(200, 180, 0));
     }
 
+    // The assignments table's columns: fill, Class, Kind, Students, Checked,
+    // Review, Average, Scheme, Due.
+    private static readonly int[] AssignmentPriorities = { 0, 1, 2, 2, 2, 3, 1, 3, 3 };
+    private static readonly double[] AssignmentWidths = { 160, 180, 78, 84, 80, 74, 84, 76, 124 };
+
+    [Fact]
+    public void WideTableDropsNothing()
+    {
+        Assert.Empty(TableLayout.ColumnReductions(1200, AssignmentPriorities, AssignmentWidths, 0, 160));
+    }
+
+    [Fact]
+    public void OnlyTheOverflowingColumnGoes_NotTheWholeTable()
+    {
+        // 900 DIP holds every column down to priority 2; giving up "Due" alone
+        // leaves enough room, so Students, Checked and Kind must stay.
+        Assert.Equal(new[] { 8 },
+            TableLayout.ColumnReductions(900, AssignmentPriorities, AssignmentWidths, 0, 160));
+    }
+
+    [Fact]
+    public void ColumnsGoHighestPriorityFirstAndFromTheRight()
+    {
+        // 830 is in the widest breakpoint; two columns have to go before the
+        // assignment name has its floor.
+        Assert.Equal(new[] { 8, 7 },
+            TableLayout.ColumnReductions(830, AssignmentPriorities, AssignmentWidths, 0, 160));
+    }
+
+    [Fact]
+    public void BreakpointsAloneAreEnoughAtSevenHundred()
+    {
+        // Below 820 the three priority-3 columns are not shown at all, which
+        // already leaves room; the reduction pass must not take more.
+        Assert.Empty(TableLayout.ColumnReductions(700, AssignmentPriorities, AssignmentWidths, 0, 160));
+    }
+
+    [Fact]
+    public void TheFlexibleColumnItselfIsNeverDropped()
+    {
+        Assert.Empty(TableLayout.ColumnReductions(300, AssignmentPriorities, AssignmentWidths, 0, 160));
+    }
+
     private static IEnumerable<Func<UserControl>> PageViews()
     {
         yield return () => new DashboardView();
@@ -186,8 +194,6 @@ public sealed class ViewSmokeTests
         yield return () => new ResultsView();
         yield return () => new ReportsView();
         yield return () => new UsageView();
-        yield return () => new ClassroomView();
-        yield return () => new ClassesView();
         yield return () => new StudentsView();
         yield return () => new StudentProfileView();
         yield return () => new AssignmentsView();
@@ -196,22 +202,6 @@ public sealed class ViewSmokeTests
         yield return () => new AiKeysView();
         yield return () => new PromptsView();
         yield return () => new JsonPageView();
-    }
-
-    /// <summary>A mutable target for the combo's two-way selection bindings;
-    /// an anonymous type is read-only and WPF refuses the binding.</summary>
-    private sealed class ClassroomTargetStub
-    {
-        public MathChecker.Desktop.Models.ClassroomCourseDto[] Courses { get; set; } =
-            Array.Empty<MathChecker.Desktop.Models.ClassroomCourseDto>();
-
-        public MathChecker.Desktop.Models.ClassroomCourseDto? SelectedCourse { get; set; }
-
-        public object[] Assignments { get; set; } = Array.Empty<object>();
-
-        public object? SelectedAssignment { get; set; }
-
-        public bool IsConnected { get; set; } = true;
     }
 
     private static TextBlock? FindText(DependencyObject root, string text)

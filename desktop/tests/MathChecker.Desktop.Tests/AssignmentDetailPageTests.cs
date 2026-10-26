@@ -99,7 +99,8 @@ public class AssignmentDetailPageTests
             Assert.Null(page.Error);
 
             // The request went to the assignment that was opened.
-            Assert.Contains("/api/assignments/cw-1/students", handler.Requests[^1].Url);
+            Assert.Contains(handler.Requests,
+                r => r.Url.Contains("/api/assignments/cw-1/students", StringComparison.Ordinal));
 
             Assert.Equal("Ch2L3 - Simplifying Expressions", page.Heading);
             Assert.Contains("WBIS - O Level Mathematics - Mr. Abanout", page.HeaderDescription);
@@ -252,7 +253,7 @@ public class AssignmentDetailPageTests
     [Fact]
     public async Task Refreshing_reloads_the_same_assignment()
     {
-        var (session, handler) = await SessionAsync(2);
+        var (session, handler) = await SessionAsync();
         using (handler)
         {
             var page = new AssignmentDetailViewModel(session);
@@ -260,9 +261,11 @@ public class AssignmentDetailPageTests
             await page.LoadAsync();
             await page.LoadAsync();
 
-            Assert.Equal(2, handler.Requests.Count);
+            // Two roster reads, and nothing that names another assignment.
+            Assert.Equal(2, handler.Requests.Count(
+                r => r.Url.Contains("/api/assignments/cw-1/students", StringComparison.Ordinal)));
             Assert.All(handler.Requests,
-                request => Assert.Contains("/api/assignments/cw-1/students", request.Url));
+                request => Assert.Contains("/api/assignments/cw-1/", request.Url));
             Assert.Equal(5, page.Items.Count);
             Assert.Null(page.Error);
         }
@@ -271,10 +274,7 @@ public class AssignmentDetailPageTests
     [Fact]
     public async Task An_unknown_assignment_clears_the_previous_roster_and_reports_the_backend_message()
     {
-        var handler = new StubHttpHandler()
-            .Respond(HttpStatusCode.OK, StudentsBody)
-            .Respond(HttpStatusCode.NotFound,
-                """{"code":"not_found","message":"That assignment is not in the local database. Sync Google Classroom first."}""");
+        var handler = new DetailHandler { Missing = "cw-deleted" };
         using (handler)
         {
             var session = await SessionAsync(handler);
@@ -336,18 +336,13 @@ public class AssignmentDetailPageTests
         }
     }
 
-    private static async Task<(AppSession Session, StubHttpHandler Handler)> SessionAsync(int times = 1)
+    private static async Task<(AppSession Session, DetailHandler Handler)> SessionAsync()
     {
-        var handler = new StubHttpHandler();
-        for (var i = 0; i < times; i++)
-        {
-            handler.Respond(HttpStatusCode.OK, StudentsBody);
-        }
-
+        var handler = new DetailHandler();
         return (await SessionAsync(handler), handler);
     }
 
-    private static async Task<AppSession> SessionAsync(StubHttpHandler handler)
+    private static async Task<AppSession> SessionAsync(DetailHandler handler)
     {
         var settings = new DesktopSettings { Port = 9, StartBackendAutomatically = false };
         var host = new BackendHost(settings, new MemoryLog(),
@@ -358,6 +353,48 @@ public class AssignmentDetailPageTests
         var api = new MathCheckerApiClient(handler);
         api.SetBaseUrl(host.BaseUrl);
         return new AppSession(settings, new MemoryLog(), host, api, new SilentDialogs());
+    }
+
+    /// <summary>Answers the page's two reads by URL: the roster, then the mark
+    /// scheme. A queued-response stub would drift the moment the page reads one
+    /// more thing about the same assignment.</summary>
+    private sealed class DetailHandler : HttpMessageHandler
+    {
+        public List<RecordedRequest> Requests { get; } = new();
+
+        /// <summary>An assignment id the backend says no longer exists.</summary>
+        public string? Missing { get; set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            var url = request.RequestUri!.AbsoluteUri;
+            Requests.Add(new RecordedRequest(request.Method.Method, url, null,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)));
+
+            if (Missing is not null && url.Contains("/assignments/" + Missing + "/", StringComparison.Ordinal))
+            {
+                return Task.FromResult(Json(HttpStatusCode.NotFound,
+                    """{"code":"not_found","message":"That assignment is not in the local database. Sync Google Classroom first."}"""));
+            }
+
+            if (url.Contains("/mark-scheme", StringComparison.Ordinal))
+            {
+                return Task.FromResult(Json(HttpStatusCode.OK, """
+                    {"coursework_id":"cw-1","has_mark_scheme":true,"file_name":"ch2l3-ms.pdf",
+                     "pages":21,"processed":true,"total_marks":9,"subquestion_count":9,
+                     "verification_state":"VERIFIED","warnings":[]}
+                    """));
+            }
+
+            return Task.FromResult(Json(HttpStatusCode.OK, StudentsBody));
+        }
+
+        private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
+            new(status)
+            {
+                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
+            };
     }
 
     private sealed class AlwaysOurs : IHealthProbe

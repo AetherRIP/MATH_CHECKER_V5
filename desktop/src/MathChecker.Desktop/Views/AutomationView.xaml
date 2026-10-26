@@ -66,9 +66,31 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- One filter bar for the assignment list; it never affects the
-                 queue or the review panel. -->
-            <Border Grid.Row="0" Style="{StaticResource FilterBar}" Margin="0,0,0,12">
+            <StackPanel Grid.Row="0">
+                <!-- The on/off switch for automatic correction. It reads the
+                     backend's own flag and writes it back immediately, so the
+                     teacher can see and change whether anything runs on its own
+                     without opening Advanced settings. -->
+                <Border Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="{Binding AutoSwitchText}"
+                                Command="{Binding ToggleAutoCommand}"
+                                Height="32" Padding="14,4" Margin="14,0,0,0"
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="Turn automatic correction on or off"
+                                ToolTip="Switches the background scan on or off. It never starts a correction on a paper you cannot see." />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="AUTOMATIC CORRECTION" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="{Binding AutoText}" FontSize="11.5" Margin="0,4,0,0"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- One filter bar for the assignment list; it never affects the
+                     queue or the review panel. -->
+                <Border Style="{StaticResource FilterBar}" Margin="0,0,0,12">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -93,7 +115,8 @@
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                 </Grid>
-            </Border>
+                </Border>
+            </StackPanel>
 
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0"
                           HorizontalScrollBarVisibility="Disabled">
@@ -170,22 +193,53 @@
                                                 </Border>
                                             </WrapPanel>
 
-                                            <DockPanel Margin="0,8,0,0" HorizontalAlignment="Right">
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding ReadyText}"
-                                                           FontSize="10.5" Margin="10,0,0,0"
-                                                           VerticalAlignment="Center" TextWrapping="NoWrap"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Foreground="{DynamicResource TextMutedBrush}" />
-                                                <Button Content="Auto-correct"
+                                            <!-- The button always does something: on a
+                                                 ready card it opens the preview, on a card
+                                                 that needs setup it opens the same review
+                                                 with the exact blockers. The reason is
+                                                 stated underneath in warning colour rather
+                                                 than as one truncated grey line. -->
+                                            <StackPanel Margin="0,8,0,0" HorizontalAlignment="Right">
+                                                <!-- Only a card that can actually correct is
+                                                     the page's accent action; the others get a
+                                                     neutral button that still opens their review. -->
+                                                <Button Content="{Binding ButtonText}"
                                                         Style="{StaticResource PrimaryButton}"
                                                         Height="30" Padding="12,3" Margin="0"
-                                                        IsEnabled="{Binding IsReady}"
+                                                        HorizontalAlignment="Right"
                                                         Command="{Binding DataContext.SelectCommand,
                                                             RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                         CommandParameter="{Binding}"
-                                                        AutomationProperties.Name="{Binding Title, StringFormat=Auto-correct {0}}"
-                                                        ToolTip="{Binding ReadyText}" />
-                                            </DockPanel>
+                                                        AutomationProperties.Name="{Binding ButtonAccessibleName}"
+                                                        ToolTip="{Binding ReadyText}"
+                                                        Visibility="{Binding IsReady, Converter={StaticResource BoolToVis}}" />
+                                                <Button Content="{Binding ButtonText}"
+                                                        Height="30" Padding="12,3" Margin="0"
+                                                        HorizontalAlignment="Right"
+                                                        Command="{Binding DataContext.SelectCommand,
+                                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        AutomationProperties.Name="{Binding ButtonAccessibleName}"
+                                                        ToolTip="{Binding ReadyText}"
+                                                        Visibility="{Binding IsReady, Converter={StaticResource InverseBoolToVis}}" />
+                                                <TextBlock Text="{Binding ReadyText}" FontSize="10.5"
+                                                           Margin="0,5,0,0" HorizontalAlignment="Right"
+                                                           MaxWidth="330" TextAlignment="Right"
+                                                           TextWrapping="Wrap">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground"
+                                                                    Value="{DynamicResource TextMutedBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsNotReady}" Value="True">
+                                                                    <Setter Property="Foreground"
+                                                                            Value="{DynamicResource WarningTextBrush}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -352,9 +406,13 @@
                                     <TextBlock Text="A separate, scheduled scan: it looks for work that was handed in after you last looked. It does not correct an assignment you have not allow-listed."
                                                Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,4,0,10" />
 
+                                    <!-- The on/off switch for this lives at the top of the
+                                         page; one setting gets one control, so the two can
+                                         never disagree. -->
+                                    <TextBlock Text="{Binding AutoSwitchText}" Style="{StaticResource FieldLabel}"
+                                               Margin="0,0,0,8" TextWrapping="Wrap" />
+
                                     <WrapPanel>
-                                        <CheckBox Content="Scan for new work automatically" IsChecked="{Binding Enabled}"
-                                                  ToolTip="Runs the background scheduler at the interval below" />
                                         <CheckBox Content="Hold each result for teacher review"
                                                   IsChecked="{Binding ReviewMode}"
                                                   ToolTip="Nothing is returned to students until you approve it" />
@@ -392,14 +450,12 @@
                                                 ToolTip="Re-read the state of jobs that were already queued" />
                                     </WrapPanel>
 
-                                    <DockPanel Margin="0,10,0,0">
-                                        <Button DockPanel.Dock="Right" Content="Start / stop background worker"
-                                                Command="{Binding ToggleWorkerCommand}" Height="28" Padding="10,3"
-                                                ToolTip="Stops or starts the scheduler process without changing settings" />
-                                        <TextBlock Text="{Binding WorkerText}" FontSize="11" VerticalAlignment="Center"
-                                                   TextWrapping="Wrap"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    </DockPanel>
+                                    <!-- Starting and stopping the worker is the on/off
+                                         switch at the top of the page; here the same
+                                         state is reported, not switched twice. -->
+                                    <TextBlock Text="{Binding WorkerText}" FontSize="11" Margin="0,10,0,0"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </StackPanel>
                             </Border>
 

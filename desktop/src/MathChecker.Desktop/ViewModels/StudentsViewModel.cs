@@ -7,9 +7,15 @@ using MathChecker.Desktop.Core.Api;
 namespace MathChecker.Desktop.ViewModels;
 
 /// <summary>
-/// The Students page. It owns the roster list and, once a student is chosen,
-/// the real <see cref="StudentProfileViewModel"/> built from that student's
-/// backend record — there is no second student database and no sample data.
+/// The People hub: the one page for Classroom's rosters. It owns the roster
+/// list, the class filter and, once a student is chosen, the real
+/// <see cref="StudentProfileViewModel"/> built from that student's backend
+/// record — there is no second student database and no sample data.
+///
+/// This replaces three separate pages (Classroom, Classes, Students): the
+/// classroom-level actions a teacher needs while looking at people — mark
+/// scheme, allow-listing, correct-whole-assignment — live on the assignment
+/// they act on, not on a page of their own.
 /// </summary>
 public sealed class StudentsViewModel : PageViewModel
 {
@@ -26,7 +32,7 @@ public sealed class StudentsViewModel : PageViewModel
     private int _openRequest;
 
     public StudentsViewModel(AppSession session)
-        : base(session, "students", "Students")
+        : base(session, "people", "People")
     {
         OpenProfileCommand = new RelayCommand(() => _ = OpenProfileAsync(Selected),
             () => Selected is not null);

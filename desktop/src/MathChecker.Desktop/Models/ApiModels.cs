@@ -907,16 +907,35 @@ public sealed class KeyTestDto
 
 public sealed class WorkerStateDto
 {
+    /// <summary>The count the resize request asked for. Only the resize reply
+    /// carries it; the workers listing has no such field.</summary>
     public int Requested { get; set; }
+
+    /// <summary>Workers the pool actually holds, as the resize reply reports it.
+    /// The listing calls the same figure <see cref="Size"/>.</summary>
     public int Running { get; set; }
+
     public int Recommended { get; set; }
+
+    /// <summary>Worker processes in the pool, from GET /workers.</summary>
+    public int Size { get; set; }
+
+    /// <summary>Papers being processed right now, from GET /workers.</summary>
+    public int Active { get; set; }
+
+    /// <summary>Concurrency the pool is running with, whichever endpoint
+    /// answered: the listing's size, or the resize reply's running count.
+    /// Reading Running alone left every page showing "0 of 0" after a
+    /// refresh, because the listing never sends that field.</summary>
+    public int PoolSize => Size > 0 ? Size : Running;
 
     /// <summary>The provider circuit state the backend reports (a model that is
     /// cooling down after high demand pauses the queue; the dashboard says so
     /// instead of leaving a queued card looking stuck for no reason).</summary>
     public JsonElement? Provider { get; set; }
 
-    public string Summary => $"Running {Running} of {Requested} requested (recommended {Recommended})";
+    public string Summary =>
+        $"{Active} active of {PoolSize} workers (recommended {Recommended})";
 
     public bool ProviderPaused => Provider is { ValueKind: JsonValueKind.Object } provider
         && provider.TryGetProperty("available", out var available)

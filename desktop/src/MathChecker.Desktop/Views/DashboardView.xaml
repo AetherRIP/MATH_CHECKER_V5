@@ -40,7 +40,11 @@
                                        FontFamily="{StaticResource DisplayFont}"
                                        FontSize="32" FontWeight="Bold"
                                        Foreground="{DynamicResource HeroInkBrush}" />
-                            <TextBlock Text="corrections in flight" FontSize="14.5" FontWeight="Medium"
+                            <!-- Pending counts queued jobs AND allow-listed papers
+                                 that have no correction yet, so it is a backlog,
+                                 not running work (it read "69 in flight" beside
+                                 "0 in progress" after a result reset). -->
+                            <TextBlock Text="papers awaiting correction" FontSize="14.5" FontWeight="Medium"
                                        Foreground="{DynamicResource HeroInkBrush}"
                                        VerticalAlignment="Bottom" Margin="8,0,0,6" />
                         </StackPanel>
@@ -91,10 +95,10 @@
 
                 <Border Grid.Column="2" Style="{StaticResource StatTile}" Margin="0,0,10,0">
                     <StackPanel>
-                        <TextBlock Text="IN FLIGHT" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="AWAITING" Style="{StaticResource SectionLabel}" />
                         <TextBlock Text="{Binding PendingText}" Style="{StaticResource DisplayFigure}"
                                    Margin="0,2,0,0" />
-                        <TextBlock Text="{Binding ProcessingText, StringFormat={}{0} processing}"
+                        <TextBlock Text="{Binding ProcessingText, StringFormat={}{0} processing now}"
                                    Style="{StaticResource CardSubtitle}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                 </Border>

@@ -61,12 +61,6 @@
             <DataTemplate DataType="{x:Type vm:UsageViewModel}">
                 <views:UsageView />
             </DataTemplate>
-            <DataTemplate DataType="{x:Type vm:ClassroomViewModel}">
-                <views:ClassroomView />
-            </DataTemplate>
-            <DataTemplate DataType="{x:Type vm:ClassesViewModel}">
-                <views:ClassesView />
-            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:StudentsViewModel}">
                 <views:StudentsView />
             </DataTemplate>

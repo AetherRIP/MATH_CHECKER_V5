@@ -193,6 +193,14 @@ public sealed class AutomationViewModel : PageViewModel
                     : "Reading what this assignment would correct…";
             }
 
+            // A blocked preview still counts papers; saying "8 would be
+            // corrected now" next to a blocker banner reads as a promise the
+            // backend will refuse to keep.
+            if (!_preview.CanStart)
+            {
+                return "Nothing can be queued for this assignment yet — the blockers below say what is missing.";
+            }
+
             var counts = _preview.Counts;
             if (_preview.WillCorrect == 0)
             {
@@ -251,11 +259,28 @@ public sealed class AutomationViewModel : PageViewModel
     /// hold: a correction with nothing selected is not offered.</summary>
     public bool CanStart => _preview is { CanStart: true } && SelectedCount > 0;
 
-    public string StartText => SelectedCount == 0
-        ? "Start correcting"
-        : SelectedCount == PaperCount
-            ? $"Start correcting {SelectedCount} paper{(SelectedCount == 1 ? string.Empty : "s")}"
-            : $"Start correcting {SelectedCount} of {PaperCount} papers";
+    /// <summary>The start button never offers work the backend has already
+    /// refused: with blockers outstanding it names them instead of showing a
+    /// greyed-out "Start correcting 8 papers", which looks like a broken button.</summary>
+    public string StartText
+    {
+        get
+        {
+            if (_preview is { CanStart: false })
+            {
+                return "Resolve the blockers first";
+            }
+
+            if (SelectedCount == 0)
+            {
+                return "Start correcting";
+            }
+
+            return SelectedCount == PaperCount
+                ? $"Start correcting {SelectedCount} paper{(SelectedCount == 1 ? string.Empty : "s")}"
+                : $"Start correcting {SelectedCount} of {PaperCount} papers";
+        }
+    }
 
     public AsyncCommand StartCommand { get; }
 
@@ -316,11 +341,48 @@ public sealed class AutomationViewModel : PageViewModel
 
     public bool HasAutomationJobs => AutomationJobs.Count > 0;
 
+    /// <summary>Whether the background scan may correct work on its own. This is
+    /// the state behind the on/off switch at the top of the page, and it comes
+    /// from the backend, never from a local guess.</summary>
     public bool Enabled
     {
         get => _enabled;
-        set => SetProperty(ref _enabled, value);
+        set
+        {
+            if (SetProperty(ref _enabled, value))
+            {
+                OnPropertyChanged(nameof(AutoSwitchText));
+                OnPropertyChanged(nameof(AutoText));
+            }
+        }
     }
+
+    /// <summary>The switch's own label: it says what is true right now, so a
+    /// click never has to be interpreted.</summary>
+    public string AutoSwitchText => Enabled
+        ? "Automatic correction: on"
+        : "Automatic correction: off";
+
+    public string AutoText => Enabled
+        ? "On · the background scan checks every "
+          + $"{_status?.IntervalMinutes ?? _intervalMinutes} min and picks up new work "
+          + "from allow-listed assignments that have a mark scheme."
+        : "Off · nothing is corrected in the background. The Auto-correct buttons "
+          + "below still correct an assignment you choose yourself.";
+
+    /// <summary>Turns automatic correction on or off through the backend's own
+    /// worker switch: turning it on is only reported once the scheduler thread is
+    /// verified alive, and turning it off stops new work while papers already in
+    /// flight finish. Nothing queued is ever discarded.</summary>
+    public AsyncCommand ToggleAutoCommand => Command(async () =>
+    {
+        var turnOn = !Enabled;
+        await Session.Api.SetAutomationWorkerAsync(turnOn);
+        await ReloadAdvancedAsync();
+        Status = turnOn
+            ? "Automatic correction is on: allow-listed assignments are picked up in the background."
+            : "Automatic correction is off: nothing is corrected without you starting it.";
+    });
 
     /// <summary>Kept nullable: a ComboBox writes null back while its item list is
     /// rebuilt, and a non-nullable int rejects that write.</summary>
@@ -401,10 +463,20 @@ public sealed class AutomationViewModel : PageViewModel
             return;
         }
 
+        await SaveSettingsCoreAsync(Enabled);
+        Status = "Background check settings saved.";
+    });
+
+    /// <summary>One write for every automation setting. <paramref name="enabled"/> is
+    /// passed explicitly by the on/off switch so a toggle can never race the
+    /// value the status reload is about to write back.</summary>
+    private async Task SaveSettingsCoreAsync(bool enabled)
+    {
+        var interval = IntervalMinutes is > 0 ? IntervalMinutes!.Value : _intervalMinutes;
         var payload = new
         {
-            enabled = Enabled,
-            interval_minutes = IntervalMinutes ?? 10,
+            enabled,
+            interval_minutes = interval > 0 ? interval : 10,
             review_mode = ReviewMode,
             draft_only = DraftOnly,
             attach_report = AttachReport,
@@ -414,15 +486,8 @@ public sealed class AutomationViewModel : PageViewModel
         };
         await Session.Api.SetAutomationSettingsAsync(payload);
         await ReloadAdvancedAsync();
-        Status = "Background check settings saved.";
-    });
-
-    public AsyncCommand ToggleWorkerCommand => Command(async () =>
-    {
-        await Session.Api.SetAutomationWorkerAsync(!(_status?.WorkerEnabled ?? false));
-        await ReloadAdvancedAsync();
-        Status = "Background worker state updated.";
-    });
+        OnPropertyChanged(nameof(AutoText));
+    }
 
     public AsyncCommand RunNowCommand => Command(async () =>
     {
@@ -659,12 +724,12 @@ public sealed class AutomationViewModel : PageViewModel
 
         if (!preview.Allowlisted)
         {
-            Blockers.Add("Allow it first: People → Classroom → “Allow-list assignment”.");
+            Blockers.Add("Allow it first: People → Assignments → the assignment → “Allow-list assignment”.");
         }
 
         if (!preview.HasMarkScheme)
         {
-            Blockers.Add("Upload the mark scheme on People → Classroom, then review again.");
+            Blockers.Add("Upload the mark scheme on the assignment's own page (People → Assignments), then review again.");
         }
 
         OnPropertyChanged(nameof(HasBlockers));
@@ -1044,7 +1109,7 @@ public sealed class AutoCorrectAssignment
 
             if (Dto.Allowlisted == 0)
             {
-                return "Not ready: allow-list it in Classroom";
+                return "Not ready: allow-list it on its assignment page";
             }
 
             return Awaiting > 0
@@ -1056,6 +1121,15 @@ public sealed class AutoCorrectAssignment
     public bool IsReady => CanCorrect && Awaiting > 0;
 
     public bool IsNotReady => !CanCorrect;
+
+    /// <summary>What the card's button will do. A card that cannot correct yet
+    /// still opens its review — with the blockers that stop it — rather than
+    /// sitting there greyed out and looking broken.</summary>
+    public string ButtonText => IsReady ? "Auto-correct" : "Review & fix";
+
+    /// <summary>The button's accessible name follows its visible label, so a
+    /// screen reader hears the same action the teacher sees.</summary>
+    public string ButtonAccessibleName => $"{ButtonText} {Title}";
 
     public string OpenText => "Open details";
 

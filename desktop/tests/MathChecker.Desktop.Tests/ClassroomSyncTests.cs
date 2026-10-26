@@ -222,17 +222,16 @@ public class ClassroomSyncTests
 
         using (handler)
         {
-            var students = new StudentsViewModel(session);
-            var classes = new ClassesViewModel(session);
+            // One People hub replaced the Classroom/Classes/Students pages, so
+            // the roster page is still the one that syncs.
+            var people = new StudentsViewModel(session);
             var assignments = new AssignmentsViewModel(session);
             var dashboard = new DashboardViewModel(session);
 
-            Assert.True(students.SyncsFromClassroom);
-            Assert.True(classes.SyncsFromClassroom);
+            Assert.True(people.SyncsFromClassroom);
             Assert.True(assignments.SyncsFromClassroom);
             Assert.True(dashboard.SyncsFromClassroom);
-            Assert.Same(session.Sync, students.SyncService);
-            Assert.Same(session.Sync, classes.SyncService);
+            Assert.Same(session.Sync, people.SyncService);
             Assert.Same(session.Sync, assignments.SyncService);
             Assert.Same(session.Sync, dashboard.SyncService);
 

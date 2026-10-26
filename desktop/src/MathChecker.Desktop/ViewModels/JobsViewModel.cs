@@ -183,7 +183,8 @@ public sealed class JobsViewModel : PageViewModel
         if (_showWorkers)
         {
             _workers = await Session.Api.WorkersAsync();
-            WorkerCount = _workers.Running.ToString();
+            // "size" is the pool; "running" only exists in the resize reply.
+            WorkerCount = _workers.PoolSize.ToString();
             OnPropertyChanged(nameof(WorkersText));
         }
     }

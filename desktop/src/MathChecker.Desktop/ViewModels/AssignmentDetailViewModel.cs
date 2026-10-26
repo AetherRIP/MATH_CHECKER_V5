@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Text.Json;
 using MathChecker.Desktop.Core;
 using MathChecker.Desktop.Core.Api;
 using MathChecker.Desktop.Core.UI;
@@ -36,6 +37,17 @@ public sealed class AssignmentDetailViewModel : PageViewModel
     private string _syncText = string.Empty;
     private string _factsTitle = string.Empty;
     private bool _hasWarnings;
+
+    // Mark scheme, allow-listing and whole-assignment correction. These lived on
+    // the separate Classroom page; they belong with the assignment they act on.
+    private string? _courseId;
+    private string _assignmentTitle = "this assignment";
+    private string _schemeTitle = "Mark scheme";
+    private string _schemeDetail = string.Empty;
+    private bool _schemeAttached;
+    private bool _schemeChecking;
+    private bool _allowlisted;
+    private int _schemeRequest;
 
     public AssignmentDetailViewModel(AppSession session)
         : base(session, "assignment", "Assignment")
@@ -202,6 +214,242 @@ public sealed class AssignmentDetailViewModel : PageViewModel
 
     public bool HasFacts => Facts.Count > 0;
 
+    // ------------------------------------------------ mark scheme and setting up
+
+    /// <summary>The headline: "Attached · verified", "Not attached", …</summary>
+    public string SchemeTitle
+    {
+        get => _schemeTitle;
+        private set => SetProperty(ref _schemeTitle, value);
+    }
+
+    /// <summary>File, page count, marks and structure — what is actually on disk,
+    /// read from the backend, never inferred from the upload button.</summary>
+    public string SchemeDetail
+    {
+        get => _schemeDetail;
+        private set
+        {
+            if (SetProperty(ref _schemeDetail, value))
+            {
+                OnPropertyChanged(nameof(HasSchemeDetail));
+            }
+        }
+    }
+
+    public bool HasSchemeDetail => !string.IsNullOrWhiteSpace(SchemeDetail);
+
+    public bool SchemeAttached => _schemeAttached;
+
+    public bool SchemeChecking => _schemeChecking;
+
+    /// <summary>True only when a scheme is definitely absent: a read still in
+    /// flight or one that failed is not evidence of "not attached".</summary>
+    public bool SchemeMissing => !_schemeAttached && !_schemeChecking;
+
+    public string UploadSchemeLabel => _schemeAttached
+        ? "Replace mark scheme…"
+        : "Upload mark scheme…";
+
+    /// <summary>Whether automatic corrections may pick this assignment up. Read
+    /// from the backend's own flag, never assumed from the presence of a scheme.</summary>
+    public bool Allowlisted => _allowlisted;
+
+    public string AllowlistText => _allowlisted
+        ? "Allow-listed: automatic corrections may pick this assignment up."
+        : "Not allow-listed: automatic corrections skip it.";
+
+    public bool CanAllowlist => !_allowlisted && HasCourse;
+
+    private bool HasCourse => !string.IsNullOrWhiteSpace(_courseId);
+
+    /// <summary>The backend refuses a whole-assignment run without a scheme, so
+    /// the button is never offered as a dead end.</summary>
+    public bool CanCorrectAll => HasCourse && _schemeAttached;
+
+    public AsyncCommand UploadMarkSchemeCommand => Command(async () =>
+    {
+        if (!HasCourse)
+        {
+            Error = "This assignment is not linked to a Google Classroom course, so there is no "
+                    + "place to attach a mark scheme.";
+            return;
+        }
+
+        var path = Session.Dialogs.PickOpenFile("Select the mark scheme PDF", "PDF (*.pdf)|*.pdf");
+        if (path is null)
+        {
+            return;
+        }
+
+        await Session.Api.UploadMarkSchemeAsync(_courseId!, _courseworkId!, path);
+        Status = $"The mark scheme for “{_assignmentTitle}” was uploaded.";
+        await LoadSchemeAsync();
+        await LoadAsync();
+    });
+
+    public AsyncCommand AllowlistCommand => Command(async () =>
+    {
+        if (!CanAllowlist)
+        {
+            return;
+        }
+
+        await Session.Api.SetAllowlistAsync(_courseId!, _courseworkId!, true);
+        _allowlisted = true;
+        RaiseSettingUp();
+        Status = $"“{_assignmentTitle}” is allow-listed for automatic corrections.";
+        await LoadAsync();
+    });
+
+    public AsyncCommand CorrectAllCommand => Command(async () =>
+    {
+        if (!CanCorrectAll)
+        {
+            Error = _schemeAttached
+                ? "This assignment is not linked to a Google Classroom course."
+                : "Upload the mark scheme first: nothing can be corrected without one.";
+            return;
+        }
+
+        if (!Session.Dialogs.Confirm("Correct the whole assignment",
+                $"Correct every eligible submission of \"{_assignmentTitle}\"?\n\n"
+                + "Students who have not handed anything in are skipped. Their progress "
+                + "appears in Correction monitor."))
+        {
+            return;
+        }
+
+        await Session.Api.CorrectAllAsync(_courseId!, _courseworkId!, refresh: true);
+        Status = "Every eligible paper in this assignment was queued.";
+        await LoadAsync();
+    });
+
+    private void RaiseSettingUp()
+    {
+        OnPropertyChanged(nameof(SchemeAttached));
+        OnPropertyChanged(nameof(SchemeMissing));
+        OnPropertyChanged(nameof(SchemeChecking));
+        OnPropertyChanged(nameof(SchemeTitle));
+        OnPropertyChanged(nameof(UploadSchemeLabel));
+        OnPropertyChanged(nameof(Allowlisted));
+        OnPropertyChanged(nameof(AllowlistText));
+        OnPropertyChanged(nameof(CanAllowlist));
+        OnPropertyChanged(nameof(CanCorrectAll));
+    }
+
+    /// <summary>Reads this assignment's scheme from the backend. A late answer for
+    /// an assignment the teacher has already left is dropped.</summary>
+    private async Task LoadSchemeAsync()
+    {
+        var courseworkId = _courseworkId;
+        if (string.IsNullOrWhiteSpace(courseworkId))
+        {
+            return;
+        }
+
+        var request = ++_schemeRequest;
+        _schemeChecking = true;
+        RaiseSettingUp();
+        try
+        {
+            var payload = await Session.Api.MarkSchemeAsync(courseworkId).ConfigureAwait(true);
+            if (request != _schemeRequest)
+            {
+                return;
+            }
+
+            ApplyScheme(payload);
+        }
+        catch (ApiException ex)
+        {
+            if (request == _schemeRequest)
+            {
+                SchemeTitle = "The mark scheme could not be read";
+                SchemeDetail = ex.Display;
+            }
+        }
+        catch (Exception ex)
+        {
+            if (request == _schemeRequest)
+            {
+                SchemeTitle = "The mark scheme could not be read";
+                SchemeDetail = UserMessage.For(ex);
+            }
+        }
+        finally
+        {
+            if (request == _schemeRequest)
+            {
+                _schemeChecking = false;
+                RaiseSettingUp();
+            }
+        }
+    }
+
+    private void ApplyScheme(JsonElement payload)
+    {
+        bool Flag(string name) => payload.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.True;
+
+        string? Text(string name) => payload.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+
+        int? Number(string name) => payload.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetDouble(out var number)
+                ? (int)Math.Round(number)
+                : null;
+
+        if (!Flag("has_mark_scheme"))
+        {
+            _schemeAttached = false;
+            SchemeTitle = "Not attached";
+            SchemeDetail = "Corrections for this assignment cannot start until a scheme is uploaded.";
+            return;
+        }
+
+        _schemeAttached = true;
+        var parts = new List<string>();
+        if (Text("file_name") is { Length: > 0 } fileName)
+        {
+            parts.Add(fileName);
+        }
+
+        if (Number("pages") is { } pages && pages > 0)
+        {
+            parts.Add(pages == 1 ? "1 page" : $"{pages} pages");
+        }
+
+        if (Number("total_marks") is { } marks && marks > 0)
+        {
+            parts.Add($"{marks} marks");
+        }
+
+        if (Number("subquestion_count") is { } points && points > 0)
+        {
+            parts.Add($"{points} marking points");
+        }
+
+        var processed = Flag("processed");
+        var detail = string.Join(" · ", parts);
+        if (!processed)
+        {
+            detail = (detail.Length > 0 ? detail + " — " : string.Empty)
+                     + "it is analysed the first time work is corrected.";
+        }
+
+        SchemeTitle = processed ? "Attached · verified" : "Attached · not analysed yet";
+        if (processed && Text("verification_state") is { Length: > 0 } state)
+        {
+            SchemeTitle = "Attached · " + PayloadFacts.StatusLabel(state).ToLowerInvariant();
+        }
+
+        SchemeDetail = detail;
+    }
+
     public string ShownText
     {
         get
@@ -239,6 +487,7 @@ public sealed class AssignmentDetailViewModel : PageViewModel
         {
             var data = await Session.Api.AssignmentStudentsAsync(_courseworkId).ConfigureAwait(true);
             Apply(data);
+            await LoadSchemeAsync().ConfigureAwait(true);
         }
         catch (ApiException ex) when (ex.Status == 404)
         {
@@ -259,6 +508,14 @@ public sealed class AssignmentDetailViewModel : PageViewModel
         Heading = string.IsNullOrWhiteSpace(assignment.DisplayTitle)
             ? "Assignment details"
             : assignment.DisplayTitle;
+
+        // The setup controls act on this assignment: its own course, its own
+        // allow-list flag, its own scheme. Nothing is carried over from a
+        // previously opened assignment.
+        _courseId = assignment.CourseId;
+        _assignmentTitle = Heading;
+        _allowlisted = assignment.Allowlisted != 0;
+        RaiseSettingUp();
 
         var kind = assignment.Kind;
         HeaderDescription = string.Join(" · ", new[]
@@ -385,6 +642,12 @@ public sealed class AssignmentDetailViewModel : PageViewModel
     private void Reset()
     {
         _courseworkId = null;
+        _courseId = null;
+        _allowlisted = false;
+        _schemeAttached = false;
+        SchemeTitle = "Mark scheme";
+        SchemeDetail = string.Empty;
+        RaiseSettingUp();
         _all.Clear();
         Items.Clear();
         Facts.Clear();

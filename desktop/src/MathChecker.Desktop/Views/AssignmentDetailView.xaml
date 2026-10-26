@@ -128,6 +128,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -206,9 +207,83 @@
             </Expander>
 
             <!-- ============================================================
+                 Mark scheme and setup: the three things that decide whether
+                 this assignment can be corrected at all (a scheme, an
+                 allow-list flag, and queuing its papers). They live here, on
+                 the assignment they act on, instead of a separate page.
+                 ============================================================ -->
+            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,0,0,10" Padding="16,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="240" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel>
+                        <TextBlock Text="MARK SCHEME AND SETUP" Style="{StaticResource SectionLabel}" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Border Style="{StaticResource AccentChip}" Padding="9,3"
+                                    Visibility="{Binding SchemeAttached, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="Attached" FontSize="10.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource CanvasDeepBrush}" />
+                            </Border>
+                            <Border Style="{StaticResource WarningChip}" Padding="9,3"
+                                    Visibility="{Binding SchemeMissing, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="Not attached" FontSize="10.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource WarningTextBrush}" />
+                            </Border>
+                            <Border Style="{StaticResource Chip}" Padding="9,3"
+                                    Visibility="{Binding SchemeChecking, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="Checking…" FontSize="10.5"
+                                           Foreground="{DynamicResource TextMutedBrush}" />
+                            </Border>
+                            <Border Style="{StaticResource Chip}" Padding="9,3" Margin="8,0,0,0">
+                                <TextBlock Text="{Binding AllowlistText}" FontSize="10.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding SchemeTitle}" FontSize="13" FontWeight="SemiBold"
+                                   Margin="0,8,0,0" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextBrush}" />
+                        <TextBlock Text="{Binding SchemeDetail}" FontSize="11.5" Margin="0,3,0,0"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding HasSchemeDetail, Converter={StaticResource BoolToVis}}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Text="Only this assignment's questions are marked against this file. Uploading again replaces it."
+                                   FontSize="10.5" Margin="0,6,0,0" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextMutedBrush}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" MinWidth="190"
+                                VerticalAlignment="Center" Margin="16,0,0,0">
+                        <Button Content="{Binding UploadSchemeLabel}"
+                                Command="{Binding UploadMarkSchemeCommand}"
+                                HorizontalAlignment="Stretch"
+                                AutomationProperties.Name="Upload mark scheme"
+                                ToolTip="Attach the PDF this assignment is marked against" />
+                        <Button Content="Allow-list assignment"
+                                Command="{Binding AllowlistCommand}"
+                                IsEnabled="{Binding CanAllowlist}"
+                                HorizontalAlignment="Stretch"
+                                AutomationProperties.Name="Allow-list assignment"
+                                ToolTip="Let automatic corrections pick this assignment up" />
+                        <Button Content="Correct whole assignment"
+                                Style="{StaticResource PrimaryButton}"
+                                Command="{Binding CorrectAllCommand}"
+                                IsEnabled="{Binding CanCorrectAll}"
+                                HorizontalAlignment="Stretch" Margin="0"
+                                AutomationProperties.Name="Correct whole assignment"
+                                ToolTip="Queue every eligible paper; a failed paper never stops the rest" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ============================================================
                  Warnings: what the backend could not verify, in its own words.
                  ============================================================ -->
-            <Border Grid.Row="2" Style="{StaticResource WarningBanner}" Margin="0,0,0,10"
+            <Border Grid.Row="3" Style="{StaticResource WarningBanner}" Margin="0,0,0,10"
                     Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVis}}">
                 <ItemsControl ItemsSource="{Binding Warnings}">
                     <ItemsControl.ItemTemplate>
@@ -224,7 +299,7 @@
                  Filters. Changing one never edits a record; it only narrows
                  which of the backend's rows are shown.
                  ============================================================ -->
-            <Border Grid.Row="3" Style="{StaticResource FilterBar}" Margin="0,0,0,10">
+            <Border Grid.Row="4" Style="{StaticResource FilterBar}" Margin="0,0,0,10">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -271,7 +346,7 @@
             <!-- ============================================================
                  The roster table.
                  ============================================================ -->
-            <Border Grid.Row="4" Style="{StaticResource TableCard}">
+            <Border Grid.Row="5" Style="{StaticResource TableCard}">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
                         <Grid>

@@ -24,6 +24,9 @@ public static class PageIcons
         ["results"] = "\uE9D2",     // Chart
         ["reports"] = "\uE8A5",     // Document
         ["usage"] = "\uE9D9",       // Diagnostic
+        // One People hub replaced the Classroom/Classes/Students pages; the
+        // old keys stay mapped so a stale route still lands on a real icon.
+        ["people"] = "\uE77B",      // Contact
         ["classroom"] = "\uE716",   // People
         ["classes"] = "\uE716",     // People
         ["students"] = "\uE77B",    // Contact

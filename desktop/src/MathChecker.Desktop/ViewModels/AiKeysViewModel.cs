@@ -266,7 +266,9 @@ public sealed class AiKeysViewModel : PageViewModel
         Summary = $"{keys.Total} keys · {keys.Healthy} healthy · {keys.Cooldown} cooling · "
                   + $"{keys.Invalid} invalid · {keys.Disabled} disabled";
         _workers = await Session.Api.WorkersAsync();
-        WorkerCount = _workers.Running.ToString();
+        // The listing reports the pool as "size"; "running" is only in the
+        // resize reply, so reading it here showed 0 workers on a live pool.
+        WorkerCount = _workers.PoolSize.ToString();
         OnPropertyChanged(nameof(WorkersText));
     }
 

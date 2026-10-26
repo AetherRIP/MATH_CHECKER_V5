@@ -113,65 +113,79 @@
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                 </StackPanel>
-                <!-- Five tiles across the page width; the chips above keep their
-                     own line so a narrow window never drops one tile onto a row
-                     of its own. -->
-                <WrapPanel>
-                    <Border Style="{StaticResource SummaryTile}">
-                        <StackPanel>
-                            <TextBlock Text="{Binding TotalCount}" Style="{StaticResource SummaryNumber}" />
-                            <TextBlock Text="JOBS" Style="{StaticResource StatLabel}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource SummaryTile}">
-                        <StackPanel>
-                            <TextBlock Text="{Binding ProcessingCount}" Style="{StaticResource SummaryNumber}" />
-                            <TextBlock Text="PROCESSING" Style="{StaticResource StatLabel}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource SummaryTile}">
-                        <StackPanel>
-                            <TextBlock Text="{Binding QueuedCount}" Style="{StaticResource SummaryNumber}" />
-                            <TextBlock Text="QUEUED" Style="{StaticResource StatLabel}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource SummaryTile}">
-                        <StackPanel>
-                            <TextBlock Text="{Binding CompletedCount}" Style="{StaticResource SummaryNumber}" />
-                            <TextBlock Text="COMPLETED" Style="{StaticResource StatLabel}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource SummaryTile}">
-                        <StackPanel>
-                            <TextBlock Text="{Binding FailedCount}" Style="{StaticResource SummaryNumber}" />
-                            <TextBlock Text="FAILED" Style="{StaticResource StatLabel}" />
-                        </StackPanel>
-                    </Border>
+                <!-- Job counts on the left, the worker display on the right,
+                     under the chips it belongs with: how many corrections may
+                     run at once belongs to those numbers, not among them. The
+                     two columns keep their sides at every window width. -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                    <!-- How many papers may be corrected at once. The number is
-                         a request: the backend caps it by healthy API keys. -->
-                    <Border Style="{StaticResource SummaryTile}" MinWidth="250">
+                    <WrapPanel Grid.Column="0">
+                        <Border Style="{StaticResource SummaryTile}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding TotalCount}" Style="{StaticResource SummaryNumber}" />
+                                <TextBlock Text="JOBS" Style="{StaticResource StatLabel}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SummaryTile}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding ProcessingCount}" Style="{StaticResource SummaryNumber}" />
+                                <TextBlock Text="PROCESSING" Style="{StaticResource StatLabel}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SummaryTile}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding QueuedCount}" Style="{StaticResource SummaryNumber}" />
+                                <TextBlock Text="QUEUED" Style="{StaticResource StatLabel}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SummaryTile}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding CompletedCount}" Style="{StaticResource SummaryNumber}" />
+                                <TextBlock Text="COMPLETED" Style="{StaticResource StatLabel}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SummaryTile}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding FailedCount}" Style="{StaticResource SummaryNumber}" />
+                                <TextBlock Text="FAILED" Style="{StaticResource StatLabel}" />
+                            </StackPanel>
+                        </Border>
+                    </WrapPanel>
+
+                    <!-- How many papers may be corrected at once: a setting, not
+                         a job counter. The figure is the pool the backend holds
+                         (capped by healthy API keys); what is being corrected
+                         right now is said in the line underneath, so the card
+                         never reads "0 of 2 running" while it is idle. -->
+                    <Border Grid.Column="1" Style="{StaticResource SummaryTile}" MinWidth="264"
+                            Margin="12,0,0,0" VerticalAlignment="Top"
+                            AutomationProperties.Name="Corrections at once">
                         <StackPanel>
-                            <TextBlock Text="{Binding ParallelismText}" Style="{StaticResource SummaryNumber}"
-                                       FontSize="15" />
-                            <TextBlock Text="RUNNING IN PARALLEL" Style="{StaticResource StatLabel}" />
-                            <DockPanel Margin="0,6,0,0">
+                            <TextBlock Text="{Binding PoolText}" Style="{StaticResource SummaryNumber}"
+                                       FontSize="20" />
+                            <TextBlock Text="CORRECTIONS AT ONCE" Style="{StaticResource StatLabel}" />
+                            <DockPanel Margin="0,8,0,0">
                                 <Button DockPanel.Dock="Right" Content="Apply"
-                                        Command="{Binding ApplyWorkersCommand}" Height="24" Padding="8,1"
-                                        Margin="6,0,0,0"
+                                        Command="{Binding ApplyWorkersCommand}" Height="26" Padding="10,1"
+                                        Margin="8,0,0,0" VerticalAlignment="Center"
+                                        AutomationProperties.Name="Apply"
                                         ToolTip="Ask the backend to run this many corrections at once" />
                                 <ComboBox ItemsSource="{Binding WorkerOptions}"
                                           SelectedItem="{Binding RequestedWorkers}"
-                                          Height="24" FontSize="11"
+                                          Height="26" FontSize="11.5"
                                           AutomationProperties.Name="Corrections to run at once"
                                           ToolTip="Capped by the number of healthy API keys" />
                             </DockPanel>
-                            <TextBlock Text="{Binding WorkerNote}" FontSize="9.5" Margin="0,4,0,0"
-                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                            <TextBlock Text="{Binding WorkerNote}" FontSize="10" Margin="0,6,0,0"
+                                       TextWrapping="Wrap" LineHeight="14"
                                        Foreground="{DynamicResource TextMutedBrush}" />
                         </StackPanel>
                     </Border>
-                </WrapPanel>
+                </Grid>
             </StackPanel>
 
             <!-- ================================================ 2 · filters -->

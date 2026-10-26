@@ -918,8 +918,11 @@ public sealed partial class MathCheckerApiClient : IDisposable
     public Task<WorkerStateDto> WorkersAsync(CancellationToken cancellationToken = default) =>
         GetAsync<WorkerStateDto>("workers", cancellationToken);
 
+    /// <summary>Sets the pool size. The field name is the backend's: it reads
+    /// ``workers`` and ignores anything else, so posting ``count`` left every
+    /// apply resizing the pool to the backend's default of 2.</summary>
     public Task<WorkerStateDto> ResizeWorkersAsync(int count, CancellationToken cancellationToken = default) =>
-        SendJsonAsync<WorkerStateDto>(HttpMethod.Post, "workers/resize", new { count }, cancellationToken);
+        SendJsonAsync<WorkerStateDto>(HttpMethod.Post, "workers/resize", new { workers = count }, cancellationToken);
 
     public Task<SettingsDto> SettingsAsync(CancellationToken cancellationToken = default) =>
         GetAsync<SettingsDto>("settings", cancellationToken);

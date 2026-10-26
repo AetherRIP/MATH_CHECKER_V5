@@ -34,10 +34,12 @@ public partial class SearchView : UserControl
 
         // The backend's deep links are browser routes; map them to desktop pages.
         var route = hit.Route ?? string.Empty;
-        var page = route.Contains("students", StringComparison.OrdinalIgnoreCase) ? "students"
+        // People is the single roster page: a deep link to a student or to the
+        // classroom lands there, not on a page that no longer exists.
+        var page = route.Contains("students", StringComparison.OrdinalIgnoreCase) ? "people"
+            : route.Contains("classroom", StringComparison.OrdinalIgnoreCase) ? "people"
             : route.Contains("assignments", StringComparison.OrdinalIgnoreCase) ? "assignments"
             : route.Contains("results", StringComparison.OrdinalIgnoreCase) ? "results"
-            : route.Contains("classroom", StringComparison.OrdinalIgnoreCase) ? "classroom"
             : null;
         if (page is not null)
         {

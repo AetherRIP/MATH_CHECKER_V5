@@ -170,8 +170,8 @@ public sealed class MainViewModel : ObservableObject
             }
 
             // A rail entry stands for a destination, not a memory: clicking
-            // People must open Classroom, never whichever tab happened to be
-            // last used in that space (that read as "it opens Classes").
+            // People must open the roster hub, never whichever tab happened to
+            // be last used in that space.
             if (Current is null || Current.Group != value.Name)
             {
                 Current = value.Pages[0];
@@ -431,8 +431,9 @@ public sealed class MainViewModel : ObservableObject
         Add(new ReportsViewModel(_session) { Group = "Results" });
         Add(new UsageViewModel(_session) { Group = "Results" });
 
-        Add(new ClassroomViewModel(_session) { Group = "People" });
-        Add(new ClassesViewModel(_session) { Group = "People" });
+        // One People hub: the Classroom and Classes pages folded into it. The
+        // classroom-level actions (mark scheme, allow-listing, correct a whole
+        // assignment) sit on the assignment they act on.
         Add(new StudentsViewModel(_session) { Group = "People" });
         Add(new AssignmentsViewModel(_session) { Group = "People" });
         // The details page opens from a row, but it is a real page: it keeps

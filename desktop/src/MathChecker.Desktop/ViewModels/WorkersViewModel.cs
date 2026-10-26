@@ -41,13 +41,15 @@ public sealed class WorkersViewModel : PageViewModel
     private CancellationTokenSource? _streamCts;
     private CancellationTokenSource? _detailCts;
     private int _requestedWorkers = 2;
-    private int _runningWorkers;
+    private int _poolSize;
+    private bool _poolKnown;
     private string _workerNote = string.Empty;
 
     public WorkersViewModel(AppSession session)
         : base(session, "workers", "Correction monitor")
     {
         Group = "Correct";
+        ApplyWorkersCommand = Command(ApplyWorkersAsync);
         _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         _pollTimer.Tick += async (_, _) => await PollAsync();
         _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -233,14 +235,19 @@ public sealed class WorkersViewModel : PageViewModel
         get => _requestedWorkers;
         set
         {
-            if (value > 0 && SetProperty(ref _requestedWorkers, value))
+            // 0 means the combo lost its selection, not a worker count.
+            if (value > 0)
             {
-                OnPropertyChanged(nameof(ParallelismText));
+                SetProperty(ref _requestedWorkers, value);
             }
         }
     }
 
-    public string ParallelismText => $"{_runningWorkers} of {_requestedWorkers} running";
+    /// <summary>The pool size the backend holds, as a plain figure. It is shown
+    /// on its own rather than as "0 of 2 running": the second number used to be
+    /// the local request, so the card claimed two papers were being corrected
+    /// while both were idle, and every figure on the page disagreed with it.</summary>
+    public string PoolText => _poolKnown ? _poolSize.ToString() : "—";
 
     public string WorkerNote
     {
@@ -248,18 +255,48 @@ public sealed class WorkersViewModel : PageViewModel
         private set => SetProperty(ref _workerNote, value);
     }
 
-    public AsyncCommand ApplyWorkersCommand => Command(async () =>
+    /// <summary>Cached: a fresh command per binding evaluation left the button
+    /// unable to disable itself while the request was in flight.</summary>
+    public AsyncCommand ApplyWorkersCommand { get; }
+
+    private async Task ApplyWorkersAsync()
     {
         var state = await Session.Api.ResizeWorkersAsync(RequestedWorkers);
-        _runningWorkers = state.Running;
-        RequestedWorkers = state.Requested;
-        OnPropertyChanged(nameof(ParallelismText));
-        WorkerNote = state.Running < state.Requested
-            ? $"The backend is running {state.Running} of {state.Requested}: healthy API keys cap it."
-            : $"{state.Running} papers are corrected in parallel.";
-        Status = WorkerNote;
+        // The reply is the pool the backend actually holds: it caps the request
+        // by healthy API keys, so the reply, not the request, is what we show.
+        _poolSize = state.PoolSize;
+        _poolKnown = state.PoolSize > 0;
+        if (state.PoolSize > 0)
+        {
+            RequestedWorkers = state.PoolSize;
+        }
+
+        OnPropertyChanged(nameof(PoolText));
+        WorkerNote = DescribePool(state.PoolSize, state.Active, state.Requested);
+        Status = state.PoolSize < state.Requested
+            ? $"Asked for {state.Requested}; the backend runs {state.PoolSize} because healthy API keys cap it."
+            : $"Corrections at once set to {state.PoolSize}.";
         await RefreshDashboardAsync();
-    });
+    }
+
+    /// <summary>One honest line about the pool: what it holds and what is in
+    /// flight. Nothing here claims work is happening when the count is zero.</summary>
+    private static string DescribePool(int pool, int active, int requested)
+    {
+        if (pool <= 0)
+        {
+            return "The backend has no worker pool running.";
+        }
+
+        if (requested > pool)
+        {
+            return $"{pool} at once: healthy API keys cap the {requested} asked for.";
+        }
+
+        return active == 0
+            ? $"{pool} at once · nothing being corrected right now"
+            : $"{pool} at once · {active} being corrected right now";
+    }
 
     public AsyncCommand OpenJobsCommand => new(() =>
     {
@@ -378,20 +415,20 @@ public sealed class WorkersViewModel : PageViewModel
         try
         {
             var state = await Session.Api.WorkersAsync();
-            _runningWorkers = state.Running;
-            RequestedWorkers = state.Requested > 0 ? state.Requested : RequestedWorkers;
-            WorkersText = $"Workers {state.Running} of {state.Requested}";
-            OnPropertyChanged(nameof(ParallelismText));
-            if (state.Running < state.Requested)
+            // The listing reports the pool size as "size" and the papers in
+            // flight as "active"; it has no "running"/"requested" fields, so
+            // reading those showed "0 of 0" however many workers existed.
+            var pool = state.PoolSize;
+            _poolSize = pool;
+            _poolKnown = pool > 0;
+            if (pool > 0)
             {
-                WorkerNote = $"Only {state.Running} of {state.Requested} can run: healthy API keys cap it.";
+                RequestedWorkers = pool;
             }
-            else if (string.IsNullOrEmpty(WorkerNote) || _workerNote.StartsWith("Only "))
-            {
-                WorkerNote = state.Running == 0
-                    ? "No papers are running right now."
-                    : $"{state.Running} papers are corrected in parallel.";
-            }
+
+            WorkersText = $"Workers {state.Active} of {pool}";
+            OnPropertyChanged(nameof(PoolText));
+            WorkerNote = DescribePool(pool, state.Active, pool);
             // A provider cooldown is why queued cards wait; say it here rather
             // than leaving the queue looking stuck.
             ProviderText = state.ProviderText;

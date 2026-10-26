@@ -140,23 +140,26 @@ public static class TableLayout
             // and still be a few pixels too narrow for the flexible column's
             // floor. Rather than let that spill into a stray scrollbar, give up
             // the next column of the highest visible priority.
+            //
+            // The set is decided from declared widths first and applied after:
+            // a DataGridColumn keeps its old ActualWidth until the next layout
+            // pass, so a running sum taken from the grid never shrank and the
+            // loop stripped columns the table had room for.
             var index = GetFillColumn(grid);
             if (index >= 0 && index < grid.Columns.Count && grid.Columns[index].Visibility == Visibility.Visible)
             {
-                var floor = FloorFor(grid.Columns[index].MinWidth);
-                var level = max;
-                while (level > 0 && width - UsedWidth(grid, index) - Chrome < floor)
+                var priorities = new int[grid.Columns.Count];
+                var widths = new double[grid.Columns.Count];
+                for (var i = 0; i < grid.Columns.Count; i++)
                 {
-                    var victim = grid.Columns.LastOrDefault(c =>
-                        c.Visibility == Visibility.Visible && GetPriority(c) == level &&
-                        !ReferenceEquals(c, grid.Columns[index]));
-                    if (victim is null)
-                    {
-                        level--;
-                        continue;
-                    }
+                    priorities[i] = GetPriority(grid.Columns[i]);
+                    widths[i] = EffectiveWidth(grid.Columns[i]);
+                }
 
-                    victim.Visibility = Visibility.Collapsed;
+                foreach (var drop in ColumnReductions(width, priorities, widths, index,
+                             grid.Columns[index].MinWidth))
+                {
+                    grid.Columns[drop].Visibility = Visibility.Collapsed;
                     changed = true;
                 }
             }
@@ -175,7 +178,66 @@ public static class TableLayout
         }
     }
 
+    /// <summary>
+    /// Columns that must give up their place so the flexible column still gets
+    /// a readable floor, highest priority first and later columns first.
+    /// <paramref name="widths"/> holds each column's declared width so the
+    /// decision is independent of layout timing.
+    /// </summary>
+    public static IReadOnlyList<int> ColumnReductions(double gridWidth, IReadOnlyList<int> priorities,
+        IReadOnlyList<double> widths, int fillIndex, double fillMinWidth)
+    {
+        var max = MaxPriorityFor(gridWidth);
+        var visible = new bool[priorities.Count];
+        var used = 0d;
+        for (var i = 0; i < priorities.Count; i++)
+        {
+            visible[i] = priorities[i] <= max;
+            if (visible[i] && i != fillIndex)
+            {
+                used += widths[i];
+            }
+        }
+
+        var floor = FloorFor(fillMinWidth);
+        var hidden = new List<int>();
+        var level = max;
+        while (level > 0 && gridWidth - used - Chrome < floor)
+        {
+            var victim = -1;
+            for (var i = priorities.Count - 1; i >= 0; i--)
+            {
+                if (i != fillIndex && visible[i] && priorities[i] == level)
+                {
+                    victim = i;
+                    break;
+                }
+            }
+
+            if (victim < 0)
+            {
+                level--;
+                continue;
+            }
+
+            visible[victim] = false;
+            used -= widths[victim];
+            hidden.Add(victim);
+        }
+
+        return hidden;
+    }
+
     private static double Chrome => SystemParameters.VerticalScrollBarWidth + 4;
+
+    /// <summary>
+    /// The width a column is expected to take: its declared size when it has
+    /// one, else the measured size, else its floor.
+    /// </summary>
+    private static double EffectiveWidth(DataGridColumn column) =>
+        column.Width.IsAbsolute ? column.Width.Value
+        : column.ActualWidth > 0 && !double.IsNaN(column.ActualWidth) ? column.ActualWidth
+        : double.IsNaN(column.MinWidth) ? 0 : column.MinWidth;
 
     /// <summary>Readable floor for a flexible column.</summary>
     public static double FloorFor(double columnMinWidth) =>
@@ -192,7 +254,7 @@ public static class TableLayout
                 continue;
             }
 
-            used += column.Width.IsAbsolute ? column.Width.Value : column.ActualWidth;
+            used += EffectiveWidth(column);
         }
 
         return used;

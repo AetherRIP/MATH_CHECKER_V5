@@ -251,7 +251,8 @@ public class StudentProfileTests
             Assert.False(page.IsProfileOpen);
             Assert.Null(page.Profile);
             Assert.Null(page.Selected);
-            Assert.StartsWith("Students", page.HeaderTitle);
+            // The hub is called People; the header falls back to the page title.
+            Assert.StartsWith("People", page.HeaderTitle);
         }
     }
 
