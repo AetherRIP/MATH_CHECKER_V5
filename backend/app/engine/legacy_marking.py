@@ -195,6 +195,25 @@ def is_temporary_model_error(exc: Exception) -> bool:
     )
 
 
+def is_overload_error(exc: Exception) -> bool:
+    """True when the provider says it is busy (503 high demand / 429).
+
+    Such a failure is not a property of THIS request: resending the same pages
+    two seconds later does not help, and the shared provider gate already
+    knows to hold traffic. Distinguishing it here is what stops a paper from
+    spending an extra request per model on a 2-second retry that cannot
+    succeed (measured: 3,922 failed attempts against 456 successes in the
+    production log).
+    """
+    try:
+        from ..retry_policy import HIGH_DEMAND, classify_failure
+        return classify_failure(exc).cls == HIGH_DEMAND
+    except Exception:
+        message = str(exc).lower()
+        return any(m in message for m in ("high demand", "503", "429",
+                                          "resource exhausted", "overloaded"))
+
+
 def extract_json(text: str) -> dict:
     """Parse JSON even if a model wraps it in a markdown code fence."""
     if not text:
@@ -861,6 +880,24 @@ def grade_with_model(
         )
 
     for model_name in model_names:
+        # A model the shared gate has parked sends NOTHING: the cooldown was
+        # established by an earlier request (possibly another worker's), so
+        # asking again is a guaranteed failure that still costs a request.
+        try:
+            from ..gemini.provider_health import provider_health
+            allowed, gate_wait = provider_health().available(model_name)
+        except Exception:  # noqa: BLE001 — the gate must never break marking
+            allowed, gate_wait = True, 0.0
+        if not allowed:
+            errors.append(
+                f"{model_name}: cooling down after high demand "
+                f"({int(gate_wait)}s remaining) — not sent")
+            try:
+                from ..gemini import call_audit
+                call_audit.note_skip(f"{model_name} cooling down")
+            except Exception:
+                pass
+            continue
         for attempt in range(2):
             try:
                 if status_callback:
@@ -893,6 +930,21 @@ def grade_with_model(
                 if is_timeout_error(exc):
                     MODEL_HEALTH.record_failure(model_name, exc)
                     break  # don't spend another full timeout on the same model
+
+                if is_overload_error(exc):
+                    # The provider is busy, not this request: the gate now
+                    # carries the cooldown, so try the NEXT model instead of
+                    # resending the same pages after 2 s.
+                    MODEL_HEALTH.record_failure(model_name, exc)
+                    try:
+                        from ..gemini.provider_health import (
+                            HIGH_DEMAND, provider_health,
+                        )
+                        provider_health().record_failure(
+                            HIGH_DEMAND, str(exc), model_name)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    break
 
                 if is_temporary_model_error(exc) and attempt == 0:
                     time.sleep(2)

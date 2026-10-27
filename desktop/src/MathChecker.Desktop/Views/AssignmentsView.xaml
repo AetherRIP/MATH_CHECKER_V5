@@ -41,8 +41,17 @@
                   Sync="{Binding SyncService}"
                   BodyPadding="0,18,0,0">
         <ui:PageFrame.Actions>
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
+            <!-- Wrapping, not a single row: five actions are 664 DIP wide and
+                 the last one fell outside the page at the minimum width. The
+                 header measures its actions with an unbounded width, so the
+                 wrap needs the page width as a ceiling. -->
+            <WrapPanel VerticalAlignment="Top"
+                       MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ui:PageFrame}}">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                <!-- Creating lives on its own page: it needs a name, a place, a
+                     grade scale and a mark scheme, which never fitted here. -->
+                <Button Content="New assignment" Command="{Binding NewAssignmentCommand}"
+                        ToolTip="Name it, set the marks it is out of, and attach the mark scheme" />
                 <!-- Every assignment opens its own page; this acts on the
                      selected row, the name column opens the clicked one. -->
                 <Button Content="Open details" Style="{StaticResource PrimaryButton}"
@@ -53,8 +62,8 @@
                 <Button Content="Recheck mark scheme" Command="{Binding RecheckMarkSchemeCommand}"
                         IsEnabled="{Binding HasSelection}" ToolTip="Select an assignment row first" />
                 <Button Content="Open first page image" Command="{Binding OpenMarkSchemePageCommand}" Margin="0"
-                        IsEnabled="{Binding HasSelection}" ToolTip="Select an assignment row first" />
-            </StackPanel>
+                        IsEnabled="{Binding HasSelection}"                        ToolTip="Select an assignment row first" />
+            </WrapPanel>
         </ui:PageFrame.Actions>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
@@ -121,26 +130,11 @@
                             Visibility="{Binding Items.Count, Converter={StaticResource ZeroToVis}}">
                         <StackPanel>
                             <TextBlock Text="No assignments match" Style="{StaticResource EmptyTitle}" />
-                            <TextBlock Text="Change the search or kind, or create a local assignment below."
+                            <TextBlock Text="Change the search or kind, or use New assignment to create one."
                                        Style="{StaticResource EmptyText}" />
                         </StackPanel>
                     </Border>
                 </Grid>
-            </Border>
-
-            <Border Style="{StaticResource Card}" Margin="0,12,0,0" Padding="14">
-                <WrapPanel>
-                    <TextBlock Text="New local assignment" Style="{StaticResource SectionLabel}"
-                               VerticalAlignment="Center" Margin="0,0,14,0" />
-                    <TextBlock Text="Title" Style="{StaticResource FieldLabel}" />
-                    <TextBox Width="220" Text="{Binding NewTitle, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Text="Max points" Style="{StaticResource FieldLabel}" />
-                    <TextBox Width="70" Text="{Binding NewPoints, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Text="Due" Style="{StaticResource FieldLabel}" />
-                    <TextBox Width="130" Text="{Binding NewDueDate, UpdateSourceTrigger=PropertyChanged}" />
-                    <Button Content="Create" Style="{StaticResource PrimaryButton}"
-                            Command="{Binding CreateLocalCommand}" Height="38" Padding="16,6" Margin="0" />
-                </WrapPanel>
             </Border>
 
             <Border Style="{StaticResource Card}" Margin="0,12,0,0">

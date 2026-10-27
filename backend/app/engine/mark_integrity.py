@@ -103,6 +103,41 @@ def _same_number(a: float, b: float) -> bool:
     return abs(a - b) <= max(1.0, 0.005 * max(abs(a), abs(b)))
 
 
+def _parts(q: dict) -> list[dict]:
+    parts = q.get("subquestions")
+    if not isinstance(parts, list):
+        return []
+    return [p for p in parts if isinstance(p, dict)]
+
+
+def _part_allocated(q: dict) -> bool:
+    """Does the mark scheme allocate this question's marks per subquestion?
+
+    When the parts' maxima add up to the parent's maximum, the parent row is an
+    AGGREGATE: its marks come from the parts, and the parent's own
+    ``mark_breakdown`` / ``loss_reason`` / solution text describes only one part
+    (usually the one the marker happened to quote). Judging the aggregate by
+    that single fragment is what sent a correct 1/3 (1/1 for (b), 0/2 for (d))
+    to review as "every listed point awarded but not full marks".
+    """
+    parts = _parts(q)
+    if not parts:
+        return False
+    try:
+        parts_max = sum(_int(p.get("max_marks")) for p in parts)
+    except (TypeError, ValueError):
+        return False
+    return parts_max > 0 and parts_max == _int(q.get("max_marks"))
+
+
+def _explained_by_parts(q: dict) -> bool:
+    """Are the parent's awarded marks exactly the sum of its parts' awards?"""
+    parts = _parts(q)
+    if not parts or not _part_allocated(q):
+        return False
+    return sum(_int(p.get("awarded_marks")) for p in parts) == _int(q.get("awarded_marks"))
+
+
 def _full_mark_contradiction(q: dict) -> tuple[float, float, bool] | None:
     """A numeric final answer that the marker's own solution does not contain.
 
@@ -149,6 +184,35 @@ def enforce_evidence(result: dict) -> tuple[dict, dict]:
     if not isinstance(questions, list):
         return result, report
 
+    # Each subquestion is judged on its OWN answer and marks; the parent is
+    # judged as an aggregate (below).  A part marked while its answer is
+    # explicitly absent earns nothing, exactly as for a whole question.
+    for parent in questions:
+        if not isinstance(parent, dict):
+            continue
+        for part in _parts(parent):
+            awarded = _int(part.get("awarded_marks"))
+            answers = part.get("answers")
+            text = (" | ".join(str(a) for a in answers)
+                    if isinstance(answers, list) else str(answers or ""))
+            absent = _explicitly_absent(text)
+            if awarded <= 0 or not absent:
+                continue
+            label = str(part.get("label") or part.get("id") or "?")
+            reason = (f"The marker recorded no readable answer for subquestion {label} "
+                      f"({absent}) but awarded {awarded} mark(s). The award was "
+                      f"withdrawn: a missing answer cannot earn credit. Re-check "
+                      f"this part against the scan.")
+            part["awarded_marks"] = 0
+            report["changed"].append({
+                "question_number": label,
+                "from": awarded,
+                "to": 0,
+                "reason": reason,
+            })
+            report["review_questions"].append(label)
+            report["warnings"].append(f"Subquestion {label}: {reason}")
+
     for q in questions:
         if not isinstance(q, dict):
             continue
@@ -184,12 +248,19 @@ def enforce_evidence(result: dict) -> tuple[dict, dict]:
         if not isinstance(breakdown, list):
             breakdown = []
 
+        # A per-subquestion aggregate carries only one part's evidence, so the
+        # parent-level text checks below do not apply to it. Its marks are the
+        # sum of its parts, and each part was checked above.
+        aggregate = _part_allocated(q)
+        if aggregate and _explained_by_parts(q):
+            continue
+
         # A full-mark award whose own solution gives a different final number
         # is not a full-mark answer.  Withdraw the accuracy mark (never a
         # method mark) and send the question to review.  This caught a live
         # Q30 where the recorded answer was 4780 while the marker's own
         # working gave 5740.
-        if maximum > 0 and awarded >= maximum:
+        if maximum > 0 and awarded >= maximum and not aggregate:
             contradiction = _full_mark_contradiction(q)
             if contradiction is not None:
                 got, wanted, large = contradiction
@@ -240,7 +311,7 @@ def enforce_evidence(result: dict) -> tuple[dict, dict]:
         # A full-mark award must not contain a marking point the marker itself
         # marked as missed.  Keep the award (the breakdown is metadata) but do
         # not let it pass as a routine, trusted result.
-        if maximum > 0 and awarded >= maximum and any(
+        if maximum > 0 and awarded >= maximum and not aggregate and any(
                 isinstance(item, dict) and not bool(item.get("awarded"))
                 for item in breakdown):
             reason = ("Full marks were awarded even though the marker's own "
@@ -254,7 +325,7 @@ def enforce_evidence(result: dict) -> tuple[dict, dict]:
         # A partial award that claims no marks were lost, with every listed
         # marking point awarded, cannot be explained by its own evidence.
         loss_reason = str(q.get("loss_reason") or "").strip()
-        if (0 < awarded < maximum and breakdown
+        if (0 < awarded < maximum and breakdown and not aggregate
                 and all(bool(item.get("awarded")) for item in breakdown
                         if isinstance(item, dict))
                 and _NO_LOSS.search(loss_reason)):

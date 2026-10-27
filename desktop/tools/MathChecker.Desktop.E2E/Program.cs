@@ -120,6 +120,15 @@ public static class Program
                 }
             }
 
+            // The AI & keys page, driven for real: keys stored through the real
+            // endpoint, "Test all" over the real event stream, and the page's own
+            // result rows checked against what the backend stored.
+            foreach (var result in await ApiKeysScenario.RunAsync(api, settings, log, host,
+                         ArgumentValue(args, "--keys-shot")))
+            {
+                Check(result.Name, result.Ok, result.Detail);
+            }
+
             await api.SaveSettingsAsync(new { debug = false });
             var settingsAfter = await api.SettingsAsync();
             Check("settings save round-trips", settingsAfter.Debug == false, "debug=false");

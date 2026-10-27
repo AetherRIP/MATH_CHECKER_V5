@@ -2,31 +2,32 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ============================================================
-         Theme-neutral tokens. Colour, elevation and gradients live in
-         LightTheme.xaml / DarkTheme.xaml, so switching appearance only
-         swaps one dictionary. Everything here is the same in both.
+         Theme-neutral tokens: type roles, geometry and spacing. Colour,
+         elevation and gradients live in LightTheme.xaml / DarkTheme.xaml,
+         so switching appearance still swaps exactly one dictionary.
          ============================================================ -->
 
-    <!-- Typography: the reference's Plus Jakarta Sans, bundled with the
-         application (SIL OFL, see Assets/Fonts/OFL-PlusJakartaSans.txt).
-         Cascadia Mono keeps identifiers and raw payloads legible. -->
-    <FontFamily x:Key="DisplayFont">pack://application:,,,/Assets/Fonts/#Plus Jakarta Sans</FontFamily>
+    <!-- Three voices, three jobs. Space Grotesk (bundled, SIL OFL) is the
+         instrument voice: display, page titles, navigation, buttons and every
+         figure. Plus Jakarta Sans carries body copy, which is read in long
+         stretches. Cascadia Mono carries ids, paths and raw payloads. -->
+    <FontFamily x:Key="DisplayFont">pack://application:,,,/Assets/Fonts/#Space Grotesk</FontFamily>
     <FontFamily x:Key="BodyFont">pack://application:,,,/Assets/Fonts/#Plus Jakarta Sans</FontFamily>
-    <FontFamily x:Key="MediumFont">pack://application:,,,/Assets/Fonts/#Plus Jakarta Sans</FontFamily>
+    <FontFamily x:Key="MediumFont">pack://application:,,,/Assets/Fonts/#Space Grotesk</FontFamily>
     <FontFamily x:Key="MonoFont">Cascadia Mono,Consolas,Courier New</FontFamily>
     <FontFamily x:Key="IconFont">Segoe MDL2 Assets</FontFamily>
 
-    <!-- Geometry: generous squircles, sized for a pointer on a desktop
-         rather than a thumb on glass. -->
-    <CornerRadius x:Key="ControlRadius">10</CornerRadius>
-    <CornerRadius x:Key="TileRadius">8</CornerRadius>
-    <CornerRadius x:Key="CardRadius">18</CornerRadius>
-    <CornerRadius x:Key="PanelRadius">18</CornerRadius>
-    <CornerRadius x:Key="DialogRadius">20</CornerRadius>
-    <CornerRadius x:Key="PillRadius">999</CornerRadius>
+    <!-- Geometry: tight enough to read as an instrument, not a toy. The chip
+         radius is deliberately small — a status is a stamp, not a pill. -->
+    <CornerRadius x:Key="ControlRadius">8</CornerRadius>
+    <CornerRadius x:Key="TileRadius">5</CornerRadius>
+    <CornerRadius x:Key="CardRadius">12</CornerRadius>
+    <CornerRadius x:Key="PanelRadius">12</CornerRadius>
+    <CornerRadius x:Key="DialogRadius">14</CornerRadius>
+    <CornerRadius x:Key="PillRadius">5</CornerRadius>
 
     <Thickness x:Key="PagePadding">26,20,26,22</Thickness>
-    <Thickness x:Key="CardPadding">18</Thickness>
+    <Thickness x:Key="CardPadding">16</Thickness>
 
     <!-- 4 / 8 / 12 / 16 / 24 / 32. -->
     <Thickness x:Key="GapXs">4</Thickness>

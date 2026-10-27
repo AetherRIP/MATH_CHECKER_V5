@@ -19,8 +19,8 @@ import time
 
 from ..config import get_secrets
 from ..db import get_meta, query, query_one, execute, set_meta, now as db_now
-from ..errors import classify_gemini_error
-from ..logging_setup import log_event
+from ..errors import classify_gemini_error, http_status_of
+from ..logging_setup import log_event, redact
 
 log = logging.getLogger("gemini.keys")
 
@@ -46,6 +46,18 @@ def mask_key(key: str) -> str:
     if len(key) <= 8:
         return "********"
     return f"{key[:4]}{'*' * max(4, len(key) - 8)}{key[-4:]}"
+
+
+def _safe_error_text(value: object, limit: int = 500) -> str:
+    """Provider error text with key material removed before it is STORED.
+
+    ``gemini_keys.last_error`` is persisted and returned by ``/api/keys``, so
+    it gets the same redaction the logs use: a provider error that echoes the
+    request URL is the realistic way a key would otherwise land in the
+    database and on the screen. Redaction runs BEFORE the length cap, because
+    a truncated key is still key material.
+    """
+    return redact(str(value))[:limit]
 
 
 class KeyRecord:
@@ -77,16 +89,22 @@ class KeyRecord:
     # -- persistence -----------------------------------------------------
 
     def save(self) -> None:
+        # ``invalid`` is its OWN column. It used to be stored in ``removed``,
+        # which the "delete this key from the list" flow also sets — so a key
+        # that had ever recorded a failure came back INVALID merely for having
+        # been deleted and restored, with no auth failure behind it at all.
+        # ``removed`` now means only "no longer in the configured key list" and
+        # is owned by :meth:`mark_removed`; bookkeeping must never rewrite it.
         execute(
             """
-            INSERT INTO gemini_keys(fingerprint, label, added_at, removed, disabled)
-            VALUES(?, ?, COALESCE((SELECT added_at FROM gemini_keys WHERE fingerprint = ?), ?), ?, ?)
+            INSERT INTO gemini_keys(fingerprint, label, added_at, removed, disabled, invalid)
+            VALUES(?, ?, COALESCE((SELECT added_at FROM gemini_keys WHERE fingerprint = ?), ?), 0, ?, ?)
             ON CONFLICT(fingerprint) DO UPDATE SET
                 label = COALESCE(excluded.label, gemini_keys.label),
-                removed = excluded.removed,
-                disabled = excluded.disabled
+                disabled = excluded.disabled,
+                invalid = excluded.invalid
             """,
-            (self.fingerprint, self.label, self.fingerprint, db_now(), int(self.invalid and self.last_failure is not None), int(self.disabled)),
+            (self.fingerprint, self.label, self.fingerprint, db_now(), int(self.disabled), int(self.invalid)),
         )
         execute(
             """
@@ -120,7 +138,7 @@ class KeyRecord:
     def load(self) -> None:
         row = query_one(
             """
-            SELECT k.removed, k.disabled, k.label,
+            SELECT k.removed, k.disabled, k.invalid, k.label,
                    s.requests, s.successes, s.failures, s.rate_limit_events,
                    s.quota_errors, s.auth_errors, s.timeout_errors,
                    s.cooldown_until, s.cooldown_kind, s.last_used,
@@ -134,7 +152,6 @@ class KeyRecord:
             return
         self.disabled = bool(row["disabled"])
         self.label = row["label"] or self.label
-        was_removed = bool(row["removed"])
         self.requests = row["requests"] or 0
         self.successes = row["successes"] or 0
         self.failures = row["failures"] or 0
@@ -147,10 +164,14 @@ class KeyRecord:
         self.last_used = row["last_used"]
         self.last_failure = row["last_failure"]
         self.last_error = row["last_error"]
-        # A key that previously failed auth comes back only as far as
-        # INVALID unless the secret-store key itself changed (new fingerprint
-        # would be a new record). The user can re-enable from the UI.
-        self.invalid = was_removed and (self.last_failure is not None)
+        # INVALID is read from its OWN flag: it is set only by a recorded
+        # credential rejection (locked in :meth:`KeyManager.record_failure`).
+        # A key that previously failed auth comes back only as far as INVALID
+        # unless the secret-store key itself changed (a new fingerprint would
+        # be a new record), and the user can re-enable it from the UI — but a
+        # key that was merely removed from the list and later restored, or that
+        # only ever hit a transient failure, loads as usable.
+        self.invalid = bool(row["invalid"])
 
     def public(self) -> dict:
         now_ts = time.time()
@@ -260,7 +281,7 @@ class KeyManager:
         else:
             rec.failures += 1
             rec.last_failure = time.time()
-            rec.last_error = message
+            rec.last_error = _safe_error_text(message)
             if kind == "invalid_key":
                 rec.invalid = True
                 rec.auth_errors += 1
@@ -365,13 +386,14 @@ class KeyManager:
             rec = self._get_or_create(fp)
         rec.failures += 1
         rec.last_failure = time.time()
-        rec.last_error = str(exc)[:500]
+        rec.last_error = _safe_error_text(exc)
 
         if kind == "invalid_key":
             rec.auth_errors += 1
             rec.invalid = True
             log_event("gemini.keys", "key marked INVALID (auth failure)",
-                      level=logging.WARNING, fingerprint=fp)
+                      level=logging.WARNING, fingerprint=fp,
+                      status=http_status_of(exc))
         elif kind == "rate_limited":
             rec.rate_limit_events += 1
             rec.quota_errors += 1
@@ -400,6 +422,7 @@ class KeyManager:
             delay = max(delay, min(retry_after, COOLDOWN_CAP_SECONDS))
         rec.cooldown_until = time.time() + delay
         rec.cooldown_kind = kind
+        status = http_status_of(message)
         try:
             from ..api_stats import record_cooldown
             record_cooldown()
@@ -408,7 +431,7 @@ class KeyManager:
         log_event("gemini.keys", "key entered cooldown",
                   level=logging.WARNING, fingerprint=rec.fingerprint,
                   cooldown_seconds=round(delay), kind=kind,
-                  retry_after=retry_after)
+                  retry_after=retry_after, status=status)
 
     def re_enable(self, fp: str) -> None:
         with self._lock:

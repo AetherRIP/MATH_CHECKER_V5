@@ -587,6 +587,16 @@ public sealed partial class MathCheckerApiClient : IDisposable
         SendJsonRawAsync(HttpMethod.Post, "assignments/local",
             new { title, max_points = maxPoints, due_date = dueDate, description }, cancellationToken);
 
+    /// <summary>Create a coursework in Google Classroom. The backend reports the
+    /// id Google confirmed, so the caller never invents one.</summary>
+    public Task<JsonElement> CreateClassroomAssignmentAsync(string courseId, string title,
+        string? description, double? maxPoints, string? dueDate,
+        CancellationToken cancellationToken = default) =>
+        SendJsonRawAsync(HttpMethod.Post,
+            $"classroom/courses/{Uri.EscapeDataString(courseId)}/assignments/create",
+            new { title, description, max_points = maxPoints, due_date = dueDate },
+            cancellationToken);
+
     public Task<JsonElement> MarkSchemeAsync(string courseworkId, CancellationToken cancellationToken = default) =>
         GetJsonAsync($"assignments/{Uri.EscapeDataString(courseworkId)}/mark-scheme", cancellationToken);
 
@@ -1024,8 +1034,18 @@ public sealed partial class MathCheckerApiClient : IDisposable
     public Task<JsonElement> SchemeSummaryAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync("scheme/summary", cancellationToken);
 
-    public Task<JsonElement> DiscrepanciesAsync(CancellationToken cancellationToken = default) =>
-        GetJsonAsync("scheme/discrepancies", cancellationToken);
+    /// <summary>Discrepancies, optionally narrowed to one review status.
+    ///
+    /// The endpoint with no filter answers with the WHOLE audit table, decided
+    /// rows included. Only <c>review_status=AWAITING_REVIEW</c> is the open set a
+    /// reviewer still has to decide — the same set `/scheme/summary` counts — so
+    /// a screen that lists "open" discrepancies must ask for it, or a decided row
+    /// sits in the list next to a count that says nothing is awaiting review.
+    /// </summary>
+    public Task<JsonElement> DiscrepanciesAsync(string? reviewStatus = null,
+        CancellationToken cancellationToken = default) =>
+        GetJsonAsync("scheme/discrepancies" + Query(("review_status", reviewStatus)),
+            cancellationToken);
 
     public Task<JsonElement> ProposalsAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync("scheme/proposals", cancellationToken);
@@ -1046,6 +1066,42 @@ public sealed partial class MathCheckerApiClient : IDisposable
         CancellationToken cancellationToken = default) =>
         SendJsonRawAsync(HttpMethod.Post, $"scheme/proposals/{Uri.EscapeDataString(proposalId)}/{decision}",
             decision == "approve" ? new { confirm = true } : new { }, cancellationToken);
+
+    /// <summary>One discrepancy with the mark-scheme page it was found on, the
+    /// scheme's own wording and the student's stored answer. Nothing here is
+    /// reconstructed: an absent field means the backend has none.</summary>
+    public Task<JsonElement> DiscrepancyAsync(string discrepancyId,
+        CancellationToken cancellationToken = default) =>
+        GetJsonAsync($"scheme/discrepancies/{Uri.EscapeDataString(discrepancyId)}", cancellationToken);
+
+    /// <summary>Every question this assignment's mark scheme declares, with its
+    /// marks, page and whether it is currently being marked.</summary>
+    public Task<JsonElement> SchemeQuestionsAsync(string courseworkId,
+        CancellationToken cancellationToken = default) =>
+        GetJsonAsync("scheme/questions" + Query(("coursework_id", courseworkId)), cancellationToken);
+
+    /// <summary>Take one question (or one subquestion) out of marking for an
+    /// assignment. Existing results keep their marks; later corrections skip it
+    /// and its marks leave the total.
+    /// </summary>
+    public Task<JsonElement> IgnoreSchemeQuestionAsync(string courseworkId, string questionNumber,
+        string? note = null, CancellationToken cancellationToken = default) =>
+        SendJsonRawAsync(HttpMethod.Post, "scheme/ignore",
+            new { coursework_id = courseworkId, question_number = questionNumber, note }, cancellationToken);
+
+    public Task<JsonElement> RestoreSchemeQuestionAsync(string courseworkId, string questionNumber,
+        CancellationToken cancellationToken = default) =>
+        SendJsonRawAsync(HttpMethod.Delete,
+            $"scheme/ignored/{Uri.EscapeDataString(courseworkId)}/{Uri.EscapeDataString(questionNumber)}",
+            null, cancellationToken);
+
+    /// <summary>The real uploaded page of an assignment's mark scheme, rendered
+    /// by the backend. Used by the review screen to show what the scheme says.
+    /// </summary>
+    public Task<DownloadFile> SchemePageImageAsync(string courseworkId, int page,
+        CancellationToken cancellationToken = default) =>
+        DownloadAsync($"assignments/{Uri.EscapeDataString(courseworkId)}/mark-scheme/page/{page}.png",
+            $"mark-scheme-p{page}.png", cancellationToken);
 
     // ------------------------------------------------------ distributed layer
 

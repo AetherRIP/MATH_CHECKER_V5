@@ -90,15 +90,50 @@
                           Visibility="{Binding IsProfileClosed, Converter={StaticResource BoolToVis}}">
             <Grid>
                 <Grid.RowDefinitions>
+                    <RowDefinition x:Name="ClassroomRow" Height="Auto" />
                     <RowDefinition x:Name="TilesRow" Height="Auto" />
                     <RowDefinition x:Name="FilterRow" Height="Auto" />
                     <RowDefinition x:Name="RosterRow" Height="240" />
                 </Grid.RowDefinitions>
 
+                <!-- Where the roster comes from, and the one action that starts
+                     it: without this card a fresh copy had no way to connect a
+                     Google Classroom account at all. -->
+                <Border Grid.Row="0" Style="{StaticResource Panel}" Margin="0,0,0,10">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                    VerticalAlignment="Center" Margin="14,0,0,0">
+                            <Button Content="{Binding ClassroomActionText}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding ConnectClassroomCommand}"
+                                    IsEnabled="{Binding CanConnect}"
+                                    ToolTip="Sign in with the teacher's Google account"
+                                    AutomationProperties.Name="Connect Google Classroom" />
+                            <Button Content="Disconnect" Command="{Binding DisconnectClassroomCommand}"
+                                    Margin="0"
+                                    Visibility="{Binding ClassroomConnected, Converter={StaticResource BoolToVis}}"
+                                    ToolTip="Forget the stored Google token; local data is kept" />
+                        </StackPanel>
+
+                        <StackPanel>
+                            <TextBlock Text="GOOGLE CLASSROOM" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="{Binding ClassroomStateText}"
+                                       Style="{StaticResource CardTitle}" Margin="0,5,0,0"
+                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding ClassroomHint}" Style="{StaticResource Muted}"
+                                       Margin="0,3,0,0" />
+                            <TextBlock Text="{Binding ClassroomProblem}"
+                                       Style="{StaticResource WarningText}" Margin="0,4,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding HasClassroomProblem, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
                 <!-- Headline counts as tiles, with the sync provenance beside
                      them: the numbers line up because each sits in its own tile
                      instead of a WrapPanel. -->
-                <DockPanel Grid.Row="0" Margin="0,0,0,10">
+                <DockPanel Grid.Row="1" Margin="0,0,0,10">
                     <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center"
                                 HorizontalAlignment="Right" Margin="10,0,0,0">
                         <TextBlock Text="{Binding LastSyncText}" FontSize="10.5"
@@ -143,14 +178,17 @@
                     </WrapPanel>
                 </DockPanel>
 
-                <Border Grid.Row="1" Style="{StaticResource FilterBar}" Margin="0,0,0,10">
+                <Border Grid.Row="2" Style="{StaticResource FilterBar}" Margin="0,0,0,10">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="240" />
+                            <!-- Flexible with caps, not fixed 240/220: the two
+                                 fixed columns plus the 80 DIP hint summed past
+                                 the page at the window's minimum width. -->
+                            <ColumnDefinition Width="*" MinWidth="170" MaxWidth="240" />
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" MinWidth="80" />
+                            <ColumnDefinition Width="*" MinWidth="140" MaxWidth="220" />
+                            <ColumnDefinition Width="*" MinWidth="0" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
@@ -179,7 +217,7 @@
                     </Grid>
                 </Border>
 
-                <Border Grid.Row="2" Style="{StaticResource TableCard}">
+                <Border Grid.Row="3" Style="{StaticResource TableCard}">
                     <DockPanel>
                         <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
                             <DockPanel>

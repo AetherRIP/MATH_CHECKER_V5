@@ -145,3 +145,49 @@ def test_scheme_summary(fresh_state):
         assert summary["open_discrepancies"] == 1
         assert summary["confirmed"] == 0
         assert summary["awaiting_approval"] == 0
+
+
+def test_decided_discrepancy_leaves_the_open_set(fresh_state):
+    """A decided row must leave the OPEN list, which is what the review screen
+    shows and counts.
+
+    The unfiltered listing is the whole audit table, so a screen that asks for it
+    keeps showing rows the teacher has already decided while the summary next to
+    them reports nothing awaiting review. `review_status=AWAITING_REVIEW` is the
+    open set, and it is the set `summary.open_discrepancies` counts.
+    """
+    _seed_assignment()
+    _seed_result("r1", "s1", "Alice")
+    with TestClient(app) as client:
+        row = client.get("/api/scheme/discrepancies").json()["items"][0]
+        assert client.get("/api/scheme/summary").json()["open_discrepancies"] == 1
+
+        decided = client.post(
+            f"/api/scheme/discrepancies/{row['id']}/decision",
+            json={"decision": sa.DECISION_CONFIRM_SCHEME_WRONG}).json()["discrepancy"]
+        assert decided["review_status"] == sa.REVIEW_COMPLETED
+        assert decided["review_required"] == 0
+
+        # The audit record survives; it is simply no longer open.
+        assert client.get("/api/scheme/discrepancies").json()["total"] == 1
+        open_only = client.get(
+            "/api/scheme/discrepancies",
+            params={"review_status": sa.REVIEW_AWAITING}).json()
+        assert open_only["total"] == 0
+        assert client.get("/api/scheme/summary").json()["open_discrepancies"] == 0
+
+
+def test_asking_for_investigation_keeps_the_row_open(fresh_state):
+    """Only a real decision closes a row. Asking for more investigation leaves it
+    awaiting review, so it stays visible and stays in the open count."""
+    _seed_assignment()
+    _seed_result("r1", "s1", "Alice")
+    with TestClient(app) as client:
+        row = client.get("/api/scheme/discrepancies").json()["items"][0]
+        client.post(f"/api/scheme/discrepancies/{row['id']}/decision",
+                    json={"decision": sa.DECISION_REQUEST_INVESTIGATION})
+
+        open_only = client.get("/api/scheme/discrepancies",
+                               params={"review_status": sa.REVIEW_AWAITING}).json()
+        assert [i["id"] for i in open_only["items"]] == [row["id"]]
+        assert client.get("/api/scheme/summary").json()["open_discrepancies"] == 1

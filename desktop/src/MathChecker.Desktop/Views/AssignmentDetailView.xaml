@@ -298,49 +298,40 @@
             <!-- ============================================================
                  Filters. Changing one never edits a record; it only narrows
                  which of the backend's rows are shown.
-                 ============================================================ -->
-            <Border Grid.Row="4" Style="{StaticResource FilterBar}" Margin="0,0,0,10">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" MinWidth="120" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="150" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="176" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="112" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
+                 ============================================================ -->            <Border Grid.Row="4" Style="{StaticResource FilterBar}" Margin="0,0,0,10">
+                <!-- Four filters in one fixed nine-column row summed to 817 DIP,
+                     so at the window's minimum width the sort choice and the
+                     roster count sat outside the page. A wrapping row keeps
+                     every filter reachable at any width. -->
+                <WrapPanel>
                     <TextBlock Text="Search" Style="{StaticResource FieldLabel}"
                                VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <TextBox Grid.Column="1" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"
+                    <TextBox Width="220" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.Name="Search students on this assignment" />
 
-                    <TextBlock Grid.Column="2" Text="Status" Style="{StaticResource FieldLabel}"
+                    <TextBlock Text="Status" Style="{StaticResource FieldLabel}"
                                VerticalAlignment="Center" Margin="12,0,8,0" />
-                    <ComboBox Grid.Column="3" ItemsSource="{Binding StatusFilters}"
+                    <ComboBox Width="150" ItemsSource="{Binding StatusFilters}"
                               SelectedItem="{Binding StatusFilter}"
                               AutomationProperties.Name="Completion filter" />
 
-                    <TextBlock Grid.Column="4" Text="Correction" Style="{StaticResource FieldLabel}"
+                    <TextBlock Text="Correction" Style="{StaticResource FieldLabel}"
                                VerticalAlignment="Center" Margin="12,0,8,0" />
-                    <ComboBox Grid.Column="5" ItemsSource="{Binding CorrectionFilters}"
+                    <ComboBox Width="150" ItemsSource="{Binding CorrectionFilters}"
                               SelectedItem="{Binding CorrectionFilter}"
                               AutomationProperties.Name="Correction filter" />
 
-                    <TextBlock Grid.Column="6" Text="Sort" Style="{StaticResource FieldLabel}"
+                    <TextBlock Text="Sort" Style="{StaticResource FieldLabel}"
                                VerticalAlignment="Center" Margin="12,0,8,0" />
-                    <ComboBox Grid.Column="7" ItemsSource="{Binding Sorts}" SelectedItem="{Binding SortBy}"
+                    <ComboBox Width="120" ItemsSource="{Binding Sorts}" SelectedItem="{Binding SortBy}"
                               AutomationProperties.Name="Sort students" />
 
-                    <Border Grid.Column="8" Style="{StaticResource Chip}" Padding="9,3"
+                    <Border Style="{StaticResource Chip}" Padding="9,3"
                             VerticalAlignment="Center" Margin="12,0,0,0">
                         <TextBlock Text="{Binding ShownText}" FontSize="10.5" TextWrapping="NoWrap"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
-                </Grid>
+                </WrapPanel>
             </Border>
 
             <!-- ============================================================

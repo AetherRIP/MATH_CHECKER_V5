@@ -99,6 +99,9 @@ class WorkerResult:
     second_result: dict | None = None
     second_marking_model: str | None = None
     double_check_error: str | None = None
+    # What the correction actually cost: provider requests by stage/kind,
+    # counted where the requests are sent (gemini.call_audit).
+    ai_usage: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +179,17 @@ class CorrectionWorker:
                 self.keys.record_success(self._leased_fp)
         elif error is not None:
             self._last_error = error
-            self.keys.record_failure(self._leased_fp, error)
+            # ``child_recorded`` means the child ran a KeyAwareClient, which
+            # recorded every real per-key outcome as it happened. This
+            # ``error`` is the JOB's terminal error — for a model-loop failure
+            # it is the engine's aggregate of every model and key
+            # ("All configured Gemini models failed. … | gemini-3.6-flash: 401
+            # …"). Recording it again here attributed ANOTHER key's failure to
+            # whichever key happened to be leased, which is how a healthy key
+            # was permanently marked INVALID by somebody else's 401. Successes
+            # were already deduplicated this way; failures now are too.
+            if not child_recorded:
+                self.keys.record_failure(self._leased_fp, error)
         self.keys.release_exclusive(self._leased_fp)
         self._leased_fp = None
         self.state.fingerprint = None
@@ -356,6 +369,7 @@ class CorrectionWorker:
             second_result=payload.get("second_result"),
             second_marking_model=payload.get("second_marking_model"),
             double_check_error=payload.get("double_check_error"),
+            ai_usage=payload.get("ai_usage"),
         )
 
     def cancel(self) -> None:

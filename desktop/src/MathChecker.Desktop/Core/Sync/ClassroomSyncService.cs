@@ -112,6 +112,11 @@ public sealed class ClassroomSyncService : ObservableObject
     /// <summary>Re-syncs only the parts the last run reported as failed.</summary>
     public AsyncCommand RetryFailedCommand { get; }
 
+    /// <summary>Starts the one shared synchronization from a non-button caller
+    /// (for example right after Google Classroom was connected). It joins a
+    /// run already in progress rather than starting a second one.</summary>
+    public void RequestSync() => SyncCommand.Execute(null);
+
     /// <summary>Raised on the caller's thread once a run reached a final state
     /// (completed, partial or failed). The shell reloads the visible page.</summary>
     public event Action<SyncResult>? Completed;

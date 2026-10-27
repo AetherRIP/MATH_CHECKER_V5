@@ -47,7 +47,10 @@ class KeyTestState:
     response_time_ms: int | None = None
     error_kind: str | None = None
     error_message: str | None = None
-    status: str = "PENDING"        # PENDING TESTING HEALTHY COOLDOWN INVALID SKIPPED
+    status: str = "PENDING"        # PENDING TESTING HEALTHY COOLDOWN INVALID SKIPPED ERROR
+    # ``ERROR`` = the test could not run here (e.g. the client could not be
+    # built). It is deliberately NOT ``INVALID``: a local failure is not
+    # evidence that the credential was rejected.
     events: list[dict] = field(default_factory=list)
 
 
@@ -88,10 +91,22 @@ def test_key(index: int, key: str, fp: str) -> KeyTestState:
     try:
         client = _real_client(key)
     except Exception as exc:
+        # Building the SDK client is a LOCAL step: it says nothing about the
+        # credential. It used to be reported as ``invalid_key``, and the batch
+        # "Test All Keys" run persisted that — so a local/SDK/configuration
+        # problem permanently struck a working key off the rotation. Report it
+        # as the configuration error it is and leave the key's stored status
+        # untouched.
         state.auth_ok = False
-        state.error_kind = "invalid_key"
-        state.status = "INVALID"
-        _stage_event(state, "done", f"Could not create client: {exc}")
+        state.error_kind = "local_client_error"
+        state.status = "ERROR"
+        # Set the message too: callers fall back to "credential reached Gemini"
+        # style wording, which would be a plain untruth here — nothing was sent.
+        state.error_message = (
+            "Could not prepare the Gemini client on this machine "
+            f"({type(exc).__name__}: {exc}) — the key was not tested and its "
+            "stored status is unchanged.")
+        _stage_event(state, "done", state.error_message)
         return state
 
     # Stage 1: authentication via the lightweight models list (legacy parity:

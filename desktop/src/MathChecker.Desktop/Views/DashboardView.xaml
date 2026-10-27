@@ -23,22 +23,40 @@
             <!-- The one hero card, echoing the reference's coloured
                  "continue" surface: what is moving right now, and the
                  shortcut to it. Everything in it is live state. -->
+            <!-- The one ink panel: a measurement rule along its top edge, the
+                 backlog as an instrument reading, and a single white action.
+                 Everything on it is live state. -->
             <Border CornerRadius="{StaticResource PanelRadius}"
                     Background="{DynamicResource HeroBrush}"
+                    BorderBrush="{DynamicResource AccentLineBrush}" BorderThickness="1"
                     Padding="24,20" Margin="0,0,0,12"
                     Effect="{DynamicResource CardShadowEffect}">
                 <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="TODAY'S DESK" FontSize="10" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource HeroMutedBrush}" />
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="3" Height="12" CornerRadius="1.5" Margin="0,0,7,0"
+                                    VerticalAlignment="Center"
+                                    Background="{DynamicResource AccentBrush}" />
+                            <TextBlock Text="TODAY'S DESK" FontSize="9.5" FontWeight="SemiBold"
+                                       FontFamily="{StaticResource MediumFont}"
+                                       Foreground="{DynamicResource HeroMutedBrush}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
                             <TextBlock Text="{Binding PendingText}"
                                        FontFamily="{StaticResource DisplayFont}"
-                                       FontSize="32" FontWeight="Bold"
+                                       FontSize="44" FontWeight="Bold"
+                                       Typography.NumeralAlignment="Tabular"
                                        Foreground="{DynamicResource HeroInkBrush}" />
                             <!-- Pending counts queued jobs AND allow-listed papers
                                  that have no correction yet, so it is a backlog,
@@ -52,10 +70,15 @@
                                    Foreground="{DynamicResource HeroMutedBrush}"
                                    TextTrimming="CharacterEllipsis" />
                     </StackPanel>
-                    <Button Grid.Column="1" Content="Open queue"
+                    <!-- The rule that separates reading from acting. -->
+                    <Border Grid.Column="1" Width="1" Margin="22,2,22,2"
+                            Background="{DynamicResource AccentLineBrush}" />
+
+                    <Button Grid.Column="2" Content="Open queue"
                             Style="{StaticResource HeroActionButton}"
                             Command="{Binding OpenJobsCommand}"
-                            VerticalAlignment="Center" Margin="20,0,0,0" />
+                            VerticalAlignment="Center" />
+                    </Grid>
                 </Grid>
             </Border>
 
@@ -72,8 +95,13 @@
                         Background="{DynamicResource AccentSoftBrush}"
                         BorderBrush="{DynamicResource AccentLineBrush}">
                     <StackPanel>
-                        <TextBlock Text="TODAY" Style="{StaticResource SectionLabel}"
-                                   Foreground="{DynamicResource AccentBrush}" />
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="3" Height="11" CornerRadius="1.5" Margin="0,0,7,0"
+                                    VerticalAlignment="Center"
+                                    Background="{DynamicResource AccentBrush}" />
+                            <TextBlock Text="TODAY" Style="{StaticResource SectionLabel}"
+                                       Foreground="{DynamicResource AccentBrush}" />
+                        </StackPanel>
                         <TextBlock Text="{Binding TodayFigure}" Style="{StaticResource DisplayFigure}"
                                    Margin="0,2,0,0" />
                         <TextBlock Text="{Binding TodayCaption}" Style="{StaticResource CardSubtitle}"

@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import threading
+import time
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -118,6 +119,68 @@ def _iter_project_json_files(pattern_prefix: str):
         pass
 
 
+#: How long the project-tree scan's answer is reused.
+#:
+#: The walk below is a recursive scan of the INSTALL tree, and a released copy
+#: ships a bundled portable Python runtime containing thousands of directories,
+#: so its cost grows with the size of the installation. The skip list keeps it
+#: off node_modules/.venv, but a stale answer is invisible for a file a teacher
+#: places by hand, whereas paying the walk on every request is not: measured on
+#: the live backend, ``/api/dashboard`` resolved this path three times per call
+#: and spent ~127 ms of CPU per walk (3075 ``os.scandir`` + 51 810
+#: ``pathlib.match`` calls), which made a 156 ms endpoint take ~1 s under six
+#: concurrent clients. The canonical-location check still runs on every call.
+_OAUTH_SCAN_TTL_SECONDS = 5.0
+
+#: (PROJECT_ROOT, DATA_DIR) -> (checked_at_monotonic, found_path_or_None).
+#: Keyed on both directories because tests and a relocated data folder rebind
+#: ``DATA_DIR``, and an answer computed for a previous root would be wrong.
+_oauth_scan_cache: dict[tuple[str, str], tuple[float, "Path | None"]] = {}
+
+#: Serializes the walk itself. Without it, several pages polling at the same
+#: instant all miss the cache and all walk the tree: measured p95 for six
+#: concurrent dashboard clients was 691 ms on the refresh tick, against 45 ms
+#: once the answer is warm. One thread walks, the rest read the fresh answer.
+_oauth_scan_lock = threading.Lock()
+
+
+def _project_oauth_client() -> Path | None:
+    """A teacher-placed OAuth client JSON, or None. Memoized for a moment.
+
+    Only the expensive recursive search is memoized; the caller still checks
+    the canonical location first on every call, so dropping the file into
+    ``data/secrets/`` takes effect immediately.
+    """
+    key = (str(PROJECT_ROOT), str(DATA_DIR))
+
+    def cached(now: float) -> tuple[bool, "Path | None"]:
+        """(is_fresh, value) for this key at ``now``."""
+        entry = _oauth_scan_cache.get(key)
+        if entry is None or now - entry[0] >= _OAUTH_SCAN_TTL_SECONDS:
+            return False, None
+        found = entry[1]
+        # A path that has since been deleted must not be reported as present.
+        return True, (found if (found is not None and found.exists()) else None)
+
+    is_fresh, hit = cached(time.monotonic())
+    if is_fresh:
+        return hit
+
+    with _oauth_scan_lock:
+        # Re-check inside the lock: a thread that queued behind the walk would
+        # otherwise repeat it on the same cold cache.
+        is_fresh, hit = cached(time.monotonic())
+        if is_fresh:
+            return hit
+        found: Path | None = None
+        for candidate in _iter_project_json_files("client_secret_"):
+            if candidate.exists() and candidate != OAUTH_CLIENT_PATH:
+                found = candidate
+                break
+        _oauth_scan_cache[key] = (time.monotonic(), found)
+        return found
+
+
 def resolve_oauth_client_path() -> Path:
     """Single source of truth for the Google OAuth client JSON.
 
@@ -127,15 +190,17 @@ def resolve_oauth_client_path() -> Path:
          the project (teacher-placed copy, e.g. at the repository root) —
          auto-detected, never copied, never displayed, gitignored.
 
-    The search is bounded (no node_modules/.venv crawl) so this is safe to
-    call on every status request. Tests monkeypatch ``config.OAUTH_CLIENT_PATH``
-    and this function honours it (module attribute read at call time).
+    Step 1 is a single ``stat`` and is checked on every call. Step 2 is a
+    recursive walk whose result is reused for ``_OAUTH_SCAN_TTL_SECONDS``, so a
+    request that merely asks "is Classroom configured?" does not re-scan the
+    installation. Tests monkeypatch ``config.OAUTH_CLIENT_PATH`` and this
+    function honours it (module attribute read at call time).
     """
     if OAUTH_CLIENT_PATH.exists():
         return OAUTH_CLIENT_PATH
-    for candidate in _iter_project_json_files("client_secret_"):
-        if candidate.exists() and candidate != OAUTH_CLIENT_PATH:
-            return candidate
+    found = _project_oauth_client()
+    if found is not None:
+        return found
     # Fall back to the configured path even if it is currently missing; tests
     # and lazy-configuring setups may create it later, and module callers that
     # already hold a bound reference keep working.
@@ -248,6 +313,11 @@ class GeminiConfig:
     # it instead of inheriting a number chosen for a 15-page script. Key
     # probes clamp to 30 s in gemini/tester.py, so testing a key stays quick.
     request_timeout_ms: int = 600_000
+    # Safeguard against a retry storm, not a way to skip work: one correction
+    # legitimately needs 1 generation (single pass), 2 (independent second
+    # check), or up to 4 with both targeted recovery rounds. Anything beyond
+    # that is the same failing request being resent. 0 disables the cap.
+    max_requests_per_job: int = 12
     # Developer prompt editor (prompt-inspection page): optional overrides
     # stored in config.toml so EVERY process (parent, worker child, automation
     # scheduler) reads the same text. None = the built-in legacy prompts are
@@ -868,6 +938,12 @@ def get_config(reload: bool = False) -> AppConfig:
                         cfg.gemini.request_timeout_ms = int(gemini["request_timeout_ms"])
                     except (TypeError, ValueError):
                         pass
+                if "max_requests_per_job" in gemini:
+                    try:
+                        cfg.gemini.max_requests_per_job = max(
+                            0, int(gemini["max_requests_per_job"]))
+                    except (TypeError, ValueError):
+                        pass
                 # Prompt overrides: a missing/empty value means "built-in
                 # prompt" — never the literal string "None".
                 if gemini.get("system_prompt_override"):
@@ -1149,6 +1225,7 @@ def save_config(cfg: AppConfig) -> None:
             "primary_models": normalize_model_chain(cfg.gemini.primary_models),
             "audit_models": normalize_model_chain(cfg.gemini.audit_models),
             "request_timeout_ms": cfg.gemini.request_timeout_ms,
+            "max_requests_per_job": cfg.gemini.max_requests_per_job,
             # Prompt overrides (Developer prompt page). Omitted entirely when
             # unset: _write_toml would stringify None, and the engine must
             # fall back to the built-in legacy prompts.

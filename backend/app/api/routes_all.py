@@ -207,6 +207,10 @@ def job_detail(job_id: str):
     from .. import api_stats
     from ..jobs.manager import stage_history
     job["bandwidth"] = api_stats.job_bandwidth(job_id)
+    # What this correction cost in provider requests, by pipeline stage: the
+    # detail panel shows it instead of the old "0 AI attempts" that only ever
+    # counted successes.
+    job["ai_usage"] = api_stats.job_ai_usage(job_id)
     # The stages the backend really recorded, oldest first (the detail panel
     # shows them with their timestamps). A terminal job's last transition is
     # appended from its OWN stored status/finished_at, so the history ends
@@ -275,6 +279,8 @@ def _job_public(job: dict) -> dict:
         "created_at": job["created_at"], "started_at": job["started_at"],
         "finished_at": job["finished_at"], "result_id": job["result_id"],
         "bandwidth": api_stats.job_bandwidth(job["id"]),
+        "ai_requests": (api_stats.job_bandwidth(job["id"]) or {}).get(
+            "ai_attempts") or 0,
     }
 
 
@@ -2037,10 +2043,14 @@ def usage_report(hours: int = 24):
     from ..api_stats import snapshot as api_stats_snapshot
     from ..gemini.provider_health import provider_health
     state = usage_state()
+    from ..api_stats import ai_usage_summary
     api = {
         **api_stats_snapshot(),
         "provider": provider_health().snapshot(),
         "keys": _km().aggregate(),
+        # Measured cost of recent corrections ("how many AI requests does a
+        # paper take"), including the requests that failed.
+        "ai": ai_usage_summary(),
     }
     return {**state, "api": api,
             "history": history(hours=max(1, min(168, hours)))}

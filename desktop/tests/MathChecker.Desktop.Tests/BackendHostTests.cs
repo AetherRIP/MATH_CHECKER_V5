@@ -289,6 +289,65 @@ public class BackendHostTests : IDisposable
         Assert.False(status.HasWarning);
     }
 
+    [Fact]
+    public async Task Refuses_to_attach_to_a_backend_serving_a_different_users_data()
+    {
+        // A loopback port is machine-wide. A second Windows account (or a
+        // development checkout) can own port 8123, and attaching would show -
+        // and write to - their database. The app must start its OWN backend on
+        // another port instead.
+        var otherUserData = Path.Combine(_backendDirectory, "someone-else", "MathChecker");
+        var environment = new FakeEnvironment(new BackendEnvironment(otherUserData, false, false));
+        var starter = new FakeProcessStarter { Next = new FakeProcess() };
+        var health = new FakeHealth(new HealthResult(HealthKind.Ours, null));
+        var settings = Settings();
+        await using var host = Host(settings, starter, health, environment: environment);
+
+        var status = await host.StartAsync();
+
+        Assert.NotEqual(BackendState.Attached, status.State);
+        Assert.Single(starter.Started);
+        Assert.NotEqual(8123, status.Port);
+        Assert.True(status.IsUsable);
+    }
+
+    [Fact]
+    public async Task Attaches_when_the_running_backend_serves_this_users_data()
+    {
+        var own = BackendHost.DefaultUserDataDirectory(demo: false);
+        var environment = new FakeEnvironment(new BackendEnvironment(own, false, false));
+        var starter = new FakeProcessStarter();
+        var health = new FakeHealth(new HealthResult(HealthKind.Ours, null));
+        await using var host = Host(Settings(), starter, health, environment: environment);
+
+        var status = await host.StartAsync();
+
+        Assert.Equal(BackendState.Attached, status.State);
+        Assert.Empty(starter.Started);
+    }
+
+    [Fact]
+    public void CanAttachTo_accepts_a_backend_that_cannot_say_where_it_writes()
+    {
+        // A missing diagnostic route must not become a startup failure.
+        Assert.True(BackendHost.CanAttachTo(null, Settings()));
+        Assert.True(BackendHost.CanAttachTo(
+            new BackendEnvironment(null, false, false), Settings()));
+    }
+
+    [Fact]
+    public void CanAttachTo_allows_a_demo_backend_but_not_another_real_folder()
+    {
+        var settings = Settings();
+        settings.DataDirectory = Path.Combine(_backendDirectory, "data");
+        Assert.True(BackendHost.CanAttachTo(
+            new BackendEnvironment(Path.Combine(_backendDirectory, "data"), false, false), settings));
+        Assert.True(BackendHost.CanAttachTo(
+            new BackendEnvironment(Path.Combine(_backendDirectory, "demo-db"), true, true), settings));
+        Assert.False(BackendHost.CanAttachTo(
+            new BackendEnvironment(Path.Combine(_backendDirectory, "other"), false, false), settings));
+    }
+
     private sealed class FakeEnvironment : IBackendEnvironmentProbe
     {
         private readonly BackendEnvironment? _environment;

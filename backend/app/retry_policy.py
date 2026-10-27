@@ -253,6 +253,16 @@ def classify_kind(kind: str | None, message: str = "") -> str:
         return TRANSIENT_PROVIDER_ERROR
     if kind == "model_no_access":
         return MODEL_ERROR
+    # Kinds whose behaviour is already decided by name, so a short message that
+    # does not repeat the provider's wording still lands in the right class.
+    if kind == "network":
+        return NETWORK_ERROR
+    if kind == "request_error":
+        return INVALID_REQUEST
+    if kind == "unexpected_response":
+        # The message may name the failure precisely (an unparseable body is a
+        # PARSING_ERROR); only fall back to VALIDATION_ERROR when it does not.
+        return classify_message(message) or VALIDATION_ERROR
     # unknown / anything new: full message classification.
     return classify_message(message) or classify_kind_kind_fallback(kind)
 

@@ -192,8 +192,11 @@ CREATE TABLE IF NOT EXISTS gemini_keys (
     fingerprint TEXT PRIMARY KEY,
     label TEXT,
     added_at REAL,
+    -- removed = no longer in the configured key list (see KeyManager.mark_removed)
     removed INTEGER NOT NULL DEFAULT 0,
-    disabled INTEGER NOT NULL DEFAULT 0
+    disabled INTEGER NOT NULL DEFAULT 0,
+    -- invalid = the provider REJECTED this credential (never "it once failed")
+    invalid INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS key_stats (
@@ -385,6 +388,9 @@ CREATE TABLE IF NOT EXISTS job_bandwidth (
     ai_attempts INTEGER NOT NULL DEFAULT 0,
     avoided_downloads INTEGER NOT NULL DEFAULT 0,
     avoided_reprepare INTEGER NOT NULL DEFAULT 0,
+    -- Last attempt's provider-request ledger (gemini.call_audit): totals by
+    -- stage, kind and model, plus the budget verdict. JSON, never queried.
+    ai_calls_json TEXT,
     updated_at REAL NOT NULL
 );
 
@@ -712,6 +718,21 @@ CREATE INDEX IF NOT EXISTS idx_scheme_disc_result
     ON scheme_discrepancies(student_result_id);
 CREATE INDEX IF NOT EXISTS idx_scheme_disc_status
     ON scheme_discrepancies(review_status);
+
+-- Questions the teacher has taken OUT of marking for one assignment. A row
+-- here means the question is not asked for, not marked, not counted in the
+-- total available marks and never raises a scheme discrepancy. The mark
+-- scheme FILE is untouched: the exclusion is a marking decision, so re-running
+-- with the row removed restores the question exactly.
+CREATE TABLE IF NOT EXISTS scheme_ignored_questions (
+    coursework_id TEXT NOT NULL,
+    question_number TEXT NOT NULL,   -- as the blueprint labels it ("12", "4(a)")
+    note TEXT,
+    created_at REAL NOT NULL,
+    PRIMARY KEY (coursework_id, question_number)
+);
+CREATE INDEX IF NOT EXISTS idx_scheme_ignored_coursework
+    ON scheme_ignored_questions(coursework_id);
 
 -- Append-only audit of human decisions on a discrepancy. Distinguishes the
 -- AI's recommendation (``ai_recommendation``) from the human's final decision.

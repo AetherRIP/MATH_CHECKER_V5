@@ -14,9 +14,11 @@ import logging
 
 from fastapi import APIRouter, Depends, Request
 
+from pathlib import Path
+
 from .. import auth_gate, db
 from ..errors import AppError
-from ..engine import scheme_audit
+from ..engine import scheme_audit, scheme_exclusions
 from ..logging_setup import log_event
 
 def _authorized_reviewer(request: Request) -> None:
@@ -55,6 +57,61 @@ def _not_found(message: str) -> AppError:
     return AppError(message, code="not_found", status=404)
 
 
+def _scheme_blueprint(coursework_id: str | None) -> tuple[dict | None, dict | None]:
+    """The cached mark-scheme record and blueprint for an assignment.
+
+    Read-only: this never extracts a scheme, it only reads what an earlier
+    correction already cached. A missing scheme answers (None, None) and the
+    caller says so, rather than inventing a question list.
+    """
+    from ..config import data_dir
+    from ..engine import blueprint as bp_mod
+
+    if not coursework_id:
+        return None, None
+    path = Path(data_dir()) / "mark_schemes" / f"{coursework_id}.pdf"
+    if not path.exists():
+        pending = db.query_one(
+            "SELECT path FROM pending_mark_schemes WHERE coursework_id = ?",
+            (coursework_id,))
+        if not pending or not Path(pending["path"]).exists():
+            return None, None
+        path = Path(pending["path"])
+    try:
+        record = bp_mod.load_record(bp_mod.file_hash(path)) or {}
+    except OSError:
+        return None, None
+    blueprint = record.get("blueprint") if isinstance(record, dict) else None
+    return record, (blueprint if isinstance(blueprint, dict) else None)
+
+
+def _question_context(record: dict | None, blueprint: dict | None,
+                      question_number: str | None) -> dict:
+    """Where a question is in the ACTUAL mark scheme, and what it says.
+
+    ``page`` is the page the blueprint found the question on, so the review
+    screen can open that page of the uploaded PDF instead of describing it.
+    """
+    if not blueprint or not question_number:
+        return {}
+    question = scheme_exclusions.find(blueprint, question_number)
+    if question is None:
+        return {}
+    page = question.get("page")
+    coursework_id = str((record or {}).get("coursework_id") or "")
+    return {
+        "question": question.get("question_number") or question.get("number"),
+        "criteria": question.get("criteria"),
+        "max_marks": question.get("max_marks"),
+        "printed_label": question.get("printed_label"),
+        "page": page,
+        # The page image is rendered from the uploaded file by the existing
+        # assignment route; nothing here re-draws or rewrites the scheme.
+        "page_image": (f"/api/assignments/{coursework_id}/mark-scheme/page/{page}.png"
+                       if page and coursework_id else None),
+    }
+
+
 # ================================================================ discrepancies
 
 @router.get("/discrepancies")
@@ -62,6 +119,25 @@ def list_discrepancies(coursework_id: str | None = None,
                        review_status: str | None = None):
     items = scheme_audit.list_discrepancies(
         coursework_id=coursework_id, review_status=review_status)
+    # One blueprint read per assignment on the page, so every row can say
+    # which page of the real mark scheme its question lives on — including
+    # when the list spans several assignments.
+    schemes: dict[str, dict | None] = {}
+    ignored_cache: dict[str, dict] = {}
+    for item in items:
+        number = str(item.get("question_number") or "")
+        cw = item.get("coursework_id") or coursework_id
+        if cw not in schemes:
+            schemes[cw] = _scheme_blueprint(cw)[1]
+        if cw not in ignored_cache:
+            ignored_cache[cw] = scheme_exclusions.ignored(cw)
+        blueprint = schemes.get(cw)
+        question = scheme_exclusions.find(blueprint, number) if blueprint else None
+        item["scheme_page"] = (question or {}).get("page")
+        item["scheme_criteria"] = (question or {}).get("criteria")
+        item["printed_label"] = (question or {}).get("printed_label")
+        item["ignored"] = bool(ignored_cache[cw].get(
+            scheme_exclusions.canonical(number)))
     return {"items": items, "total": len(items)}
 
 
@@ -70,13 +146,148 @@ def get_discrepancy(discrepancy_id: str):
     row = scheme_audit.get_discrepancy(discrepancy_id)
     if row is None:
         raise _not_found("That discrepancy does not exist.")
+    coursework_id = row.get("coursework_id")
+    record, blueprint = _scheme_blueprint(coursework_id)
+    context = _question_context(
+        {**(record or {}), "coursework_id": coursework_id},
+        blueprint, row.get("question_number"))
     return {
         "discrepancy": row,
+        "scheme": context,
+        # What the student actually wrote, read from the result this row points
+        # at. The review screen cannot judge the scheme without it, and nothing
+        # here is invented: no stored answer simply means no answer to show.
+        "answer": _stored_answer(row.get("student_result_id"),
+                                 row.get("question_number")),
+        "ignored": _is_ignored(coursework_id, row.get("question_number")),
         "review_history": scheme_audit.review_history(discrepancy_id),
         "proposals": [scheme_audit.proposal_detail(p["id"])
                       for p in scheme_audit.list_proposals(limit=100)
                       if p["discrepancy_id"] == discrepancy_id],
     }
+
+
+def _stored_answer(result_id: str | None, question_number: str | None) -> dict:
+    """The student's stored answer and marks for one question, if any.
+
+    Read-only. A missing result, an unreadable payload or a question the result
+    does not contain all answer with empty fields rather than a guess.
+    """
+    import json
+
+    if not result_id or not question_number:
+        return {}
+    row = db.query_one("SELECT result_json FROM results WHERE id = ?", (result_id,))
+    if not row or not row["result_json"]:
+        return {}
+    try:
+        result = json.loads(row["result_json"])
+    except (TypeError, ValueError):
+        return {}
+    wanted = scheme_exclusions.canonical(question_number)
+    for question in (result.get("questions") or []):
+        if not isinstance(question, dict):
+            continue
+        if scheme_exclusions.canonical(question.get("question_number")) != wanted:
+            continue
+        return {
+            "student_answer": question.get("student_answer") or "",
+            "working": question.get("working_summary") or "",
+            "loss_reason": question.get("loss_reason") or "",
+            "awarded": question.get("awarded_marks"),
+            "max_marks": question.get("max_marks"),
+        }
+    return {}
+
+
+def _is_ignored(coursework_id: str | None, question_number: str | None) -> bool:
+    """Is this question already excluded from marking for the assignment?"""
+    if not coursework_id or not question_number:
+        return False
+    return scheme_exclusions.canonical(question_number) in scheme_exclusions.ignored(coursework_id)
+
+
+# ================================================================ exclusions
+
+@router.get("/questions")
+def list_questions(coursework_id: str):
+    """The questions this assignment's mark scheme declares, and which are out."""
+    record, blueprint = _scheme_blueprint(coursework_id)
+    if blueprint is None:
+        raise _not_found("No mark scheme is attached to this assignment yet.")
+    ignored = scheme_exclusions.ignored(coursework_id)
+    questions = []
+    for question in blueprint.get("questions") or []:
+        number = str(question.get("question_number"))
+        questions.append({
+            "question_number": number,
+            "max_marks": question.get("max_marks"),
+            "page": question.get("page"),
+            "printed_label": question.get("printed_label"),
+            "criteria": question.get("criteria"),
+            "ignored": scheme_exclusions.canonical(number) in ignored,
+            "parts": [{"number": p.get("number"), "max_marks": p.get("max_marks"),
+                       "ignored": scheme_exclusions.canonical(p.get("number")) in ignored}
+                      for p in question.get("parts") or []],
+        })
+    filtered, _ = scheme_exclusions.filter_blueprint(blueprint, coursework_id)
+    return {"questions": questions, "items": list(ignored.values()),
+            "total_marks": blueprint.get("total_marks"),
+            "marked_total": (filtered or {}).get("total_marks")}
+
+
+@router.get("/ignored")
+def list_ignored(coursework_id: str):
+    record, blueprint = _scheme_blueprint(coursework_id)
+    filtered, removed = scheme_exclusions.filter_blueprint(blueprint, coursework_id)
+    return {
+        "items": list(scheme_exclusions.ignored(coursework_id).values()),
+        "excluded": removed,
+        "total_marks": (blueprint or {}).get("total_marks"),
+        "marked_total": (filtered or {}).get("total_marks"),
+    }
+
+
+@router.post("/ignore")
+def ignore_question(payload: dict, request: Request):
+    """Take one question out of marking for this assignment.
+
+    Nothing already stored changes: this is a rule for corrections that start
+    after it, and the existing results keep the marks they were given until
+    they are corrected again.
+    """
+    coursework_id = str((payload or {}).get("coursework_id") or "").strip()
+    number = str((payload or {}).get("question_number") or "").strip()
+    if not coursework_id or not number:
+        raise _bad_request("An assignment and a question number are required.")
+    _, blueprint = _scheme_blueprint(coursework_id)
+    if blueprint is None:
+        raise _not_found("Attach the mark scheme before excluding a question.")
+    question = scheme_exclusions.find(blueprint, number)
+    if question is None:
+        raise _bad_request(f"Question {number} is not in this mark scheme.")
+    stored = scheme_exclusions.add(coursework_id, number,
+                                   str((payload or {}).get("note") or ""))
+    log_event("api.scheme", "question excluded from marking",
+              coursework_id=coursework_id, question=number, by=_actor(request))
+    filtered, removed = scheme_exclusions.filter_blueprint(blueprint, coursework_id)
+    return {"ignored": stored, "excluded": removed,
+            "marked_total": (filtered or {}).get("total_marks")}
+
+
+@router.delete("/ignored/{coursework_id}/{question_number}")
+def restore_question(coursework_id: str, question_number: str, request: Request):
+    """Put a question back into marking."""
+    removed = scheme_exclusions.remove(coursework_id, question_number)
+    if not removed:
+        raise _not_found(f"Question {question_number} is not excluded.")
+    log_event("api.scheme", "question restored to marking",
+              coursework_id=coursework_id, question=question_number,
+              by=_actor(request))
+    _, blueprint = _scheme_blueprint(coursework_id)
+    filtered, but_removed = scheme_exclusions.filter_blueprint(blueprint, coursework_id)
+    return {"restored": question_number, "still_excluded": but_removed,
+            "marked_total": (filtered or {}).get("total_marks")}
 
 
 @router.post("/discrepancies/{discrepancy_id}/decision")

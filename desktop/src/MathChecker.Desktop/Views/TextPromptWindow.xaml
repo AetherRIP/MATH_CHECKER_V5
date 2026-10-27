@@ -1,14 +1,20 @@
 <Window x:Class="MathChecker.Desktop.Views.TextPromptWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Math Checker" Width="460" SizeToContent="Height"
-        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False">
-    <StackPanel Margin="16">
-        <TextBlock x:Name="MessageText" Margin="0,0,0,8" />
-        <TextBox x:Name="ValueBox" Margin="0,0,0,12" />
+        Title="Math Checker" Width="470" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False"
+        TextOptions.TextFormattingMode="Ideal"
+        Background="{DynamicResource SurfaceBrush}"
+        Foreground="{DynamicResource TextBrush}">
+    <!-- Explicit themed surface: inheriting only the ink left this dialog
+         pale-on-white in dark appearance. -->
+    <StackPanel Margin="22" TextElement.Foreground="{DynamicResource TextBrush}">
+        <TextBlock x:Name="MessageText" Margin="0,0,0,10" TextWrapping="Wrap" />
+        <TextBox x:Name="ValueBox" Margin="0,0,0,14" AutomationProperties.Name="Value" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Cancel" IsCancel="True" />
-            <Button Content="OK" IsDefault="True" Click="OnOk" />
+            <Button Content="OK" IsDefault="True" Style="{StaticResource PrimaryButton}"
+                    Margin="0" Click="OnOk" />
         </StackPanel>
     </StackPanel>
 </Window>

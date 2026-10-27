@@ -58,6 +58,144 @@
                 </DockPanel>
             </Border>
 
+            <!-- ============================================================
+                 WHAT IS WRONG WITH THE MARK SCHEME
+                 The selected discrepancy read against the ACTUAL uploaded
+                 scheme: its page (rendered from the PDF), its own wording,
+                 what the student wrote and what the engine computed instead.
+                 ============================================================ -->
+            <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="{Binding IgnoreSelectedText}"
+                                Command="{Binding IgnoreSelectedCommand}" Margin="12,0,0,0"
+                                IsEnabled="{Binding CanIgnoreSelected}"
+                                ToolTip="Skipped questions are left out of the marking prompt, the result and the total. The mark-scheme file itself is never changed." />
+                        <TextBlock Text="{Binding FindingTitle}" Style="{StaticResource CardTitle}"
+                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                    </DockPanel>
+
+                    <TextBlock Text="{Binding FindingNote}" Style="{StaticResource CardSubtitle}"
+                               Margin="0,6,0,0" TextWrapping="Wrap" />
+
+                    <TextBlock Text="{Binding SchemeWhere}" Margin="0,8,0,0" FontSize="11.5"
+                               Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"
+                               Visibility="{Binding HasSchemeWhere, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- Two columns: what the scheme says on the left, and what
+                         the paper actually asked on the right. -->
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Style="{StaticResource Panel}" Margin="0,0,6,0"
+                                Visibility="{Binding HasSchemeSays, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="THE MARK SCHEME SAYS" Style="{StaticResource SectionLabel}" />
+                                <TextBlock Text="{Binding SchemeSays}" Margin="0,6,0,0" FontSize="12.5"
+                                           Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="1" Style="{StaticResource Panel}"
+                                Visibility="{Binding HasStudentSays, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="THE STUDENT WROTE" Style="{StaticResource SectionLabel}" />
+                                <TextBlock Text="{Binding StudentSays}" Margin="0,6,0,0" FontSize="12.5"
+                                           Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Border Style="{StaticResource Panel}" Margin="0,10,0,0"
+                            Visibility="{Binding HasIndependentCheck, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="THE INDEPENDENT CHECK SAYS" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="{Binding IndependentCheck}" Margin="0,6,0,0" FontSize="12.5"
+                                       Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- The source page itself. It is the uploaded PDF page,
+                         rendered by the backend, not a redrawing of it. -->
+                    <Border Margin="0,12,0,0" Background="{DynamicResource PaperSurroundBrush}"
+                            BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1"
+                            CornerRadius="12" ClipToBounds="True"
+                            Visibility="{Binding HasSchemeImage, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding SchemeImageCaption}" Margin="12,10,12,0"
+                                       FontSize="11.5" Foreground="{DynamicResource TextMutedBrush}" />
+                            <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Auto" Margin="0,8,0,0"
+                                          PanningMode="Both"
+                                          AutomationProperties.Name="The uploaded mark-scheme page">
+                                <Image Source="{Binding SchemeImage}" Stretch="Uniform"
+                                       HorizontalAlignment="Center" VerticalAlignment="Top"
+                                       RenderOptions.BitmapScalingMode="HighQuality" />
+                            </ScrollViewer>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="{Binding SchemeImageNote}" Margin="0,10,0,0" FontSize="12"
+                               Foreground="{DynamicResource WarningTextBrush}" TextWrapping="Wrap"
+                               Visibility="{Binding HasSchemeImageNote, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============================================================
+                 QUESTIONS AND WHAT IS SKIPPED
+                 Every question the assignment's scheme declares. Skipping one
+                 leaves it out of the prompt, the result and the total.
+                 ============================================================ -->
+            <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="{Binding QuestionsTitle}" Style="{StaticResource CardTitle}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding QuestionsNote}" Style="{StaticResource CardSubtitle}"
+                               Margin="0,6,0,0" TextWrapping="Wrap" />
+
+                    <ItemsControl ItemsSource="{Binding Questions}" Margin="0,10,0,0"
+                                  AutomationProperties.Name="Questions in this mark scheme">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource Panel}" Margin="0,0,0,6">
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Content="{Binding ActionText}"
+                                                Margin="12,0,0,0" VerticalAlignment="Center"
+                                                Command="{Binding DataContext.ToggleQuestionCommand,
+                                                          RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}"
+                                                AutomationProperties.Name="{Binding Title}" />
+                                        <Border DockPanel.Dock="Right" Style="{StaticResource WarningChip}"
+                                                Padding="9,2" VerticalAlignment="Center" Margin="8,0,0,0"
+                                                Visibility="{Binding IsIgnored, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="Skipped" FontSize="10.5"
+                                                       Foreground="{DynamicResource WarningTextBrush}" />
+                                        </Border>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Title}" Style="{StaticResource RowTitle}"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding MarksText}" Margin="10,0,0,0" FontSize="11.5"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding WhereText}" Margin="10,0,0,0" FontSize="11.5"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding DetailText}" Style="{StaticResource RowDetail}"
+                                                       TextWrapping="Wrap" MaxHeight="48" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
             <Border Style="{StaticResource TableCard}" Margin="0,12,0,0" Height="200">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">

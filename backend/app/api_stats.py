@@ -158,6 +158,67 @@ _BANDWIDTH_FIELDS = (
 )
 
 
+def ai_usage_summary(limit: int = 200) -> dict:
+    """What recent corrections cost in provider requests (measured).
+
+    Reads the persisted per-job ledgers, so the number is what was actually
+    sent — not an estimate derived from the number of questions. ``stages``
+    answers "which part of the pipeline spends the requests".
+    """
+    summary: dict = {"papers": 0, "requests": 0, "average": None,
+                     "median": None, "max": None, "budget_exceeded": 0,
+                     "skipped": 0, "stages": {}, "unavailable": True}
+    try:
+        rows = db.query(
+            "SELECT ai_attempts, ai_calls_json FROM job_bandwidth "
+            "WHERE ai_attempts > 0 ORDER BY updated_at DESC LIMIT ?",
+            (max(1, int(limit)),))
+    except Exception:
+        return summary
+    if not rows:
+        return summary
+    counts = [int(r["ai_attempts"] or 0) for r in rows]
+    stages: dict[str, int] = {}
+    skipped = 0
+    exceeded = 0
+    for row in rows:
+        try:
+            usage = json.loads(row["ai_calls_json"] or "{}") or {}
+        except (json.JSONDecodeError, TypeError):
+            usage = {}
+        if not isinstance(usage, dict):
+            continue
+        if usage.get("budget_exceeded"):
+            exceeded += 1
+        skipped += int(usage.get("skipped") or 0)
+        for name, value in (usage.get("by_stage") or {}).items():
+            stages[str(name)] = stages.get(str(name), 0) + int(value or 0)
+    ordered = sorted(counts)
+    summary.update({
+        "papers": len(counts),
+        "requests": sum(counts),
+        "average": round(sum(counts) / len(counts), 2),
+        "median": ordered[len(ordered) // 2],
+        "max": ordered[-1],
+        "budget_exceeded": exceeded,
+        "skipped": skipped,
+        "stages": stages,
+        "unavailable": False,
+    })
+    return summary
+
+
+def job_ai_usage(job_id: str) -> dict | None:
+    """The last attempt's request breakdown for one job (or None)."""
+    row = job_bandwidth(job_id)
+    if not row:
+        return None
+    try:
+        return json.loads(row.get("ai_calls_json") or "null")
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
 def record_job_bandwidth(job_id: str | None, **deltas: int) -> None:
     """Accumulate per-job bandwidth counters (§17/§18).
 
@@ -181,6 +242,33 @@ def record_job_bandwidth(job_id: str | None, **deltas: int) -> None:
             f"ON CONFLICT(job_id) DO UPDATE SET {updates}, "
             f"updated_at = excluded.updated_at",
             [job_id, time.time(), *values],
+        )
+    except Exception:
+        pass
+
+
+def record_ai_usage(job_id: str | None, usage: dict | None) -> None:
+    """Persist what ONE worker attempt spent on provider requests.
+
+    ``usage`` is ``gemini.call_audit.snapshot()``: every generation, upload
+    and Files API lookup it sent, with the stage and model that sent it. The
+    attempt's generation count is ADDED (a retried job really did send those
+    requests), and the per-stage breakdown of the latest attempt is kept for
+    the diagnostics view.
+    """
+    if not job_id or not isinstance(usage, dict):
+        return
+    try:
+        requests = int(usage.get("requests") or 0)
+        payload = json.dumps(usage, ensure_ascii=False)
+        db.execute(
+            "INSERT INTO job_bandwidth(job_id, ai_attempts, ai_calls_json, "
+            "updated_at) VALUES(?, ?, ?, ?) "
+            "ON CONFLICT(job_id) DO UPDATE SET "
+            "ai_attempts = ai_attempts + excluded.ai_attempts, "
+            "ai_calls_json = excluded.ai_calls_json, "
+            "updated_at = excluded.updated_at",
+            (job_id, requests, payload, time.time()),
         )
     except Exception:
         pass

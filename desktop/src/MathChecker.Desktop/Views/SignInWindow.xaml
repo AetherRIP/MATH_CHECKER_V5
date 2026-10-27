@@ -1,23 +1,35 @@
 <Window x:Class="MathChecker.Desktop.Views.SignInWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Sign in — Math Checker" Width="420" SizeToContent="Height"
-        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False">
-    <StackPanel Margin="22" TextElement.Foreground="{DynamicResource TextBrush}">
-        <TextBlock Text="Sign in" FontSize="18" FontWeight="SemiBold" />
-        <TextBlock Text="This backend requires an account. The password is sent only to the local backend and is never stored by this application."
-                   Style="{StaticResource Muted}" Margin="0,4,0,12" />
+        Title="Sign in — Math Checker" Width="440" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False"
+        TextOptions.TextFormattingMode="Ideal"
+        Background="{DynamicResource SurfaceBrush}"
+        Foreground="{DynamicResource TextBrush}">
+    <!-- The surface and the ink are set here, from the same theme dictionary,
+         instead of being inherited: a dialog that fell back to the default
+         white window while taking its text colour from the dark theme was
+         unreadable (pale grey on white). -->
+    <StackPanel Margin="24" TextElement.Foreground="{DynamicResource TextBrush}">
+        <TextBlock Text="Sign in" Style="{StaticResource PageTitle}" />
+        <TextBlock Text="This copy of Math Checker is protected by an account. The password is checked by the local backend and never stored by the desktop app."
+                   Style="{StaticResource Muted}" Margin="0,6,0,18" />
+
         <TextBlock Text="Username" Style="{StaticResource FieldLabel}" />
-        <TextBox x:Name="UsernameBox" Margin="0,2,0,10" />
+        <TextBox x:Name="UsernameBox" Margin="0,3,0,12" AutomationProperties.Name="Username" />
+
         <TextBlock Text="Password" Style="{StaticResource FieldLabel}" />
-        <PasswordBox x:Name="PasswordBox" Margin="0,2,0,10" />
-        <CheckBox x:Name="RememberBox" Content="Keep me signed in on this computer" Margin="0,0,0,10" />
+        <PasswordBox x:Name="PasswordBox" Margin="0,3,0,12" AutomationProperties.Name="Password" />
+
+        <CheckBox x:Name="RememberBox" Content="Keep me signed in on this computer" Margin="0,0,0,12" />
+
         <TextBlock x:Name="ErrorText" Style="{StaticResource ErrorText}"
-                   Margin="0,0,0,8" TextWrapping="Wrap" />
+                   Margin="0,0,0,10" TextWrapping="Wrap" />
+
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Cancel" IsCancel="True" />
             <Button Content="Sign in" Style="{StaticResource PrimaryButton}" IsDefault="True"
-                    Click="OnSignIn" />
+                    Margin="0" Click="OnSignIn" />
         </StackPanel>
     </StackPanel>
 </Window>

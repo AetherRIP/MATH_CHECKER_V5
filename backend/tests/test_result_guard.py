@@ -79,15 +79,22 @@ class TestConfidence:
         Measured on one 15-page scan against a 26-page scheme: the primary
         gave 70/103 and the fallback 76/103, differing on 10 of 31 questions.
         A repeat run on a healthy primary would therefore not reproduce this
-        total, so the marks are kept but the result cannot look routine.
+        total, so the marks are kept and the result is never HIGH.
+
+        It is MEDIUM rather than LOW: the validated marking produced no fault,
+        and a model switch is a fact about the RUN, not evidence against these
+        marks. Treating it as LOW queued 11 of 15 stored papers for a teacher
+        who had nothing to decide. The full explanation still travels with the
+        result, and the next step (re-run on the primary) is spelled out.
         """
         result = _result([_q(1, 5, 5)])
         level, reasons = rg.assess_confidence(
             result, _verification(), 5, 5,
             marking_model="gemini-3.6-flash",
             primary_model="gemini-3.8-flash")
-        assert level == rg.LOW
+        assert level == rg.MEDIUM
         assert any("instead of the configured primary" in r for r in reasons)
+        assert any("model switch is the only caveat" in r for r in reasons)
 
     def test_model_switch_cannot_upgrade_a_low_result(self):
         result = _result([_q(1, 2, 5)])

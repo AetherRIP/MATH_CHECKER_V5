@@ -67,6 +67,9 @@
             <DataTemplate DataType="{x:Type vm:AssignmentsViewModel}">
                 <views:AssignmentsView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:CreateAssignmentViewModel}">
+                <views:CreateAssignmentView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:AssignmentDetailViewModel}">
                 <views:AssignmentDetailView />
             </DataTemplate>

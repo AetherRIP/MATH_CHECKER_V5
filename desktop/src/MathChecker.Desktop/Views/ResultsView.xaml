@@ -43,11 +43,16 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="260" />
+                        <!-- Flexible, not 260: the seven fixed columns summed
+                             to 761 DIP, so at the window's minimum width the
+                             row count and the hint were pushed off the page. -->
+                        <ColumnDefinition Width="*" MinWidth="170" MaxWidth="280" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="150" />
+                        <!-- The status label needs only its own text; the 150
+                             DIP column was dead space. -->
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" MinWidth="80" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" MinWidth="0" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 

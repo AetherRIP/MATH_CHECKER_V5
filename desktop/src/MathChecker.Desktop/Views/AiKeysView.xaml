@@ -10,7 +10,8 @@
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
                 <Button Content="Test selected" Command="{Binding TestSelectedCommand}"
                         IsEnabled="{Binding HasSelection}" ToolTip="Select a key row first" />
-                <Button Content="Test all" Style="{StaticResource PrimaryButton}" Command="{Binding TestAllCommand}" />
+                <Button Content="Test all" Style="{StaticResource PrimaryButton}" Command="{Binding TestAllCommand}"
+                        IsEnabled="{Binding CanTestAll}" ToolTip="Tests every stored key against the live API" />
                 <Button Content="Disable" Command="{Binding DisableCommand}"
                         IsEnabled="{Binding HasSelection}" ToolTip="Select a key row first" />
                 <Button Content="Re-enable" Command="{Binding EnableCommand}"

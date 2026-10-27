@@ -102,8 +102,46 @@
 
                         <TextBlock Text="WHY THE ENGINE ASKED" Style="{StaticResource SectionLabel}"
                                    Margin="0,14,0,6" />
+
+                        <!-- The coded reasons: what failed, which stage, whether it
+                             needs a person, and what to do about it. -->
+                        <ItemsControl ItemsSource="{Binding Selected.ReviewReasons}"
+                                      Visibility="{Binding Selected.HasReviewReasons, Converter={StaticResource BoolToVis}}"
+                                      AutomationProperties.Name="Review reasons">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Panel}" Margin="0,0,0,6">
+                                        <StackPanel>
+                                            <DockPanel>
+                                                <Border DockPanel.Dock="Right" Padding="8,1"
+                                                        Style="{StaticResource WarningChip}"
+                                                        VerticalAlignment="Center"
+                                                        Visibility="{Binding NeedsHuman, Converter={StaticResource BoolToVis}}">
+                                                    <TextBlock Text="{Binding SeverityText}" FontSize="10"
+                                                               Foreground="{DynamicResource WarningTextBrush}" />
+                                                </Border>
+                                                <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="Medium"
+                                                           TextWrapping="Wrap" Foreground="{DynamicResource TextBrush}" />
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding Detail}" FontSize="11.5" Margin="0,4,0,0"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding ActionText}" FontSize="11.5" Margin="0,4,0,0"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       Visibility="{Binding ActionText, Converter={StaticResource NullToVisibility}}" />
+                                            <TextBlock Text="{Binding StageLine}" FontSize="10.5" Margin="0,4,0,0"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
                         <TextBlock Text="{Binding Selected.ReasonsText}" FontSize="12"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                   Visibility="{Binding Selected.HasReviewReasons, Converter={StaticResource InverseBoolToVis}}" />
 
                         <TextBlock Text="Accepting records a teacher decision that later automated runs cannot replace. Overriding stores the mark you enter."
                                    Style="{StaticResource CardSubtitle}" Margin="0,16,0,0" />

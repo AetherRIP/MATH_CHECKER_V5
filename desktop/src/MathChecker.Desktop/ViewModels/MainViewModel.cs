@@ -450,6 +450,9 @@ public sealed class MainViewModel : ObservableObject
         // assignment) sit on the assignment they act on.
         Add(new StudentsViewModel(_session) { Group = "People" });
         Add(new AssignmentsViewModel(_session) { Group = "People" });
+        // Creating an assignment is its own page, not a cramped row under the
+        // list: it needs a name, a place, a grade scale and the mark scheme.
+        Add(new CreateAssignmentViewModel(_session) { Group = "People" });
         // The details page opens from a row, but it is a real page: it keeps
         // its assignment across a refresh and can be reached from the People
         // tab strip without going back through the list.

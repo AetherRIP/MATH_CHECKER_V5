@@ -7,6 +7,7 @@ import logging
 import sqlite3
 import threading
 import time
+import weakref
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -52,6 +53,25 @@ def _new_connection() -> sqlite3.Connection:
     return conn
 
 
+def _release_connection(conn: sqlite3.Connection) -> None:
+    """Close one connection whose owning thread has gone away.
+
+    Registered as a finalizer on the thread that opened the connection (see
+    ``get_connection``). Removing it from the registry and closing it are done
+    here, together, so the registry stays a superset of the open connections
+    that ``close_all()`` has to close.
+    """
+    try:
+        with _connections_lock:
+            _connections.discard(conn)
+    except Exception:  # noqa: BLE001 — interpreter shutdown may have cleared it
+        return
+    try:
+        conn.close()
+    except Exception:  # noqa: BLE001 — close_all() may have closed it already
+        pass
+
+
 def get_connection() -> sqlite3.Connection:
     with _gate:
         conn = getattr(_local, "conn", None)
@@ -67,6 +87,22 @@ def get_connection() -> sqlite3.Connection:
             _local.gen = _generation
             with _connections_lock:
                 _connections.add(conn)
+            # A connection belongs to the THREAD that opened it, and this app
+            # does work on short-lived threads: every correction gets a fresh
+            # ``<worker>-stdout`` reader thread (app.workers.adapter), and the
+            # manual/API threads of a thread pool come and go as well. Such a
+            # thread's thread-local is dropped when it exits, so nothing would
+            # ever close its connection — and it stayed in this registry, which
+            # is only emptied by close_all(), for the life of the process.
+            # Measured: one leaked connection (3 file handles and its page
+            # cache) per completed job, growing linearly with no plateau.
+            #
+            # Tie the handle to its thread instead: the finalizer runs when the
+            # Thread object is collected. A RUNNING thread cannot be collected
+            # (threading._active holds it), so nothing is closed early, and a
+            # live thread's connection stays in the registry for close_all().
+            weakref.finalize(threading.current_thread(),
+                             _release_connection, conn)
         return conn
 
 
@@ -168,6 +204,28 @@ def _migrate(conn: sqlite3.Connection) -> None:
     existing = {row[1] for row in conn.execute("PRAGMA table_info(correction_jobs)")}
     if "worker_id" not in existing:
         conn.execute("ALTER TABLE correction_jobs ADD COLUMN worker_id TEXT")
+
+    # Gemini key status. INVALID used to share the ``removed`` column with
+    # "deleted from the key list", so a key that had EVER recorded a failure
+    # came back INVALID merely for having been deleted and restored — with no
+    # auth failure behind it — and the app reported "No usable Gemini keys
+    # remain". INVALID now has its own column. Existing rows are backfilled
+    # from the EVIDENCE already recorded against them (a real auth failure), so
+    # genuinely rejected keys stay rejected and keys sidelined by a transient
+    # failure return to rotation. No key material is read or written here.
+    key_cols = {row[1] for row in conn.execute("PRAGMA table_info(gemini_keys)")}
+    if key_cols and "invalid" not in key_cols:
+        conn.execute(
+            "ALTER TABLE gemini_keys ADD COLUMN invalid INTEGER NOT NULL DEFAULT 0")
+        conn.execute(
+            "UPDATE gemini_keys SET invalid = 1 WHERE removed = 1 AND fingerprint "
+            "IN (SELECT fingerprint FROM key_stats WHERE auth_errors > 0)")
+
+    # Per-attempt provider-request ledger (gemini.call_audit). Added to an
+    # existing install without touching the counters it already holds.
+    bw_cols = {row[1] for row in conn.execute("PRAGMA table_info(job_bandwidth)")}
+    if bw_cols and "ai_calls_json" not in bw_cols:
+        conn.execute("ALTER TABLE job_bandwidth ADD COLUMN ai_calls_json TEXT")
 
     # Classroom assignment lifecycle (§ deletion sync). When an assignment is
     # deleted in Google Classroom it is ARCHIVED here, never hard-deleted, so
@@ -335,6 +393,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "PRAGMA table_info(automation_jobs)")}
     if automation_cols and "hidden_at" not in automation_cols:
         conn.execute("ALTER TABLE automation_jobs ADD COLUMN hidden_at REAL")
+
+    # Questions taken out of marking for one assignment (schema.sql creates it
+    # too; this covers databases built before the table existed).
+    if not conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='scheme_ignored_questions'").fetchone():
+        conn.execute("""CREATE TABLE IF NOT EXISTS scheme_ignored_questions (
+            coursework_id TEXT NOT NULL, question_number TEXT NOT NULL, note TEXT,
+            created_at REAL NOT NULL, PRIMARY KEY (coursework_id, question_number))""")
 
     # One-active-per-submission: the pool leaves jobs in 'STARTING' (and the
     # recovery set includes PREPARING..RETRYING) while work runs; the older

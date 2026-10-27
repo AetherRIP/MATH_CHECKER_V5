@@ -28,6 +28,9 @@ public sealed class UsageViewModel : PageViewModel
         ? "—"
         : $"{_usage.Api.Requests} requests · {_usage.Api.Successes} ok · {_usage.Api.Failures} failed · "
           + $"{_usage.Api.Retries} retries · {_usage.Api.Failovers} failovers";
+    /// <summary>Measured AI requests per correction, from the per-job ledger.
+    /// Explicitly says "not measured" rather than showing 0.</summary>
+    public string AiText => _usage?.Api?.Ai?.Text ?? "No correction has recorded its AI requests yet.";
     public bool AnyLimitReached => (_usage?.HourlyOver ?? false) || (_usage?.DailyOver ?? false);
     public string LimitWarning => AnyLimitReached
         ? "A configured traffic limit has been reached; corrections that need the internet will wait."
@@ -48,6 +51,7 @@ public sealed class UsageViewModel : PageViewModel
         OnPropertyChanged(nameof(DailyLimitText));
         OnPropertyChanged(nameof(RemainingText));
         OnPropertyChanged(nameof(ApiText));
+        OnPropertyChanged(nameof(AiText));
         OnPropertyChanged(nameof(AnyLimitReached));
         OnPropertyChanged(nameof(LimitWarning));
     }

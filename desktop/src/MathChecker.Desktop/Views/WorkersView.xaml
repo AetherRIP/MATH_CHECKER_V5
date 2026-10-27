@@ -217,8 +217,16 @@
 
             <!-- ============================================ 3 · worker grid -->
             <Grid Grid.Row="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" MinWidth="320" />
+                    <ColumnDefinition x:Name="WorkerCardsColumn" Width="*" MinWidth="320" />
+                    <!-- Auto, so the column is zero while no worker is selected.
+                         The card is 360 DIP beside the grid and full width under
+                         it when the page is too narrow for both (see the
+                         code-behind). -->
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
@@ -349,7 +357,8 @@
                 </Grid>
 
                 <!-- =============================================== 4 · details -->
-                <Border Grid.Column="1" Style="{StaticResource Card}" Width="360" Margin="14,0,0,0"
+                <Border Grid.Column="1" x:Name="WorkerDetail" Style="{StaticResource Card}"
+                        Width="360" Margin="14,0,0,0"
                         VerticalAlignment="Top" MaxHeight="720"
                         Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
                     <DockPanel>

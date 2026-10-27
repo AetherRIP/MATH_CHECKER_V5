@@ -2,77 +2,79 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ============================================================
-         Light appearance, taken from the reference: a near-white canvas,
-         white cards, indigo as the one decision colour, and soft ink.
+         Instrument — light. Cool paper, not cream: 1 DIP hairlines carry the
+         structure and shadows stay a whisper. The accent is a printer's teal
+         dark enough to read as text on paper.
          ============================================================ -->
 
-    <SolidColorBrush x:Key="CanvasBrush" Color="#F7F7FB" />
+    <SolidColorBrush x:Key="CanvasBrush" Color="#F3F5F7" />
     <SolidColorBrush x:Key="CanvasDeepBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="SunkenBrush" Color="#F1F1F7" />
+    <SolidColorBrush x:Key="SunkenBrush" Color="#EAEEF2" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="SurfaceHoverBrush" Color="#F2F1F8" />
-    <SolidColorBrush x:Key="SurfaceSelectedBrush" Color="#EAE7FD" />
+    <SolidColorBrush x:Key="SurfaceHoverBrush" Color="#EDF1F5" />
+    <SolidColorBrush x:Key="SurfaceSelectedBrush" Color="#E2EBEF" />
 
-    <SolidColorBrush x:Key="HairlineBrush" Color="#E9E8F0" />
-    <SolidColorBrush x:Key="HairlineStrongBrush" Color="#D8D7E4" />
-    <SolidColorBrush x:Key="RowHairlineBrush" Color="#F0EFF6" />
+    <SolidColorBrush x:Key="HairlineBrush" Color="#DCE3EA" />
+    <SolidColorBrush x:Key="HairlineStrongBrush" Color="#C4CFD9" />
+    <SolidColorBrush x:Key="RowHairlineBrush" Color="#E9EEF3" />
 
-    <SolidColorBrush x:Key="TextBrush" Color="#16151F" />
-    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5E5C70" />
-    <SolidColorBrush x:Key="TextMutedBrush" Color="#9290A4" />
+    <SolidColorBrush x:Key="TextBrush" Color="#0C1219" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#485663" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#64707C" />
 
-    <SolidColorBrush x:Key="AccentBrush" Color="#5B4DF0" />
-    <SolidColorBrush x:Key="AccentHoverBrush" Color="#4A3DDB" />
-    <SolidColorBrush x:Key="AccentPressedBrush" Color="#3E32C6" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#0B7C86" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#096A73" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="#075A62" />
     <SolidColorBrush x:Key="AccentInkBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="AccentSoftBrush" Color="#EEEDFE" />
-    <SolidColorBrush x:Key="AccentLineBrush" Color="#D5D0FB" />
-    <SolidColorBrush x:Key="FocusBrush" Color="#7A6CFF" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#E4F1F2" />
+    <SolidColorBrush x:Key="AccentLineBrush" Color="#B7DADD" />
+    <SolidColorBrush x:Key="FocusBrush" Color="#0B7C86" />
 
-    <SolidColorBrush x:Key="WarningBrush" Color="#B97710" />
+    <SolidColorBrush x:Key="WarningBrush" Color="#A26513" />
     <SolidColorBrush x:Key="WarningInkBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="WarningSurfaceBrush" Color="#FDF3E3" />
-    <SolidColorBrush x:Key="WarningTextBrush" Color="#8A5A0F" />
+    <SolidColorBrush x:Key="WarningSurfaceBrush" Color="#FBF0DD" />
+    <SolidColorBrush x:Key="WarningTextBrush" Color="#7A4A0C" />
 
-    <SolidColorBrush x:Key="DangerBrush" Color="#D9483A" />
-    <SolidColorBrush x:Key="DangerSurfaceBrush" Color="#FDECEA" />
-    <SolidColorBrush x:Key="DangerTextBrush" Color="#A8342A" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#C0392B" />
+    <SolidColorBrush x:Key="DangerSurfaceBrush" Color="#FBEBE9" />
+    <SolidColorBrush x:Key="DangerTextBrush" Color="#97291D" />
 
-    <SolidColorBrush x:Key="SuccessBrush" Color="#1F9D6B" />
-    <SolidColorBrush x:Key="SuccessSurfaceBrush" Color="#E5F7EE" />
-    <SolidColorBrush x:Key="SuccessTextBrush" Color="#12764F" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="#147A5B" />
+    <SolidColorBrush x:Key="SuccessSurfaceBrush" Color="#E3F4EC" />
+    <SolidColorBrush x:Key="SuccessTextBrush" Color="#0E6047" />
 
-    <SolidColorBrush x:Key="InfoBrush" Color="#2F77D1" />
-    <SolidColorBrush x:Key="InfoSurfaceBrush" Color="#E9F1FD" />
+    <SolidColorBrush x:Key="InfoBrush" Color="#1F6FA8" />
+    <SolidColorBrush x:Key="InfoSurfaceBrush" Color="#E6F0F8" />
 
     <!-- The answer sheet stays paper in both appearances. -->
     <SolidColorBrush x:Key="PaperBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="PaperInkBrush" Color="#16151F" />
-    <SolidColorBrush x:Key="PaperSurroundBrush" Color="#E8E7F0" />
+    <SolidColorBrush x:Key="PaperInkBrush" Color="#14181C" />
+    <SolidColorBrush x:Key="PaperSurroundBrush" Color="#E4E8ED" />
 
     <SolidColorBrush x:Key="TransparentBrush" Color="Transparent" />
-    <SolidColorBrush x:Key="ScrimBrush" Color="#55161524" />
+    <SolidColorBrush x:Key="ScrimBrush" Color="#55101519" />
 
-    <!-- Ink on the one gradient hero card (always a coloured surface). -->
-    <SolidColorBrush x:Key="HeroInkBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="HeroMutedBrush" Color="#D9D4FF" />
+    <!-- Ink on the one hero panel (always a coloured surface). -->
+    <SolidColorBrush x:Key="HeroInkBrush" Color="#F4FBFB" />
+    <SolidColorBrush x:Key="HeroMutedBrush" Color="#A9C6CB" />
 
     <LinearGradientBrush x:Key="CanvasGradientBrush" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#FBFBFE" Offset="0" />
-        <GradientStop Color="#F5F5FA" Offset="1" />
+        <GradientStop Color="#FAFBFC" Offset="0" />
+        <GradientStop Color="#F2F5F7" Offset="1" />
     </LinearGradientBrush>
 
-    <!-- The raised, colourful surface used by the one hero card per page. -->
+    <!-- The same ink hero in both appearances: it is the one moment of colour
+         on the page, so it must not turn pale in daylight. -->
     <LinearGradientBrush x:Key="HeroBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#6C5DF6" Offset="0" />
-        <GradientStop Color="#4B3DDA" Offset="1" />
+        <GradientStop Color="#0E3438" Offset="0" />
+        <GradientStop Color="#0A1E22" Offset="1" />
     </LinearGradientBrush>
 
-    <DropShadowEffect x:Key="CardShadowEffect" BlurRadius="18" ShadowDepth="3"
-                      Direction="270" Opacity="0.10" Color="#1F1D3A" />
-    <DropShadowEffect x:Key="PopShadowEffect" BlurRadius="32" ShadowDepth="10"
-                      Direction="270" Opacity="0.16" Color="#1F1D3A" />
-    <DropShadowEffect x:Key="FloatingShadow" BlurRadius="40" ShadowDepth="16"
-                      Direction="270" Opacity="0.18" Color="#1F1D3A" />
+    <DropShadowEffect x:Key="CardShadowEffect" BlurRadius="10" ShadowDepth="2"
+                      Direction="270" Opacity="0.06" Color="#0C1219" />
+    <DropShadowEffect x:Key="PopShadowEffect" BlurRadius="24" ShadowDepth="6"
+                      Direction="270" Opacity="0.10" Color="#0C1219" />
+    <DropShadowEffect x:Key="FloatingShadow" BlurRadius="32" ShadowDepth="10"
+                      Direction="270" Opacity="0.12" Color="#0C1219" />
 </ResourceDictionary>

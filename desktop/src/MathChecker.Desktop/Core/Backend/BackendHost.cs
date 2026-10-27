@@ -195,14 +195,41 @@ public sealed class BackendHost : IAsyncDisposable
         {
             if (_settings.AttachToRunningBackend)
             {
-                await AttachAsync(port, cancellationToken).ConfigureAwait(false);
+                // A loopback port is machine-wide, not per Windows user, so
+                // "Math Checker answered" is not the same as "MY backend
+                // answered". Only attach when the running backend reports the
+                // same data folder this launch would use; otherwise a second
+                // Windows account (or a development checkout) would be shown
+                // as if it were this user's class - and edits would land in
+                // someone else's database.
+                var running = await _environment.ReadAsync(port, cancellationToken).ConfigureAwait(false);
+                if (CanAttachTo(running, _settings))
+                {
+                    await AttachAsync(port, cancellationToken).ConfigureAwait(false);
+                    return Status;
+                }
+
+                var ownPort = FindFreePort(configuredPort + 1);
+                if (ownPort == 0)
+                {
+                    SetStatus(new BackendStatus(BackendState.Failed, port, false,
+                        "Another Math Checker backend is using a different data folder and no free "
+                        + "port was found to start this installation's own backend.",
+                        running?.DataDirectory));
+                    return Status;
+                }
+
+                _log.Warn($"not attaching: the backend on {port} serves {running?.DataDirectory ?? "another data folder"}"
+                          + $"; starting this installation's own backend on {ownPort}");
+                port = ownPort;
+            }
+            else
+            {
+                SetStatus(new BackendStatus(BackendState.Failed, port, false,
+                    "A Math Checker backend is already running on this port. Close it first, or enable "
+                    + "\"attach to a running backend\" in the desktop settings."));
                 return Status;
             }
-
-            SetStatus(new BackendStatus(BackendState.Failed, port, false,
-                "A Math Checker backend is already running on this port. Close it first, or enable "
-                + "\"attach to a running backend\" in the desktop settings."));
-            return Status;
         }
 
         if (probe.Kind == HealthKind.Foreign)
@@ -315,10 +342,7 @@ public sealed class BackendHost : IAsyncDisposable
             return null;
         }
 
-        var wantsDemo = (settings.EnvironmentVariables ?? new Dictionary<string, string>())
-            .Any(kv =>
-                string.Equals(kv.Key, "MC5_DEMO", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(kv.Value?.Trim(), "1", StringComparison.Ordinal));
+        var wantsDemo = WantsDemo(settings);
 
         var warnings = new List<string>();
         if (environment.Demo && !wantsDemo)
@@ -344,6 +368,53 @@ public sealed class BackendHost : IAsyncDisposable
 
         return warnings.Count == 0 ? null : string.Join(" ", warnings);
     }
+
+    /// <summary>
+    /// May this launch attach to the backend already answering on the port?
+    ///
+    /// Only when it serves the data folder this installation would use. A
+    /// backend that cannot say (null) is attached to as before: the check must
+    /// not turn a missing diagnostic route into a startup failure. A DIFFERENT
+    /// folder is refused, because the alternative is showing - and writing to -
+    /// another Windows user's (or the developer's) classes.
+    /// </summary>
+    internal static bool CanAttachTo(BackendEnvironment? running, DesktopSettings settings)
+    {
+        if (running?.DataDirectory is null || string.IsNullOrWhiteSpace(running.DataDirectory))
+        {
+            return true;
+        }
+
+        // A demo backend is synthetic by construction: attaching shows it with
+        // the existing "this is not your class" warning and cannot expose real
+        // student data, so the folder rule does not apply to it.
+        if (running.Demo)
+        {
+            return true;
+        }
+
+        var wantsDemo = WantsDemo(settings);
+        var expected = ExpectedDataDirectory(settings, wantsDemo)
+                       ?? DefaultUserDataDirectory(wantsDemo);
+        return SameFolder(expected, running.DataDirectory);
+    }
+
+    /// <summary>Where this launch keeps its data when nothing is configured.
+    /// Mirrors backend/app/data_location.py for an installed copy: the
+    /// per-user folder, never the installation directory.</summary>
+    internal static string DefaultUserDataDirectory(bool demo)
+    {
+        var baseDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "MathChecker");
+        return demo ? Path.Combine(baseDirectory, "demo") : baseDirectory;
+    }
+
+    private static bool WantsDemo(DesktopSettings settings) =>
+        (settings.EnvironmentVariables ?? new Dictionary<string, string>())
+        .Any(kv =>
+            string.Equals(kv.Key, "MC5_DEMO", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(kv.Value?.Trim(), "1", StringComparison.Ordinal));
 
     /// <summary>The folder this launch should have produced, mirroring
     /// main.py --demo (which appends \"demo\" to the base folder once).</summary>

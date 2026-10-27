@@ -39,7 +39,12 @@
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" MinWidth="300" />
+                <!-- 240, not 300: 360 of set-up pane plus 12 of gap plus 300
+                     of table was 672 DIP, which pushed the report table past
+                     the edge of a page that only has 628 DIP at the window's
+                     minimum width. The column stays Auto so hiding the pane
+                     still gives the table every pixel. -->
+                <ColumnDefinition Width="*" MinWidth="240" />
             </Grid.ColumnDefinitions>
 
             <!-- ============================================================

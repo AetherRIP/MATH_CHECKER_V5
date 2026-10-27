@@ -21,9 +21,10 @@ import logging
 import threading
 import time
 
-from ..errors import classify_gemini_error
+from ..errors import classify_gemini_error, http_status_of
 from ..logging_setup import log_event
 from ..retry_policy import classify_failure
+from .call_audit import ProviderBudgetExceeded
 from .key_manager import (
     KeyManager,
     NoKeysError,
@@ -32,6 +33,12 @@ from .key_manager import (
 from .key_manager import fingerprint as fingerprint_of
 
 log = logging.getLogger("gemini.proxy")
+
+#: A Files API lookup used to validate a reused upload is a request of its
+#: own. A remote verified this recently in THIS process is still alive (the
+#: API keeps uploads for 48 h), so re-checking it before every sibling job is
+#: pure overhead: one paper with 20 prepared pages paid 20 lookups per job.
+REMOTE_VERIFY_TTL_SECONDS = 900.0
 
 # Errors that justify trying ANOTHER KEY within the same request:
 # invalid_key (this credential is dead) and rate_limited (this key's quota is
@@ -147,6 +154,8 @@ class KeyAwareClient:
         # Remote files that must OUTLIVE this job (shared mark schemes reused
         # across every student of an assignment). Cleanup skips these.
         self._shared_remotes: set[str] = set()
+        # remote name -> when THIS process last confirmed it is alive
+        self._verified_remotes: dict[str, float] = {}
         # Cheap pre-flight probes: before paying a FULL re-upload of the
         # submission + mark scheme under another key, ask that key for one
         # token. A quota-exhausted key answers 429 in a few KB, so a dead key
@@ -265,6 +274,11 @@ class KeyAwareClient:
         from .provider_health import provider_health
         allowed, gate_wait = provider_health().available(model)
         if not allowed:
+            try:
+                from . import call_audit
+                call_audit.note_skip(f"{model} cooling down")
+            except Exception:
+                pass
             raise ProviderCoolingError(
                 f"Gemini model {model} is cooling down after high demand — "
                 f"request not sent ({int(gate_wait)}s cooldown remaining).")
@@ -352,6 +366,15 @@ class KeyAwareClient:
                 # terminal AND to cool down a perfectly healthy key. Repair by
                 # re-uploading the inputs under this key and retry once.
                 for file_attempt in range(2):
+                    # Counted BEFORE the send: the budget must stop a storm
+                    # before a request leaves the process, and a request that
+                    # is refused by the budget was never sent at all.
+                    from . import call_audit as _audit
+                    # Charged to THIS job: the ledger is process-wide, so a
+                    # caller that does not name its job (the API's in-process
+                    # mark-scheme recheck) is not charged at all.
+                    _audit.note_send(_audit.KIND_GENERATE, model=model,
+                                     job_id=self.job_id)
                     try:
                         response = sdk_client.models.generate_content(
                             model=model,
@@ -368,6 +391,11 @@ class KeyAwareClient:
                                   level=logging.WARNING, fingerprint=fp,
                                   model=model)
                         contents = self._repair_missing_files(contents, fp)
+                try:
+                    from . import call_audit as _audit_ok
+                    _audit_ok.note_result(ok=True)
+                except Exception:
+                    pass
                 self.keys.record_success(fp)
                 try:
                     from ..api_stats import record_request
@@ -385,6 +413,13 @@ class KeyAwareClient:
 
             except Exception as exc:
                 last_error = exc
+                if isinstance(exc, ProviderBudgetExceeded):
+                    raise
+                try:
+                    from . import call_audit as _audit_bad
+                    _audit_bad.note_result(ok=False, error=str(exc))
+                except Exception:
+                    pass
                 kind = classify_gemini_error(exc)["kind"]
                 self.keys.record_failure(fp, exc)
                 try:
@@ -398,10 +433,13 @@ class KeyAwareClient:
                                                      model)
                 except Exception:
                     pass
+                # Safe diagnostics: provider (this module), operation
+                # (generate_content), error category/class and the provider's
+                # own HTTP status. Never the request payload or the credential.
                 log_event(
                     "gemini.proxy", "generate_content failed",
                     level=logging.WARNING, fingerprint=fp, model=model,
-                    kind=kind, error_class=error_class,
+                    kind=kind, error_class=error_class, status=http_status_of(exc),
                 )
                 if kind not in _KEY_LEVEL_KINDS:
                     # Model-level, invalid-request, timeout or unknown error:
@@ -616,7 +654,14 @@ class KeyAwareClient:
         if remote is not None:
             return remote
 
-        remote = client.files.upload(file=path)
+        from . import call_audit as _audit
+        _audit.note_send(_audit.KIND_UPLOAD, job_id=self.job_id)
+        try:
+            remote = client.files.upload(file=path)
+        except Exception as exc:
+            _audit.note_result(ok=False, error=str(exc))
+            raise
+        _audit.note_result(ok=True)
         self._wait_active(client, remote, source=path)
         with self._client_lock:
             self._file_owner[remote.name] = fp
@@ -629,6 +674,7 @@ class KeyAwareClient:
                 self._file_sizes[remote.name] = 0
             if shared:
                 self._shared_remotes.add(remote.name)
+            self._verified_remotes[remote.name] = time.time()
         size = 0
         try:
             size = os.path.getsize(path)
@@ -671,15 +717,36 @@ class KeyAwareClient:
             return None
         if not row:
             return None
-        try:
-            remote = client.files.get(name=row["remote_name"])
-        except Exception:
+        remote_name = str(row.get("remote_name") or "")
+        now_ts = time.time()
+        recently_verified = False
+        with self._client_lock:
+            verified_at = self._verified_remotes.get(remote_name)
+        if verified_at is not None and now_ts - verified_at < REMOTE_VERIFY_TTL_SECONDS:
+            recently_verified = True
+        if recently_verified:
+            # Same process already confirmed this upload is alive moments
+            # ago: reuse it without another Files API round-trip.
+            class _Known:
+                name = remote_name
+                state = type("state", (), {"name": "ACTIVE"})()
+            remote = _Known()
+        else:
+            from . import call_audit as _audit
+            _audit.note_send(_audit.KIND_FILE_GET, job_id=self.job_id)
             try:
-                from . import file_registry as reg
-                reg.forget(fp, sha, purpose)
-            except Exception:
-                pass
-            return None
+                remote = client.files.get(name=remote_name)
+                _audit.note_result(ok=True)
+            except Exception as exc:
+                _audit.note_result(ok=False, error=str(exc))
+                try:
+                    from . import file_registry as reg
+                    reg.forget(fp, sha, purpose)
+                except Exception:
+                    pass
+                return None
+            with self._client_lock:
+                self._verified_remotes[remote_name] = time.time()
         state = getattr(getattr(remote, "state", None), "name", "ACTIVE")
         if state and state not in {"ACTIVE", "SUCCEEDED"}:
             return None

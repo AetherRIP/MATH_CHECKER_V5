@@ -309,21 +309,38 @@ class TestSchemeAuditPropagation:
             {"question_number": "2", "awarded_marks": 3, "max_marks": 3},
         ]}
 
-    def test_needs_repair_becomes_a_warning(self):
+    def test_an_unverified_scheme_is_a_note_not_a_review(self):
+        """A scheme read without the independent pass is UNVERIFIED, not wrong.
+
+        It is reported on every paper as an advisory (so the teacher can recheck
+        it once), but it cannot make each paper's marks look doubtful: no
+        structural fault was found in the marking. Re-flagging every paper was
+        the single largest source of reviews (14 of 15 stored corrections).
+        """
         verification = verify_result(self._result(), {
             "source": "built", "verification_state": "NEEDS_REPAIR",
             "completeness": {"verdict": "COMPLETE", "unresolved": False},
             "missing_questions": [], "extra_questions": [],
         })
-        assert any("NEEDS_REPAIR" in w and "did not confirm" in w
+        assert any("NEEDS_REPAIR" in w and "never" in w
                    for w in verification["warnings"])
-        # The marks are not disturbed by a scheme-level warning, but the
-        # correction cannot be stored as a routine VALID result.
         assert verification["earned"] == 6
-        assert verification["status"] == "REVIEW"
-        assert verification["review_required"] is True
+        assert verification["status"] == "VALID"
+        assert verification["review_required"] is False
+        assert "MARK_SCHEME_UNVERIFIED" in verification["review_reason_codes"]
         assert (verification["blueprint"]["verification_state"]
                 == "NEEDS_REPAIR")
+
+    def test_a_scheme_the_marking_contradicts_is_a_review(self):
+        """A declared question nobody marked is a fault, not a note."""
+        verification = verify_result(self._result(), {
+            "source": "built", "verification_state": "NEEDS_REPAIR",
+            "completeness": {"verdict": "INCOMPLETE", "unresolved": True},
+            "missing_questions": [], "extra_questions": [],
+        })
+        assert verification["status"] == "REVIEW"
+        assert "MARK_SCHEME_CONTRADICTED" in verification["review_reason_codes"]
+        assert verification["earned"] == 6
 
     def test_a_verified_scheme_adds_no_warning(self):
         verification = verify_result(self._result(), {

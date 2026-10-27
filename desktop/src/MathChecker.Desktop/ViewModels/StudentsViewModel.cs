@@ -30,6 +30,8 @@ public sealed class StudentsViewModel : PageViewModel
     private StudentProfileViewModel? _profile;
     private bool _isProfileLoading;
     private int _openRequest;
+    private ClassroomStatusDto? _classroom;
+    private bool _isClassroomBusy;
 
     public StudentsViewModel(AppSession session)
         : base(session, "people", "People")
@@ -38,6 +40,8 @@ public sealed class StudentsViewModel : PageViewModel
             () => Selected is not null);
         CloseProfileCommand = new RelayCommand(CloseProfile, () => IsProfileOpen);
         OpenResultsCommand = new RelayCommand(() => Session.GoTo("results"));
+        ConnectClassroomCommand = Command(ConnectClassroomAsync, () => CanConnect);
+        DisconnectClassroomCommand = Command(DisconnectClassroomAsync, () => ClassroomConnected);
     }
 
     /// <summary>People are the Classroom rosters, so this page syncs them.</summary>
@@ -49,6 +53,142 @@ public sealed class StudentsViewModel : PageViewModel
     public RelayCommand OpenProfileCommand { get; }
     public RelayCommand CloseProfileCommand { get; }
     public RelayCommand OpenResultsCommand { get; }
+
+    /// <summary>Starts Google's sign-in (loopback OAuth) and then syncs. The
+    /// desktop port shipped the API calls but no button, so a fresh copy could
+    /// never reach a classroom.</summary>
+    public AsyncCommand ConnectClassroomCommand { get; }
+
+    public AsyncCommand DisconnectClassroomCommand { get; }
+
+    // ------------------------------------------------------------- classroom
+
+    /// <summary>The last connection state the backend reported, or null while
+    /// it has not been read yet.</summary>
+    public ClassroomStatusDto? Classroom
+    {
+        get => _classroom;
+        private set
+        {
+            if (!SetProperty(ref _classroom, value))
+            {
+                return;
+            }
+
+            RaiseClassroom();
+        }
+    }
+
+    public bool ClassroomConnected => Classroom?.Connected == true;
+
+    public bool ClassroomNotConnected => !ClassroomConnected;
+
+    /// <summary>"Connected as …" / "Not connected", straight from the backend.</summary>
+    public string ClassroomStateText => Classroom?.StateText ?? "Checking the connection…";
+
+    public string ClassroomHint => ClassroomConnected
+        ? "Class lists, assignments and submitted work sync from this account."
+        : Classroom?.ClientConfigured == false
+            ? "The Google sign-in client file is missing, so a connection cannot be started yet."
+            : "Connect a teacher account to pull in classes, students and handed-in work.";
+
+    public string ClassroomActionText => ClassroomConnected ? "Reconnect" : "Connect Google Classroom";
+
+    public bool HasClassroomProblem => !string.IsNullOrWhiteSpace(Classroom?.Problem);
+
+    public string ClassroomProblem => Classroom?.Problem ?? string.Empty;
+
+    public bool IsClassroomBusy
+    {
+        get => _isClassroomBusy;
+        private set
+        {
+            if (SetProperty(ref _isClassroomBusy, value))
+            {
+                OnPropertyChanged(nameof(CanConnect));
+            }
+        }
+    }
+
+    public bool CanConnect => !IsClassroomBusy && Classroom?.ClientConfigured != false;
+
+    private void RaiseClassroom()
+    {
+        OnPropertyChanged(nameof(ClassroomConnected));
+        OnPropertyChanged(nameof(ClassroomNotConnected));
+        OnPropertyChanged(nameof(ClassroomStateText));
+        OnPropertyChanged(nameof(ClassroomHint));
+        OnPropertyChanged(nameof(ClassroomActionText));
+        OnPropertyChanged(nameof(HasClassroomProblem));
+        OnPropertyChanged(nameof(ClassroomProblem));
+        OnPropertyChanged(nameof(CanConnect));
+        ConnectClassroomCommand.RaiseCanExecuteChanged();
+        DisconnectClassroomCommand.RaiseCanExecuteChanged();
+    }
+
+    private async Task ConnectClassroomAsync()
+    {
+        IsClassroomBusy = true;
+        try
+        {
+            // Opens the browser for Google's consent screen and waits for the
+            // loopback callback; the refresh token is stored by the backend.
+            await Session.Api.ConnectClassroomAsync().ConfigureAwait(true);
+            await LoadClassroomAsync().ConfigureAwait(true);
+            if (!ClassroomConnected)
+            {
+                Error = "Google sign-in finished, but the backend still reports no connection.";
+                return;
+            }
+
+            Status = "Google Classroom connected. Syncing classes and students…";
+            Session.Notify("Google Classroom connected.");
+            Session.Sync.RequestSync();
+        }
+        finally
+        {
+            IsClassroomBusy = false;
+        }
+    }
+
+    private async Task DisconnectClassroomAsync()
+    {
+        if (!Session.Dialogs.Confirm("Disconnect Google Classroom",
+                "Math Checker will forget the stored Google refresh token. Classes, students and "
+                + "results already on this computer are kept.\n\nDisconnect?"))
+        {
+            return;
+        }
+
+        IsClassroomBusy = true;
+        try
+        {
+            await Session.Api.DisconnectClassroomAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsClassroomBusy = false;
+        }
+
+        await LoadClassroomAsync().ConfigureAwait(true);
+        Status = ClassroomConnected
+            ? "Still connected."
+            : "Google Classroom disconnected. Stored classes and results were kept.";
+    }
+
+    /// <summary>Reads the connection state. A failure is reported on the card
+    /// rather than failing the whole roster load.</summary>
+    public async Task LoadClassroomAsync()
+    {
+        try
+        {
+            Classroom = await Session.Api.ClassroomStatusAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            Session.Log.Warn("classroom status unavailable: " + ex.Message);
+        }
+    }
 
     public string Filter
     {
@@ -155,6 +295,8 @@ public sealed class StudentsViewModel : PageViewModel
         // An explicit page load means "show me the current roster", so any
         // cached profile is refreshed rather than replayed.
         _profileCache.Clear();
+
+        await LoadClassroomAsync().ConfigureAwait(true);
 
         var students = await Session.Api.StudentsAsync();
         _all.Clear();

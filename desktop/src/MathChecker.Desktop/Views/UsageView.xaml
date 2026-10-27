@@ -49,6 +49,12 @@
                     <TextBlock Text="AI PROVIDER TRAFFIC" Style="{StaticResource SectionLabel}" />
                     <TextBlock Text="{Binding ApiText}" FontSize="12" Margin="0,6,0,0"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="AI REQUESTS PER CORRECTION" Style="{StaticResource SectionLabel}"
+                               Margin="0,12,0,0" />
+                    <TextBlock Text="{Binding AiText}" FontSize="12" Margin="0,6,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.Name="AI requests per correction" />
                 </StackPanel>
             </Border>
 

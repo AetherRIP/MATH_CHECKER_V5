@@ -391,12 +391,20 @@ def review_queue(limit: int = 100):
         """,
         (max(1, min(500, limit)),),
     )
+    from ..engine.review_reasons import from_confidence_reasons
     from ..engine.verify import partial_summary
     items = []
     for row in rows:
         item = dict(row)
         item["confidence_reasons"] = db.loads(row["confidence_reasons"], [])
         verification = db.loads(item.pop("verification_json", None), {})
+        # The coded reasons: what failed, which stage, which question, and what
+        # to do. A row corrected before the codes existed gets the same shape
+        # recovered from the reasons it already stored (marked "derived"), so
+        # the queue explains itself instead of showing bare prose.
+        item["review_reasons"] = (verification.get("review_reasons")
+                                  or from_confidence_reasons(
+                                      item["confidence_reasons"], verification))
         partial = partial_summary(verification)
         if partial:
             item["partial"] = partial

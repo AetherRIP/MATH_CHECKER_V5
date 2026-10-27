@@ -160,3 +160,22 @@ class TestStatus:
         import json
         text = json.dumps(km.status())
         assert "AIzaTestKEY" not in text
+
+    def test_a_stored_provider_error_carries_no_key(self, fresh_state):
+        """``last_error`` is the one error string this app keeps.
+
+        It is written to ``gemini_keys.last_error`` and returned by
+        ``/api/keys``, so a provider error that echoes the request URL (the
+        SDK does exactly that for some 400s) must be redacted on the way in.
+        """
+        key = "AIzaSyC0de" + "x" * 28          # a realistic key length
+        get_secrets().set_gemini_keys([key])
+        km = KeyManager()
+        fp = fingerprint(key)
+        km.record_failure(fp, RuntimeError(
+            "400 INVALID_ARGUMENT https://generativelanguage.googleapis.com/"
+            "v1beta/models/gemini-3.6-flash:generateContent?key=" + key))
+
+        shown = {k["fingerprint"]: k for k in km.status()["keys"]}[fp]
+        assert key not in (shown["last_error"] or "")
+        assert "[REDACTED]" in shown["last_error"]

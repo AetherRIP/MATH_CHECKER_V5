@@ -98,9 +98,15 @@ def assess_confidence(result: dict, verification: dict, earned: int,
     but the configured fallback model is not interchangeable with the primary:
     on that paper gemini-3.8-flash awarded 70/103 and gemini-3.6-flash 76/103,
     differing on 10 of 31 questions. When a 503/timeout pushes the engine onto
-    the fallback, the marks are still saved — they are simply never presented
-    as a routine result, because a repeat run on a healthy primary would not
-    reproduce them.
+    the fallback, the marks are still saved.
+
+    A model switch is a RELIABILITY fact, not evidence that this paper's marks
+    are wrong. It used to force LOW confidence, which put every fallback-marked
+    paper in the review queue even when every question checked out — 11 of 15
+    stored corrections were queued for this reason alone. The result keeps the
+    full explanation and is rated MEDIUM (never HIGH), so it is visibly not a
+    routine result and asks for a re-run once the primary is healthy, while a
+    paper whose marking is otherwise clean no longer needs a teacher's time.
     """
     reasons: list[str] = []
     switched = bool(marking_model and primary_model
@@ -151,7 +157,10 @@ def assess_confidence(result: dict, verification: dict, earned: int,
         return LOW, reasons
 
     if switched:
-        return LOW, reasons
+        reasons.append("Nothing in the marking itself failed: the model switch is "
+                       "the only caveat. Re-run this paper once the primary "
+                       "model is healthy if the grade must be final.")
+        return MEDIUM, reasons
 
     warnings = verification.get("warnings") or []
     if warnings:

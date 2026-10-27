@@ -144,7 +144,11 @@ public class StudentsPageTests
     private static async Task<(AppSession Session, StubHttpHandler Handler)> SessionAsync(
         string body = StudentsBody)
     {
-        var handler = new StubHttpHandler().Respond(HttpStatusCode.OK, body);
+        // The page reads the Classroom connection state before the roster (the
+        // strip that holds Connect/Disconnect), so that answer comes first.
+        var handler = new StubHttpHandler()
+            .Respond(HttpStatusCode.OK, """{"connected":false,"client_configured":true}""")
+            .Respond(HttpStatusCode.OK, body);
         var settings = new DesktopSettings { Port = 9, StartBackendAutomatically = false };
         var host = new BackendHost(settings, new MemoryLog(),
             starter: new UnusedStarter(), health: new AlwaysOurs());

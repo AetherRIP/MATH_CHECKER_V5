@@ -13,8 +13,8 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate>
-                    <Rectangle Margin="-2" RadiusX="8" RadiusY="8"
-                               Stroke="{DynamicResource AccentBrush}" StrokeThickness="2" />
+                    <Rectangle Margin="-3" RadiusX="6" RadiusY="6"
+                               Stroke="{DynamicResource FocusBrush}" StrokeThickness="2" />
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -29,10 +29,10 @@
 
     <Style x:Key="PageTitle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
-        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontSize" Value="31" />
         <Setter Property="FontWeight" Value="Bold" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-        <Setter Property="LineHeight" Value="34" />
+        <Setter Property="LineHeight" Value="37" />
         <Setter Property="Margin" Value="0" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
@@ -40,8 +40,8 @@
     <!-- The rest of the type scale. Six sizes only: eyebrow, caption, body,
          card title, page title, display figure. -->
     <Style x:Key="PageEyebrow" TargetType="TextBlock">
-        <Setter Property="FontFamily" Value="{StaticResource BodyFont}" />
-        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontFamily" Value="{StaticResource MediumFont}" />
+        <Setter Property="FontSize" Value="9.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
         <Setter Property="TextWrapping" Value="NoWrap" />
@@ -64,11 +64,14 @@
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
+    <!-- Figures are instrument readings: Space Grotesk, tabular, so a column
+         of scores lines up digit over digit. -->
     <Style x:Key="DisplayFigure" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
-        <Setter Property="FontSize" Value="36" />
+        <Setter Property="FontSize" Value="38" />
         <Setter Property="FontWeight" Value="Bold" />
         <Setter Property="LineHeight" Value="42" />
+        <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
     </Style>
 
@@ -118,7 +121,8 @@
     </Style>
 
     <Style x:Key="SectionLabel" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontFamily" Value="{StaticResource MediumFont}" />
+        <Setter Property="FontSize" Value="9.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
         <Setter Property="TextWrapping" Value="NoWrap" />
@@ -138,8 +142,9 @@
 
     <Style x:Key="StatValue" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
-        <Setter Property="FontSize" Value="32" />
+        <Setter Property="FontSize" Value="30" />
         <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="Margin" Value="0,2,0,0" />
     </Style>
@@ -229,11 +234,11 @@
         <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="14,6" />
-        <Setter Property="Height" Value="32" />
+        <Setter Property="Height" Value="30" />
         <Setter Property="MinWidth" Value="0" />
         <Setter Property="Margin" Value="0,0,8,0" />
-        <Setter Property="FontFamily" Value="{StaticResource BodyFont}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontFamily" Value="{StaticResource MediumFont}" />
+        <Setter Property="FontSize" Value="12.5" />
         <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -313,7 +318,7 @@
         <Setter Property="Foreground" Value="{DynamicResource AccentInkBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Padding" Value="16,6" />
+        <Setter Property="Padding" Value="16,5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -685,12 +690,19 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <!-- Active row marker: a 3 DIP bar in the padding,
+                                 the identity's recurring structural device. -->
+                            <Border x:Name="Marker" Width="3" Height="16" Margin="-10,0,0,0"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    CornerRadius="1.5" Visibility="Collapsed"
+                                    Background="{DynamicResource AccentBrush}" />
                             <TextBlock x:Name="Glyph" Text="{Binding NavGlyph}"
                                        FontFamily="{StaticResource IconFont}" FontSize="15"
                                        Foreground="{TemplateBinding Foreground}"
                                        VerticalAlignment="Center" HorizontalAlignment="Left" />
                             <TextBlock x:Name="Label" Grid.Column="1" Text="{Binding Title}"
-                                       FontSize="13" FontWeight="Medium"
+                                       FontFamily="{StaticResource MediumFont}"
+                                       FontSize="12.5" FontWeight="Medium"
                                        Foreground="{TemplateBinding Foreground}"
                                        TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                                        VerticalAlignment="Center" />
@@ -708,6 +720,7 @@
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Row" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                            <Setter TargetName="Marker" Property="Visibility" Value="Visible" />
                             <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                             <Setter TargetName="Label" Property="FontWeight" Value="SemiBold" />
                         </Trigger>
@@ -717,15 +730,17 @@
         </Setter>
     </Style>
 
+    <!-- A ledger, not a card list: transparent ground, one strong rule under
+         the header, hairline rules between rows, no zebra striping. -->
     <Style TargetType="DataGridColumnHeader">
-        <Setter Property="Background" Value="{DynamicResource SunkenBrush}" />
+        <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
         <Setter Property="BorderThickness" Value="0,0,0,1" />
-        <Setter Property="Height" Value="34" />
+        <Setter Property="Height" Value="32" />
         <Setter Property="Padding" Value="10,0" />
-        <Setter Property="FontFamily" Value="{StaticResource BodyFont}" />
-        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontFamily" Value="{StaticResource MediumFont}" />
+        <Setter Property="FontSize" Value="9.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -756,7 +771,7 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="12,5" />
+        <Setter Property="Padding" Value="12,4" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Template">
             <Setter.Value>
@@ -800,15 +815,15 @@
         <Setter Property="SelectionMode" Value="Single" />
         <Setter Property="SelectionUnit" Value="FullRow" />
         <Setter Property="HeadersVisibility" Value="Column" />
-        <Setter Property="GridLinesVisibility" Value="None" />
-        <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource HairlineBrush}" />
+        <Setter Property="GridLinesVisibility" Value="Horizontal" />
+        <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource RowHairlineBrush}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="RowBackground" Value="Transparent" />
         <Setter Property="AlternatingRowBackground" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-        <Setter Property="RowHeight" Value="38" />
-        <Setter Property="ColumnHeaderHeight" Value="34" />
+        <Setter Property="RowHeight" Value="36" />
+        <Setter Property="ColumnHeaderHeight" Value="32" />
         <Setter Property="Margin" Value="0" />
         <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
         <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
@@ -1013,7 +1028,7 @@
         <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource PillRadius}" />
-        <Setter Property="Padding" Value="9,4" />
+        <Setter Property="Padding" Value="8,3" />
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
@@ -1057,7 +1072,9 @@
                             <ui:HeaderPanel>
                                 <StackPanel VerticalAlignment="Center">
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                        <Border Width="6" Height="6" CornerRadius="2" Margin="0,0,8,0"
+                                        <!-- The eyebrow's rule: the same 3 DIP marker
+                                             the navigation uses for its active row. -->
+                                        <Border Width="3" Height="13" CornerRadius="1.5" Margin="0,0,9,0"
                                                 VerticalAlignment="Center"
                                                 Background="{DynamicResource AccentBrush}" />
                                         <TextBlock Text="{TemplateBinding Eyebrow}"
@@ -1254,12 +1271,10 @@
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Pill" Property="Background"
-                                    Value="{DynamicResource SurfaceRaisedBrush}" />
+                                    Value="{DynamicResource AccentSoftBrush}" />
                             <Setter TargetName="Pill" Property="BorderBrush"
-                                    Value="{DynamicResource HairlineBrush}" />
-                            <Setter TargetName="Pill" Property="Effect"
-                                    Value="{DynamicResource CardShadowEffect}" />
-                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                    Value="{DynamicResource AccentLineBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

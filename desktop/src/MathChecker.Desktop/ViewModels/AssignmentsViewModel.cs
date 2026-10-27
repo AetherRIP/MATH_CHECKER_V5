@@ -11,9 +11,6 @@ public sealed class AssignmentsViewModel : PageViewModel
     private AssignmentDto? _selected;
     private string _filter = string.Empty;
     private string _kind = "all";
-    private string _newTitle = string.Empty;
-    private string _newPoints = string.Empty;
-    private string _newDueDate = string.Empty;
     private string _markSchemeNote = string.Empty;
     private string _markSchemeContent = string.Empty;
     private string _markSchemeRaw = string.Empty;
@@ -104,24 +101,6 @@ public sealed class AssignmentsViewModel : PageViewModel
     /// assignment only; without one they would silently do nothing.</summary>
     public bool HasSelection => _selected is not null;
 
-    public string NewTitle
-    {
-        get => _newTitle;
-        set => SetProperty(ref _newTitle, value);
-    }
-
-    public string NewPoints
-    {
-        get => _newPoints;
-        set => SetProperty(ref _newPoints, value);
-    }
-
-    public string NewDueDate
-    {
-        get => _newDueDate;
-        set => SetProperty(ref _newDueDate, value);
-    }
-
     /// <summary>The mark scheme read as a sentence, labelled facts and (when
     /// the backend has one) the scheme text itself. The raw payload is kept for
     /// the technical-details expander only.</summary>
@@ -169,34 +148,9 @@ public sealed class AssignmentsViewModel : PageViewModel
         private set => SetProperty(ref _summary, value);
     }
 
-    public AsyncCommand CreateLocalCommand => Command(async () =>
-    {
-        if (string.IsNullOrWhiteSpace(NewTitle))
-        {
-            Error = "A title is required for a local assignment.";
-            return;
-        }
-
-        double? points = null;
-        if (!string.IsNullOrWhiteSpace(NewPoints))
-        {
-            if (!double.TryParse(NewPoints, out var parsed) || parsed <= 0)
-            {
-                Error = "Maximum points must be a positive number.";
-                return;
-            }
-
-            points = parsed;
-        }
-
-        await Session.Api.CreateLocalAssignmentAsync(NewTitle.Trim(), points,
-            string.IsNullOrWhiteSpace(NewDueDate) ? null : NewDueDate.Trim(), null);
-        NewTitle = string.Empty;
-        NewPoints = string.Empty;
-        NewDueDate = string.Empty;
-        await LoadAsync();
-        Status = "Local assignment created.";
-    }, success: null);
+    /// <summary>Creating is a page of its own (name, place, grade, mark scheme),
+    /// so the list has one clear way in instead of a one-line title box.</summary>
+    public RelayCommand NewAssignmentCommand => Sync(() => Session.GoTo("new-assignment"));
 
     /// <summary>Loads the details page for one assignment. The page reads the
     /// identity it was opened with, so this cannot show another assignment.

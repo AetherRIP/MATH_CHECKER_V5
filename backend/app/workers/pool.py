@@ -1043,6 +1043,15 @@ class WorkerPool:
 
     def _handle_result(self, worker: CorrectionWorker, result: WorkerResult) -> None:
         job_id = result.job_id
+        # What this attempt spent, FIRST: a failed attempt is exactly the one
+        # whose cost must be visible (3,922 failed attempts against 456
+        # successes were previously recorded as "0 AI requests").
+        if result.ai_usage:
+            try:
+                from ..api_stats import record_ai_usage
+                record_ai_usage(job_id, result.ai_usage)
+            except Exception:
+                pass
         job = db.row_to_dict(db.query_one(
             "SELECT * FROM correction_jobs WHERE id = ?", (job_id,)))
 
@@ -1213,7 +1222,7 @@ class WorkerPool:
                          legacy.percentage_band_grade(percentage),
                          result.marking_model,
                          json.dumps(verification, ensure_ascii=False),
-                         json.dumps(result.result, ensure_ascii=False),
+                         json.dumps(final_result, ensure_ascii=False),
                          result.processing_seconds, result.key_fingerprint,
                          decision.confidence,
                          json.dumps(decision.confidence_reasons, ensure_ascii=False),
@@ -1240,7 +1249,7 @@ class WorkerPool:
                          percentage, legacy.percentage_band_grade(percentage),
                          result.marking_model,
                          json.dumps(verification, ensure_ascii=False),
-                         json.dumps(result.result, ensure_ascii=False),
+                         json.dumps(final_result, ensure_ascii=False),
                          result.processing_seconds, result.key_fingerprint,
                          decision.confidence,
                          json.dumps(decision.confidence_reasons, ensure_ascii=False),

@@ -84,6 +84,14 @@ public sealed class JobsViewModel : PageViewModel
             SelectedFacts.Add(new FactRow("Error", job.Error!));
         }
 
+        // What the correction cost in provider requests, counted where they
+        // are sent. Empty for jobs recorded before the ledger existed, so the
+        // panel never claims a paper cost 0.
+        if (!string.IsNullOrWhiteSpace(job.AiRequestsText))
+        {
+            SelectedFacts.Add(new FactRow("AI requests", job.AiRequestsText));
+        }
+
         if (!string.IsNullOrWhiteSpace(job.ResultId))
         {
             SelectedFacts.Add(new FactRow("Result ID", job.ResultId!));

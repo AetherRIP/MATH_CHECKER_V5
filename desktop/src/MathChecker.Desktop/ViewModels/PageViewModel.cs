@@ -152,8 +152,21 @@ public abstract class PageViewModel : ObservableObject
     {
     }
 
-    /// <summary>Runs a user action with the same busy/error treatment as a load.</summary>
-    protected async Task RunAsync(Func<Task> action, string? successMessage = null)
+    /// <summary>Runs a user action with the same busy/error treatment as a load.
+    ///
+    /// <paramref name="after"/> runs when the action SUCCEEDED, once the busy
+    /// window has CLOSED. A page cannot reload itself from inside its own action:
+    /// <see cref="LoadAsync"/> returns immediately while the page is busy, so an
+    /// action that ended with <c>await LoadAsync()</c> silently kept showing the
+    /// state from before it ran (a key test left the health counters stale until
+    /// Refresh was pressed).
+    ///
+    /// A failed action does not refresh: <see cref="LoadAsync"/> clears
+    /// <see cref="Error"/>, so reloading after a refusal wiped the backend's
+    /// explanation straight back off the screen and left the failure looking like
+    /// a success.</summary>
+    protected async Task RunAsync(Func<Task> action, string? successMessage = null,
+        Func<Task>? after = null)
     {
         if (IsBusy)
         {
@@ -162,9 +175,11 @@ public abstract class PageViewModel : ObservableObject
 
         IsBusy = true;
         Error = null;
+        var succeeded = false;
         try
         {
             await action().ConfigureAwait(true);
+            succeeded = true;
             if (!string.IsNullOrWhiteSpace(successMessage))
             {
                 Status = successMessage;
@@ -189,6 +204,11 @@ public abstract class PageViewModel : ObservableObject
         {
             IsBusy = false;
         }
+
+        if (succeeded && after is not null)
+        {
+            await after().ConfigureAwait(true);
+        }
     }
 
     private void HandleError(Exception ex)
@@ -197,8 +217,9 @@ public abstract class PageViewModel : ObservableObject
         Error = UserMessage.For(ex);
     }
 
-    protected AsyncCommand Command(Func<Task> action, Func<bool>? canExecute = null, string? success = null) =>
-        new(() => RunAsync(action, success), canExecute, HandleError);
+    protected AsyncCommand Command(Func<Task> action, Func<bool>? canExecute = null,
+        string? success = null, Func<Task>? after = null) =>
+        new(() => RunAsync(action, success, after), canExecute, HandleError);
 
     protected AsyncCommand Command(Func<object?, Task> action, Func<object?, bool>? canExecute = null,
         string? success = null) =>

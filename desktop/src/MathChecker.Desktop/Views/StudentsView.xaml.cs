@@ -36,7 +36,8 @@ public partial class StudentsView : UserControl
             return;
         }
 
-        var height = Math.Max(RosterFloor, viewport - TilesRow.ActualHeight - FilterRow.ActualHeight);
+        var height = Math.Max(RosterFloor,
+            viewport - ClassroomRow.ActualHeight - TilesRow.ActualHeight - FilterRow.ActualHeight);
         if (Math.Abs(RosterRow.Height.Value - height) > 0.5)
         {
             RosterRow.Height = new GridLength(height);

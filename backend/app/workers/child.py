@@ -43,8 +43,11 @@ class _UsageModels:
         try:
             text = getattr(response, "text", "") or ""
             record("gemini_generate", GENERATION_REQUEST_OVERHEAD_BYTES, len(text))
-            from app.api_stats import record_job_bandwidth
-            record_job_bandwidth(self._job_id, ai_attempts=1)
+            # ``ai_attempts`` is NOT incremented here: only successful calls
+            # reach this line, so a paper that burned 12 failed attempts
+            # reported 0 (measured on every stored job). gemini.call_audit
+            # counts every attempt where it is sent, and its snapshot is what
+            # the pool persists.
         except Exception:
             pass
         return response
@@ -121,12 +124,17 @@ def _emit(message: str | None = None, progress: float | None = None,
 
 def _run(job: dict) -> dict:
     started = time.time()
+    # Every provider request this correction makes is counted here, by stage,
+    # so "how much AI did this paper cost" is measured instead of guessed.
+    from app.gemini import call_audit
+    call_audit.begin(job.get("job_id"))
     from app.engine.legacy_marking import (  # trusted engine (verbatim)
         audit_result, calculate_totals, grade_with_model, make_group_rows,
         normalise_result, percentage_band_grade,
     )
     from app.engine import double_check
     from app.engine.blueprint import apply_blueprint, get_blueprint
+    from app.engine import scheme_exclusions
     from app.engine import model_health_store as mhs
     from app.config import get_config
 
@@ -187,9 +195,10 @@ def _run(job: dict) -> dict:
         return client.files.upload(file=path)
 
     _emit("Uploading the paper to the AI service", progress=0.15)
-    remote_students = [_upload(p, "submission") for p in submission_paths]
-    remote_scheme = _upload(mark_scheme_path, "mark_scheme")
-    remote_question = _upload(question_paper_path, "question")
+    with call_audit.stage(call_audit.STAGE_UPLOAD):
+        remote_students = [_upload(p, "submission") for p in submission_paths]
+        remote_scheme = _upload(mark_scheme_path, "mark_scheme")
+        remote_question = _upload(question_paper_path, "question")
     _emit("Paper uploaded — reading the mark scheme", progress=0.2)
 
     try:
@@ -198,9 +207,10 @@ def _run(job: dict) -> dict:
         # marks therefore do not change between runs of the same mark scheme.
         blueprint, blueprint_meta = (None, {"source": "unavailable"})
         if mark_scheme_path:
-            blueprint, blueprint_meta = get_blueprint(
-                client, mark_scheme_path,
-                status_callback=lambda message: _emit(message))
+            with call_audit.stage(call_audit.STAGE_MARK_SCHEME):
+                blueprint, blueprint_meta = get_blueprint(
+                    client, mark_scheme_path,
+                    status_callback=lambda message: _emit(message))
 
         if blueprint:
             _emit(f"Mark scheme read: {len(blueprint.get('questions') or [])} "
@@ -209,18 +219,28 @@ def _run(job: dict) -> dict:
             _emit("Mark scheme structure unavailable — marking from the PDFs",
                   progress=0.35)
 
+        # Questions the teacher took OUT of this assignment never reach the
+        # prompt, the reconciliation or the total. The mark-scheme PDF is
+        # untouched; removing the exclusion restores the question.
+        blueprint, excluded_questions = scheme_exclusions.filter_blueprint(
+            blueprint, job.get("coursework_id"))
+        if excluded_questions:
+            names = ", ".join(str(q["question_number"]) for q in excluded_questions)
+            _emit(f"Excluded from marking: {names}", progress=0.36)
+
         model_chain = mhs.ordered_models(job["primary_models"])
-        raw, marking_model = grade_with_model(
-            client=client,
-            model_names=model_chain,
-            student_file=remote_students,
-            mark_scheme_file=remote_scheme,
-            question_file=remote_question,
-            # "Marking with <model>" while the single request runs; the pool
-            # appends the elapsed time, so a long wait is visibly alive.
-            status_callback=lambda message: _emit(message),
-            blueprint=blueprint,
-        )
+        with call_audit.stage(call_audit.STAGE_MARKING):
+            raw, marking_model = grade_with_model(
+                client=client,
+                model_names=model_chain,
+                student_file=remote_students,
+                mark_scheme_file=remote_scheme,
+                question_file=remote_question,
+                # "Marking with <model>" while the single request runs; the pool
+                # appends the elapsed time, so a long wait is visibly alive.
+                status_callback=lambda message: _emit(message),
+                blueprint=blueprint,
+            )
         _emit(f"First correction received from {marking_model}", progress=0.7)
         mhs.record_success(marking_model, model_chain)
         mhs.save()
@@ -288,19 +308,20 @@ def _run(job: dict) -> dict:
                     last_error = block_reason
                     break
                 _emit("Checking questions the first pass missed")
-                outcome = recover_missing.run_recovery_round(
-                    client=client, missing=missing_here,
-                    student_remote=remote_students,
-                    mark_scheme_remote=remote_scheme,
-                    question_remote=remote_question,
-                    mark_scheme_path=mark_scheme_path,
-                    # The reconciled structure this run ALREADY holds, so the
-                    # narrow prompt never depends on a cached mark-scheme FILE
-                    # (a scheme that arrived from Classroom/Drive has none).
-                    # Without it the retry was refused outright and the omitted
-                    # question kept its placeholder 0 for good.
-                    blueprint=blueprint,
-                )
+                with call_audit.stage(call_audit.STAGE_RECOVERY):
+                    outcome = recover_missing.run_recovery_round(
+                        client=client, missing=missing_here,
+                        student_remote=remote_students,
+                        mark_scheme_remote=remote_scheme,
+                        question_remote=remote_question,
+                        mark_scheme_path=mark_scheme_path,
+                        # The reconciled structure this run ALREADY holds, so the
+                        # narrow prompt never depends on a cached mark-scheme
+                        # FILE (a scheme that arrived from Classroom/Drive has
+                        # none). Without it the retry was refused outright and
+                        # the omitted question kept its placeholder 0 for good.
+                        blueprint=blueprint,
+                    )
                 rounds_run += 1
                 still_missing = list(outcome.still_missing)
                 if outcome.error:
@@ -361,12 +382,13 @@ def _run(job: dict) -> dict:
         audit_warning = None
         if job.get("audit_enabled"):
             try:
-                audited, audit_model = audit_result(
-                    client=client, result=result,
-                    student_file=remote_students,
-                    mark_scheme_file=remote_scheme,
-                    model_names=job["primary_models"][:2],
-                )
+                with call_audit.stage(call_audit.STAGE_AUDIT):
+                    audited, audit_model = audit_result(
+                        client=client, result=result,
+                        student_file=remote_students,
+                        mark_scheme_file=remote_scheme,
+                        model_names=job["primary_models"][:2],
+                    )
                 result = normalise_result(audited)
                 result, blueprint_report = apply_blueprint(result, blueprint)
             except Exception as audit_error:
@@ -377,6 +399,13 @@ def _run(job: dict) -> dict:
         # contradictory full/partial awards are sent to review.  This runs
         # AFTER blueprint reconciliation, which normalises every question to
         # VALID, so the verdict survives to persistence.
+        # Drop the excluded questions one last time: the audit and the
+        # recovery round both re-apply the blueprint and could reintroduce a
+        # row for a question that is deliberately not being marked.
+        result = scheme_exclusions.drop_questions(result, excluded_questions)
+        if excluded_questions:
+            blueprint_report["excluded_questions"] = excluded_questions
+
         from app.engine.mark_integrity import enforce_evidence
         result, integrity_report = enforce_evidence(result)
         if integrity_report["changed"] or integrity_report["review_questions"]:
@@ -413,23 +442,26 @@ def _run(job: dict) -> dict:
             _emit("Running an independent second correction (high score)",
                   progress=0.85)
             try:
-                raw2, second_marking_model = grade_with_model(
-                    client=client,
-                    # A different model leads the second pass when one is
-                    # available: at temperature 0 the same model tends to
-                    # replay the first pass's marks, which would make the
-                    # check a confirmation by construction (§4).
-                    model_names=double_check.second_pass_models(
-                        model_chain, marking_model),
-                    student_file=remote_students,
-                    mark_scheme_file=remote_scheme,
-                    question_file=remote_question,
-                    status_callback=None,
-                    blueprint=blueprint,
-                    sampling=double_check.SECOND_PASS_SAMPLING,
-                )
+                with call_audit.stage(call_audit.STAGE_DOUBLE_CHECK):
+                    raw2, second_marking_model = grade_with_model(
+                        client=client,
+                        # A different model leads the second pass when one is
+                        # available: at temperature 0 the same model tends to
+                        # replay the first pass's marks, which would make the
+                        # check a confirmation by construction (§4).
+                        model_names=double_check.second_pass_models(
+                            model_chain, marking_model),
+                        student_file=remote_students,
+                        mark_scheme_file=remote_scheme,
+                        question_file=remote_question,
+                        status_callback=None,
+                        blueprint=blueprint,
+                        sampling=double_check.SECOND_PASS_SAMPLING,
+                    )
                 second_result = normalise_result(raw2)
                 second_result, _ = apply_blueprint(second_result, blueprint)
+                second_result = scheme_exclusions.drop_questions(
+                    second_result, excluded_questions)
                 second_result, _integrity2 = enforce_evidence(second_result)
             except Exception as exc:  # noqa: BLE001 — a failed check must not
                 # discard the valid first correction (§13).
@@ -473,6 +505,7 @@ def _run(job: dict) -> dict:
             "second_result": second_result,
             "second_marking_model": second_marking_model,
             "double_check_error": dc_error,
+            "ai_usage": call_audit.snapshot(),
         }
     finally:
         if inner_client is not None:
@@ -521,6 +554,10 @@ def main() -> int:
                    "status": "FAILED", "ok": False,
                    "error": str(exc)[:800],
                    "error_kind": classify_gemini_error(exc)["kind"]}
+    # Even a failed correction reports what it spent: a paper that burned ten
+    # requests on an outage is exactly what this field exists to expose.
+    from app.gemini import call_audit as _audit
+    payload.setdefault("ai_usage", _audit.snapshot())
 
     json.dump(payload, sys.stdout, ensure_ascii=False, default=str)
     sys.stdout.write("\n")
