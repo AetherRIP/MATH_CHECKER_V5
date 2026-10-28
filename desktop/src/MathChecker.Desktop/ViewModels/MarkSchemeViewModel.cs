@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using MathChecker.Desktop.Core;
+using MathChecker.Desktop.Core.Api;
 using MathChecker.Desktop.Core.Mvvm;
 
 namespace MathChecker.Desktop.ViewModels;
@@ -64,6 +65,15 @@ public sealed class MarkSchemeRow : ObservableObject
 
     public string MarksText => MaxMarks == 1 ? "1 mark" : $"{MaxMarks} marks";
 
+    /// <summary>This row came from Demo Mode's synthetic structure rather than
+    /// from the attached scheme.</summary>
+    public bool IsDemo => ExtractionStatus == "DEMO";
+
+    /// <summary>What the grid shows is still Demo Mode's placeholder, so it is
+    /// styled as a placeholder rather than as an answer. An answer the teacher
+    /// typed is theirs and is never dressed up as fake.</summary>
+    public bool AnswerIsPlaceholder => IsDemo && !IsEdited;
+
     public string WhereText => Page is null ? string.Empty : $"scheme page {Page}";
 
     /// <summary>What the marker will use: the teacher's edit when there is one,
@@ -92,6 +102,7 @@ public sealed class MarkSchemeRow : ObservableObject
                 OnPropertyChanged(nameof(EffectiveAnswer));
                 OnPropertyChanged(nameof(IsEdited));
                 OnPropertyChanged(nameof(AnswerSummary));
+                OnPropertyChanged(nameof(AnswerIsPlaceholder));
             }
         }
     }
@@ -132,6 +143,7 @@ public sealed class MarkSchemeRow : ObservableObject
         "RELIABLE" => "answer extracted",
         "CRITERIA_ONLY" => "guidance only",
         "MISSING" => "nothing extracted",
+        "DEMO" => "demo structure",
         _ => ExtractionStatus,
     };
 
@@ -215,6 +227,11 @@ public sealed class MarkSchemeViewModel : PageViewModel
     private int _skippedMarks;
     private int _markedMarks;
     private string _finalizeStatus = string.Empty;
+    private bool _needsRead;
+    private string _readHint = string.Empty;
+    private bool _lastReadSucceeded;
+    private string _demoNotice = string.Empty;
+    private bool _demo;
 
     public MarkSchemeViewModel(AppSession session)
         : base(session, "markscheme", "Mark scheme")
@@ -237,6 +254,8 @@ public sealed class MarkSchemeViewModel : PageViewModel
         SaveNoteCommand = Command(SaveNoteAsync, () => HasSelection);
         FinalizeCommand = Command(FinalizeAsync, () => _all.Count > 0);
         SelectDecisionCommand = Command(SelectDecisionAsync);
+        ReadSchemeCommand = Command(ReadSchemeAsync, () => NeedsRead,
+            after: AfterReadAsync);
     }
 
     /// <summary>Every question and sub-question, filtered by the grid's controls.</summary>
@@ -253,6 +272,59 @@ public sealed class MarkSchemeViewModel : PageViewModel
     public AsyncCommand SaveNoteCommand { get; }
     public AsyncCommand FinalizeCommand { get; }
     public AsyncCommand SelectDecisionCommand { get; }
+
+    /// <summary>Reads the attached PDF into questions, on demand.
+    ///
+    /// Without this the page could only ever be opened AFTER a paper had been
+    /// corrected: the structure is produced as a side effect of a correction. A
+    /// teacher who had just uploaded a scheme had nothing to review and no way
+    /// to make one.</summary>
+    public AsyncCommand ReadSchemeCommand { get; }
+
+    /// <summary>True while the scheme is on disk but has not been read, which is
+    /// the state the Read button exists for.</summary>
+    public bool NeedsRead
+    {
+        get => _needsRead;
+        private set
+        {
+            if (SetProperty(ref _needsRead, value))
+            {
+                OnPropertyChanged(nameof(EmptyQuestionsText));
+            }
+        }
+    }
+
+    /// <summary>What an empty question list means right now. "Open an assignment"
+    /// is wrong while an assignment with an unread scheme is on screen: there is
+    /// nothing to review YET, and one click away from having everything.</summary>
+    public string EmptyQuestionsText => NeedsRead
+        ? "Read the mark scheme to list its questions and decide how each one is handled."
+        : "Open an assignment and choose “Review mark scheme” to see its questions.";
+
+    /// <summary>What reading will do, or why it produced nothing.</summary>
+    public string ReadHint
+    {
+        get => _readHint;
+        private set => SetProperty(ref _readHint, value);
+    }
+
+    /// <summary>Says, in the page's own voice, that this structure came from
+    /// Demo Mode and not from a read PDF. Empty when the scheme is real, so a
+    /// normal scheme shows no notice at all.</summary>
+    public string DemoNotice
+    {
+        get => _demoNotice;
+        private set
+        {
+            if (SetProperty(ref _demoNotice, value))
+            {
+                OnPropertyChanged(nameof(HasDemoNotice));
+            }
+        }
+    }
+
+    public bool HasDemoNotice => !string.IsNullOrEmpty(_demoNotice);
 
     public string AssignmentTitle
     {
@@ -311,6 +383,7 @@ public sealed class MarkSchemeViewModel : PageViewModel
             OnPropertyChanged(nameof(SelectedTitle));
             OnPropertyChanged(nameof(SelectedWhere));
             OnPropertyChanged(nameof(SelectedAnswer));
+            OnPropertyChanged(nameof(SelectedAnswerIsPlaceholder));
             OnPropertyChanged(nameof(SelectedCriteria));
             OnPropertyChanged(nameof(SelectedStatus));
             ApplySelection();
@@ -341,6 +414,10 @@ public sealed class MarkSchemeViewModel : PageViewModel
             : _selected.ExtractionStatus == "MISSING"
                 ? "The scheme has no answer and no marking guidance for this entry."
                 : "The scheme gives marking guidance but no answer.";
+
+    /// <summary>The selected answer is still Demo Mode's placeholder, so the
+    /// detail panel can show it as such instead of as the scheme's wording.</summary>
+    public bool SelectedAnswerIsPlaceholder => _selected?.AnswerIsPlaceholder == true;
 
     public string SelectedCriteria => _selected?.Criteria ?? string.Empty;
 
@@ -387,9 +464,24 @@ public sealed class MarkSchemeViewModel : PageViewModel
             return;
         }
 
-        var payload = await Session.Api.SchemeDecisionsAsync(_courseworkId)
-            .ConfigureAwait(true);
-        Apply(payload);
+        try
+        {
+            var payload = await Session.Api.SchemeDecisionsAsync(_courseworkId)
+                .ConfigureAwait(true);
+            Apply(payload);
+        }
+        catch (ApiException ex) when (ex.Code == "scheme_not_read")
+        {
+            // A scheme that exists but has not been read is a next step, not a
+            // failure: it says so in the page's own voice instead of raising a
+            // red error strip over an assignment that is set up correctly, and
+            // it offers the action that fixes it.
+            Reset(ex.Display);
+            NeedsRead = true;
+            ReadHint = "Reading it now turns the attached PDF into questions "
+                       + "you can review and decide about.";
+            ReadSchemeCommand.RaiseCanExecuteChanged();
+        }
     }
 
     private void Reset(string message)
@@ -401,12 +493,51 @@ public sealed class MarkSchemeViewModel : PageViewModel
         AssignmentTitle = string.Empty;
         SummaryLine = message;
         CountsLine = string.Empty;
+        NeedsRead = false;
+        ReadHint = string.Empty;
+    }
+
+    /// <summary>Asks the backend to read the attached scheme now.</summary>
+    private async Task ReadSchemeAsync()
+    {
+        _lastReadSucceeded = false;
+        var payload = await Session.Api.ReadMarkSchemeAsync(_courseworkId).ConfigureAwait(true);
+        _lastReadSucceeded = payload.ValueKind == JsonValueKind.Object
+                             && payload.TryGetProperty("read", out var read)
+                             && read.ValueKind == JsonValueKind.True;
+        if (_lastReadSucceeded)
+        {
+            return;
+        }
+
+        // Best-effort, like every reader of a scheme: say why, invent nothing.
+        var reason = Text(payload, "reason") ?? "the mark scheme could not be read";
+        SummaryLine = "The mark scheme is attached but could not be read: " + reason + ".";
+    }
+
+    /// <summary>Runs once the read has finished and the busy window has closed,
+    /// so the reload is not swallowed by <see cref="PageViewModel.LoadAsync"/>.</summary>
+    private async Task AfterReadAsync()
+    {
+        if (_lastReadSucceeded)
+        {
+            await LoadAsync().ConfigureAwait(true);
+            Status = "Mark scheme read — its questions are ready to review.";
+            return;
+        }
+
+        NeedsRead = true;
+        ReadHint = "Nothing was read, so there is still nothing to review.";
+        ReadSchemeCommand.RaiseCanExecuteChanged();
     }
 
     private void Apply(JsonElement payload)
     {
         _all.Clear();
         Questions.Clear();
+        NeedsRead = false;
+        ReadHint = string.Empty;
+        DemoNotice = string.Empty;
 
         AssignmentTitle = Text(payload, "assignment_title") ?? _assignmentTitle;
         _all.AddRange(ReadQuestions(payload));
@@ -431,6 +562,35 @@ public sealed class MarkSchemeViewModel : PageViewModel
 
         var orphans = payload.TryGetProperty("orphaned", out var o)
                       && o.ValueKind == JsonValueKind.Array ? o.GetArrayLength() : 0;
+        // Demo Mode builds a labelled synthetic structure so the page and its
+        // decisions can be explored without an API key. It must never pass for
+        // a read scheme, so the page says which one it is looking at.
+        //
+        // A decision, answer or note response repeats the rows WITHOUT the
+        // `scheme` block, so the label is only rewritten when that block is
+        // present: otherwise saving a decision would erase the very notice that
+        // says this structure is synthetic.
+        if (payload.TryGetProperty("scheme", out var schemeInfo)
+            && schemeInfo.ValueKind == JsonValueKind.Object)
+        {
+            _demo = schemeInfo.TryGetProperty("demo", out var d)
+                    && d.ValueKind == JsonValueKind.True;
+        }
+
+        DemoNotice = _demo
+            ? "Demo Mode: this structure is synthetic, not read from the attached PDF. "
+              + "Decisions and answer edits work exactly as they will on a real scheme."
+            : string.Empty;
+        if (_demo)
+        {
+            SummaryLine = $"{_all.Count} demonstration entries — a stand-in for a read scheme, "
+                          + "so every question can be reviewed without an API key.";
+            OnPropertyChanged(nameof(HasQuestions));
+            ApplyFilter();
+            Selected = _all.FirstOrDefault();
+            return;
+        }
+
         SummaryLine = orphans > 0
             ? $"{_all.Count} entries. {orphans} saved decision(s) belong to questions that "
               + "are no longer in this scheme — the scheme was re-read, so review them again."

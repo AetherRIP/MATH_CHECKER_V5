@@ -945,7 +945,16 @@ def test_single_key(fingerprint: str):
         "fingerprint": fp, "status": state.status,
         "auth_ok": state.auth_ok, "generate_ok": state.generate_ok,
         "response_time_ms": state.response_time_ms,
-        "error_kind": state.error_kind, "message": state.error_message,
+        "error_kind": state.error_kind,
+        # A SUCCESS has no error_message, and a null here left the page with
+        # nothing to say about a key that just passed. The add-keys endpoint
+        # already words this case; the two ways of testing one key must not
+        # disagree about what they report.
+        "message": state.error_message or (
+            f"Credential accepted — authentication and a minimal generation "
+            f"both succeeded ({state.response_time_ms} ms)."
+            if state.status == "HEALTHY"
+            else "The key did not pass; its status and reason are shown above."),
     }
 
 

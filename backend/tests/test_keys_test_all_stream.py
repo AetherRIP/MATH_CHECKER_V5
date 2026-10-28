@@ -306,3 +306,30 @@ def test_a_client_that_disconnects_early_leaves_no_partial_state(client, monkeyp
     # The generator keeps running until the next is_disconnected() check; it
     # must not have walked every key after the client left.
     assert len(tested) < 8, f"the run continued after the client left: {tested}"
+
+
+def test_testing_one_key_reports_a_message_even_when_it_passes(client):
+    """The single-key endpoint must SAY something on success.
+
+    It returned ``message: null`` for a healthy key — the page then had nothing
+    to display about a key that had just passed both stages, while the add-keys
+    endpoint worded the same outcome for the same user. Two ways of testing one
+    key disagreeing about what they report is a contract defect, not a detail.
+    """
+    from app.gemini.key_manager import fingerprint
+
+    fp = fingerprint(KEY_MATERIAL[0])
+    response = client.post(f"/api/keys/{fp}/test")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "HEALTHY"
+    assert body["auth_ok"] is True and body["generate_ok"] is True
+    assert isinstance(body["message"], str) and body["message"].strip(), \
+        "a successful test must explain itself instead of returning null"
+    assert "accepted" in body["message"].lower()
+
+
+def test_testing_an_unknown_key_is_a_404(client):
+    response = client.post("/api/keys/does-not-exist/test")
+    assert response.status_code == 404

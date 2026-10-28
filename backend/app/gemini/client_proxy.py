@@ -569,8 +569,13 @@ class KeyAwareClient:
             ok = True
         except Exception as exc:  # noqa: BLE001
             kind = classify_gemini_error(exc)["kind"]
+            # Every kind here answers "this key cannot serve the request right
+            # now, and paying the upload would not change that": quota is out,
+            # so is a rejected credential, an overloaded provider, a model the
+            # key lacks, and — new here — a 403 the key cannot get past
+            # (permissions, or a project with no Gemini entitlement).
             ok = kind not in {"rate_limited", "invalid_key", "temporary",
-                              "model_no_access"}
+                              "model_no_access", "forbidden", "billing_required"}
             if not ok:
                 try:
                     self.keys.record_failure(fp, exc)

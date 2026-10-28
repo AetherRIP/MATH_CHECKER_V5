@@ -40,7 +40,7 @@ public sealed class ReviewViewModel : PageViewModel
         private set => SetProperty(ref _summary, value);
     }
 
-    public AsyncCommand AcceptCommand => Command(async () =>
+    public AsyncCommand AcceptCommand => CommandWithReload(async () =>
     {
         if (Selected is null)
         {
@@ -56,11 +56,9 @@ public sealed class ReviewViewModel : PageViewModel
         }
 
         await Session.Api.OverrideResultAsync(Selected.Id, null, "Accepted from the desktop review queue");
-        await LoadAsync();
-        Status = "Result accepted.";
-    });
+    }, "Result accepted.");
 
-    public AsyncCommand OverrideCommand => Command(async () =>
+    public AsyncCommand OverrideCommand => CommandWithReload(async () =>
     {
         if (Selected is null)
         {
@@ -84,9 +82,7 @@ public sealed class ReviewViewModel : PageViewModel
         }
 
         await Session.Api.OverrideResultAsync(Selected.Id, mark, "Overridden from the desktop review queue");
-        await LoadAsync();
-        Status = "Result overridden.";
-    });
+    }, "Result overridden.");
 
     public AsyncCommand OpenResultCommand => new(() =>
     {

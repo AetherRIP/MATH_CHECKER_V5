@@ -44,7 +44,10 @@ public static class ApiKeysScenario
 
         // ---------------------------------------------------------- the backend
         var added = await api.AddKeysAsync(SyntheticKeys);
-        var addedKeys = Count(added, "keys");
+        // The endpoint answers with {count, added, activated, …}; it never
+        // returned a "keys" array, so counting one reported 0 for a paste that
+        // had worked perfectly.
+        var addedKeys = Count(added, "added");
         Check("the backend accepted the keys", addedKeys == SyntheticKeys.Length,
             $"added={addedKeys} of {SyntheticKeys.Length}");
 
@@ -221,9 +224,13 @@ public static class ApiKeysScenario
     private static int Count(JsonElement payload, string property) =>
         payload.ValueKind == JsonValueKind.Object
         && payload.TryGetProperty(property, out var value)
-        && value.ValueKind == JsonValueKind.Array
-            ? value.GetArrayLength()
-            : 0;
+        ? value.ValueKind switch
+        {
+            JsonValueKind.Array => value.GetArrayLength(),
+            JsonValueKind.Number when value.TryGetInt32(out var n) => n,
+            _ => 0,
+        }
+        : 0;
 
     private sealed class NoDialogs : IDialogService
     {

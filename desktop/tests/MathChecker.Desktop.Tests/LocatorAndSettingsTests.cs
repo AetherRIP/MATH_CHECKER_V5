@@ -168,6 +168,42 @@ public class LocatorAndSettingsTests : IDisposable
         Assert.DoesNotContain("password", text, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// A settings object built in memory belongs to no file. Saving it used to
+    /// fall back to the user's real settings.json, so the UI audit — which drives
+    /// the pages against a demo backend — left its demo configuration behind and
+    /// the teacher's next launch opened Demo Mode with a temporary data folder.
+    /// </summary>
+    [Fact]
+    public void Settings_built_in_memory_have_no_file_to_save_to()
+    {
+        var settings = new DesktopSettings { Port = 9100 };
+
+        Assert.Null(settings.SourcePath);
+        Assert.False(settings.CanSave);
+
+        // No exception, and still nothing to write to: Save() must not invent a path.
+        settings.Save();
+        Assert.Null(settings.SourcePath);
+        Assert.False(settings.CanSave);
+    }
+
+    [Fact]
+    public void Settings_loaded_from_a_file_save_back_to_that_file()
+    {
+        // A first launch: the file does not exist yet, and Save() must create it
+        // where the settings were loaded from rather than somewhere else.
+        var path = Path.Combine(_root, "fresh", "settings.json");
+        var settings = DesktopSettings.Load(path);
+
+        Assert.True(settings.CanSave);
+        settings.Appearance = "dark";
+        settings.Save();
+
+        Assert.True(File.Exists(path));
+        Assert.Equal("dark", DesktopSettings.Load(path).Appearance);
+    }
+
     [Fact]
     public void Corrupt_settings_fall_back_to_defaults()
     {

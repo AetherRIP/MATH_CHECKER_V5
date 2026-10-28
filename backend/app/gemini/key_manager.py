@@ -26,6 +26,24 @@ log = logging.getLogger("gemini.keys")
 
 COOLDOWN_BASE_SECONDS = 5.0
 COOLDOWN_CAP_SECONDS = 600.0
+# A permission refusal (403) is not a rate limit: the provider accepted the
+# credential and refused the operation. Retrying it a minute later cannot
+# change the answer, yet leaving the key in rotation spends one real request
+# every time its turn comes round. Park it for much longer than a rate-limit
+# cooldown — still recoverable, so a fixed project comes back by itself — and
+# never mark it INVALID, because nothing was rejected about the credential.
+PERMISSION_COOLDOWN_FLOOR_SECONDS = 900.0     # 15 minutes
+PERMISSION_COOLDOWN_CAP_SECONDS = 3600.0      # 1 hour
+# A project with no Gemini entitlement (free tier unavailable, billing not set
+# up) cannot answer for as long as a human takes to fix it. Hourly retries would
+# spend one real request per hour per such key for nothing, so park it for six
+# hours: still automatic recovery, at a cost that rounds to zero.
+BILLING_COOLDOWN_SECONDS = 21_600.0           # 6 hours
+# How long an INVALID key rests before it is offered one trial when nothing
+# else is usable. An invalid key is skipped by ``acquire``, so it can never
+# record the success that would clear the flag: without a trial, "every key is
+# invalid" is a dead end that no amount of waiting repairs.
+PROBATION_SECONDS = 1800.0                    # 30 minutes
 
 STATUS_HEALTHY = "HEALTHY"
 STATUS_COOLDOWN = "COOLDOWN"
@@ -216,6 +234,10 @@ class KeyManager:
         self._records: dict[str, KeyRecord] = {}
         self._rr = 0
         self._leased: set[str] = set()   # fingerprints exclusively leased (§18)
+        # When each invalid key was last offered a trial. In memory only: a
+        # restart must not re-probe a key that just failed, so the stored
+        # ``last_failure`` seeds it (see _probation_candidate).
+        self._probation_at: dict[str, float] = {}
 
     # -- registry --------------------------------------------------------
 
@@ -278,6 +300,9 @@ class KeyManager:
             rec.successes += 1
             rec.cooldown_until = 0
             rec.cooldown_kind = None
+            # Same rule as record_success: a verified pass clears a stale
+            # INVALID mark, so a key that works can be used again.
+            rec.invalid = False
         else:
             rec.failures += 1
             rec.last_failure = time.time()
@@ -285,10 +310,15 @@ class KeyManager:
             if kind == "invalid_key":
                 rec.invalid = True
                 rec.auth_errors += 1
-            elif kind == "rate_limited":
-                rec.rate_limit_events += 1
-                rec.quota_errors += 1
-                self._apply_cooldown(rec, kind)
+            else:
+                if kind == "rate_limited":
+                    rec.rate_limit_events += 1
+                    rec.quota_errors += 1
+                # A staged test that reports a permission refusal must park the
+                # key exactly like a failed request does. Without this the key
+                # went straight back into rotation after "Test All" and the
+                # next correction spent a full marking request to relearn it.
+                self._park_for_kind(rec, kind, message)
         rec.save()
 
     # -- selection ---------------------------------------------------------
@@ -307,15 +337,25 @@ class KeyManager:
             candidates = [r for r in configured
                           if not r.invalid and not r.disabled]
             if not candidates:
-                # Prefer the recovery-oriented signal: when every key is
-                # INVALID the user can re-enable; when none are configured we
-                # raise NoKeysError above. Either way the caller parks instead
+                # Every key is INVALID or disabled. Offer one aged key a
+                # single trial so a wrongly-flagged credential heals itself
+                # rather than needing a human to press re-enable; when the key
+                # really is dead the trial fails and the caller parks instead
                 # of hammering.
+                trial = self._probation_candidate(configured)
+                if trial is not None:
+                    return trial.fingerprint, trial
                 raise WaitForApiError(
                     "No usable Gemini keys remain (all invalid or disabled)."
                 )
             healthy = [r for r in candidates if r.cooldown_until <= time.time()]
             if not healthy:
+                # Same dead-end shape as "all invalid": if the only usable keys
+                # are cooling, an aged flagged key is worth one trial rather
+                # than stalling the queue with recoverable keys sitting idle.
+                trial = self._probation_candidate(configured)
+                if trial is not None:
+                    return trial.fingerprint, trial
                 raise WaitForApiError(
                     "All Gemini keys are cooling down after failures."
                 )
@@ -325,6 +365,35 @@ class KeyManager:
             rec.requests += 1
             rec.last_used = time.time()
             return rec.fingerprint, rec
+
+    def _probation_candidate(self, configured: list[KeyRecord]) -> KeyRecord | None:
+        """One INVALID key to re-try, when nothing usable is left.
+
+        Called only when every key is invalid or disabled, so it costs nothing
+        while the pool is healthy. The trial is charged before it is handed
+        out, so concurrent callers cannot all probe the same key and a key that
+        fails again is not hammered: the next trial waits another full window.
+        """
+        now = time.time()
+        eligible: list[KeyRecord] = []
+        for rec in configured:
+            if rec.disabled or not rec.invalid:
+                continue
+            seen = max(rec.last_failure or 0.0,
+                       self._probation_at.get(rec.fingerprint, 0.0))
+            if now - seen >= PROBATION_SECONDS:
+                eligible.append(rec)
+        if not eligible:
+            return None
+
+        rec = min(eligible, key=lambda r: (r.last_failure or 0.0, r.fingerprint))
+        self._probation_at[rec.fingerprint] = now
+        rec.requests += 1
+        rec.last_used = now
+        log_event("gemini.keys", "disabled key offered a probation trial",
+                  level=logging.INFO, fingerprint=rec.fingerprint,
+                  waiting_seconds=round(now - (rec.last_failure or now)))
+        return rec
 
     def acquire_exclusive(self) -> tuple[str, KeyRecord]:
         """Lease one healthy key EXCLUSIVELY to the caller (§18).
@@ -339,6 +408,9 @@ class KeyManager:
             if not configured:
                 raise NoKeysError("No Gemini API keys are configured.")
             if all(r.invalid or r.disabled for r in configured):
+                trial = self._probation_candidate(configured)
+                if trial is not None:
+                    return trial.fingerprint, trial
                 raise WaitForApiError(
                     "No usable Gemini keys remain (all invalid or disabled)."
                 )
@@ -378,6 +450,15 @@ class KeyManager:
         rec.successes += 1
         rec.cooldown_until = 0.0
         rec.cooldown_kind = None
+        # A served request is the strongest evidence there is that the
+        # credential is accepted, so it clears a stale INVALID mark. Without
+        # this the flag was a one-way latch: a key rejected once — even by a
+        # misclassified transient error — was skipped by ``acquire`` for ever
+        # (and reloaded as invalid after every restart), which is lost quota
+        # and a key that works being reported as invalid. A genuinely rejected
+        # key never records a success, so it stays invalid; the auth_errors
+        # counter keeps the history either way.
+        rec.invalid = False
         rec.save()
 
     def record_failure(self, fp: str, exc: Exception) -> None:
@@ -405,21 +486,53 @@ class KeyManager:
             self._apply_cooldown(rec, kind, message=str(exc))
         elif kind == "timeout":
             rec.timeout_errors += 1
-        # forbidden/unknown: failure recorded; retry next request
+        else:
+            # forbidden / billing_required park for their own span; timeout and
+            # unknown are retried on the next request with no park at all.
+            self._park_for_kind(rec, kind, str(exc))
 
         rec.save()
 
+    def _park_for_kind(self, rec: KeyRecord, kind: str,
+                       message: str | None = None) -> None:
+        """Apply the cooldown a failure kind deserves.
+
+        One place decides how long each kind rests, so a staged test and a
+        failed request cannot disagree about it.
+        """
+        if kind in ("rate_limited", "temporary"):
+            self._apply_cooldown(rec, kind, message=message)
+        elif kind == "forbidden":
+            # 403: the key works, its project is not allowed to do this. Park it
+            # long (see PERMISSION_COOLDOWN_*), recoverable, never INVALID.
+            self._apply_cooldown(rec, kind, message=message,
+                                 floor=PERMISSION_COOLDOWN_FLOOR_SECONDS,
+                                 cap=PERMISSION_COOLDOWN_CAP_SECONDS)
+        elif kind == "billing_required":
+            # 403 from a project with no Gemini entitlement. The credential is
+            # valid, so this must never be INVALID; the fix is billing, so it
+            # must not be re-probed on the rate-limit cadence either.
+            self._apply_cooldown(rec, kind, message=message,
+                                 floor=BILLING_COOLDOWN_SECONDS,
+                                 cap=BILLING_COOLDOWN_SECONDS)
+
     def _apply_cooldown(self, rec: KeyRecord, kind: str,
-                        message: str | None = None) -> None:
+                        message: str | None = None, *,
+                        floor: float | None = None,
+                        cap: float | None = None) -> None:
         # exponential backoff with jitter, hard-capped — and the provider's
-        # Retry-After hint always wins when it asks for longer.
+        # Retry-After hint always wins when it asks for longer. ``floor``/``cap``
+        # let a caller that knows its failure is not a rate limit (a permission
+        # refusal) park for a different span using the same escalation.
         from ..retry_policy import parse_retry_after
+        start = COOLDOWN_BASE_SECONDS if floor is None else floor
+        ceiling = COOLDOWN_CAP_SECONDS if cap is None else cap
         previous = max(0.0, rec.cooldown_until - time.time())
-        growth = max(COOLDOWN_BASE_SECONDS, previous * 2.0)
-        delay = min(COOLDOWN_CAP_SECONDS, growth * random.uniform(0.8, 1.2))
+        growth = max(start, previous * 2.0)
+        delay = min(ceiling, growth * random.uniform(0.8, 1.2))
         retry_after = parse_retry_after(message)
         if retry_after is not None:
-            delay = max(delay, min(retry_after, COOLDOWN_CAP_SECONDS))
+            delay = max(delay, min(retry_after, ceiling))
         rec.cooldown_until = time.time() + delay
         rec.cooldown_kind = kind
         status = http_status_of(message)

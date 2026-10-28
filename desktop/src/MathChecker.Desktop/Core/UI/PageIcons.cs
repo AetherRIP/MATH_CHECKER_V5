@@ -32,6 +32,11 @@ public static class PageIcons
         ["students"] = "\uE77B",    // Contact
         ["assignments"] = "\uE8A5", // Document
         ["assignment"] = "\uE8FD",  // BulletedList (one assignment's roster)
+        // These three pages were added without a glyph, so they rendered the
+        // neutral document icon in the rail and the palette — indistinguishable
+        // from each other and from Reports.
+        ["new-assignment"] = "\uE710", // Add
+        ["markscheme"] = "\uE9D5",     // Checklist (one decision per question)
         ["settings"] = "\uE713",    // Settings
         ["ai"] = "\uE945",          // Lightning
         ["prompts"] = "\uE8A5",     // Document
@@ -40,6 +45,7 @@ public static class PageIcons
         ["diagnostics"] = "\uE9D9", // Diagnostic
         ["audit"] = "\uE9D5",       // Checklist
         ["multischool"] = "\uE716", // People
+        ["distributed"] = "\uE716",  // People (the page's real key)
         ["remote"] = "\uE774",      // Globe
         ["updates"] = "\uE895",     // Sync
     };

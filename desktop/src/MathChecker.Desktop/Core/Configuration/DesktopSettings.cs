@@ -60,31 +60,63 @@ public sealed class DesktopSettings
 
     public static string DefaultPath => Path.Combine(DefaultDirectory, "settings.json");
 
+    /// <summary>
+    /// The file these settings were LOADED from, and therefore the only file
+    /// they may be written back to on their own.
+    ///
+    /// Save() used to fall back to <see cref="DefaultPath"/> for any settings
+    /// object, so a tool that builds one in memory (the UI audit drives the
+    /// real pages against a demo backend) wrote ITS demo configuration into the
+    /// teacher's own settings.json on the next theme click: the app then started
+    /// in Demo Mode with a temporary data folder, and the real class was gone
+    /// from view. A settings object with no source file now has nowhere to write.
+    /// </summary>
+    [JsonIgnore]
+    public string? SourcePath { get; private set; }
+
+    /// <summary>True when these settings came from a file and may be saved back.
+    /// In-memory settings (a harness, a preview) may not.</summary>
+    [JsonIgnore]
+    public bool CanSave => !string.IsNullOrWhiteSpace(SourcePath);
+
     public static DesktopSettings Load(string? path = null)
     {
         path ??= DefaultPath;
+        var loaded = new DesktopSettings { SourcePath = path };
         try
         {
             if (!File.Exists(path))
             {
-                return new DesktopSettings();
+                return loaded.Normalize();
             }
 
             var json = File.ReadAllText(path);
-            var loaded = JsonSerializer.Deserialize<DesktopSettings>(json, JsonOptions) ?? new DesktopSettings();
-            return loaded.Normalize();
+            var parsed = JsonSerializer.Deserialize<DesktopSettings>(json, JsonOptions);
+            if (parsed is not null)
+            {
+                parsed.SourcePath = path;
+                loaded = parsed;
+            }
         }
         catch (Exception)
         {
             // A corrupt settings file must never stop the application from
             // starting; defaults are safe because nothing is destructive.
-            return new DesktopSettings();
         }
+
+        return loaded.Normalize();
     }
 
     public void Save(string? path = null)
     {
-        path ??= DefaultPath;
+        // Never invent a location: a settings object that was never loaded has
+        // no file of its own, and guessing DefaultPath is what overwrote the
+        // teacher's real settings from a test harness.
+        path ??= SourcePath;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(this, JsonOptions));

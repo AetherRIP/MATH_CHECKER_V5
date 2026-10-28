@@ -152,7 +152,7 @@ public sealed class DashboardViewModel : PageViewModel
         return Task.CompletedTask;
     });
 
-    public AsyncCommand CancelSelectedJobCommand => Command(async () =>
+    public AsyncCommand CancelSelectedJobCommand => CommandWithReload(async () =>
     {
         if (SelectedJob is null)
         {
@@ -166,10 +166,9 @@ public sealed class DashboardViewModel : PageViewModel
         }
 
         await Session.Api.CancelJobAsync(SelectedJob.Id);
-        await LoadAsync();
-    });
+    }, "Job cancelled.");
 
-    public AsyncCommand RetrySelectedJobCommand => Command(async () =>
+    public AsyncCommand RetrySelectedJobCommand => CommandWithReload(async () =>
     {
         if (SelectedJob is null)
         {
@@ -177,8 +176,7 @@ public sealed class DashboardViewModel : PageViewModel
         }
 
         await Session.Api.RetryJobAsync(SelectedJob.Id);
-        await LoadAsync();
-    });
+    }, "Job queued again.");
 
     protected override async Task LoadCoreAsync()
     {

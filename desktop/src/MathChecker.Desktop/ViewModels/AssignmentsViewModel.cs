@@ -165,7 +165,7 @@ public sealed class AssignmentsViewModel : PageViewModel
         Session.OpenAssignment(assignment.Id);
     }
 
-    public AsyncCommand RecheckMarkSchemeCommand => Command(async () =>
+    public AsyncCommand RecheckMarkSchemeCommand => CommandWithReload(async () =>
     {
         if (Selected is null)
         {
@@ -173,10 +173,8 @@ public sealed class AssignmentsViewModel : PageViewModel
         }
 
         await Session.Api.RecheckMarkSchemeAsync(Selected.Id);
-        await LoadMarkSchemeAsync(Selected.Id);
-        await LoadAsync();
-        Status = "Mark scheme rechecked by the backend.";
-    });
+    }, "Mark scheme rechecked by the backend.",
+        also: () => Selected is null ? Task.CompletedTask : LoadMarkSchemeAsync(Selected.Id));
 
     public AsyncCommand OpenMarkSchemePageCommand => Command(async () =>
     {

@@ -49,16 +49,29 @@ public class SseAndUploadTests
     {
         var bytes = new byte[50_000];
         new Random(42).NextBytes(bytes);
-        var reports = new List<double>();
-        var progress = new Progress<double>(value => reports.Add(value));
+        var progress = new RecordingProgress();
         var content = new ProgressStreamContent(new MemoryStream(bytes), bytes.Length, progress);
 
         using var sink = new MemoryStream();
         await content.CopyToAsync(sink);
 
         Assert.Equal(bytes.Length, sink.Length);
-        Assert.Single(reports);
-        Assert.Equal(1d, reports[0], 3);
+        Assert.Single(progress.Values);
+        Assert.Equal(1d, progress.Values[0], 3);
+    }
+
+    /// <summary>
+    /// Records synchronously on purpose. <see cref="Progress{T}"/> posts its
+    /// callback to the thread pool, so asserting straight after CopyToAsync
+    /// raced the callback: this test passed alone and failed intermittently
+    /// under a full-suite load, which says nothing about the upload and a lot
+    /// about the test.
+    /// </summary>
+    private sealed class RecordingProgress : IProgress<double>
+    {
+        public List<double> Values { get; } = new();
+
+        public void Report(double value) => Values.Add(value);
     }
 
     [Fact]

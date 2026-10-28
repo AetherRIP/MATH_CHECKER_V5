@@ -489,7 +489,7 @@ public sealed class AutomationViewModel : PageViewModel
         OnPropertyChanged(nameof(AutoText));
     }
 
-    public AsyncCommand RunNowCommand => Command(async () =>
+    public AsyncCommand RunNowCommand => CommandWithReload(async () =>
     {
         if (!Session.Dialogs.Confirm("Check for new work now",
                 "Scan Classroom once and advance anything already waiting in the background queue?\n\n"
@@ -499,18 +499,13 @@ public sealed class AutomationViewModel : PageViewModel
         }
 
         await Session.Api.RunAutomationNowAsync();
-        await LoadAsync();
-        Status = "Background check finished; pending jobs advanced.";
-    });
+    }, "Background check finished; pending jobs advanced.");
 
-    public AsyncCommand ReconcileCommand => Command(async () =>
-    {
-        await Session.Api.ReconcileAutomationAsync();
-        await LoadAsync();
-        Status = "Background jobs re-checked against Google Classroom.";
-    });
+    public AsyncCommand ReconcileCommand => CommandWithReload(
+        () => Session.Api.ReconcileAutomationAsync(),
+        "Background jobs re-checked against Google Classroom.");
 
-    public AsyncCommand ApproveCommand => Command(async () =>
+    public AsyncCommand ApproveCommand => CommandWithReload(async () =>
     {
         if (SelectedAutomationJob is null)
         {
@@ -518,11 +513,9 @@ public sealed class AutomationViewModel : PageViewModel
         }
 
         await Session.Api.ApproveAutomationJobAsync(SelectedAutomationJob.Id);
-        await LoadAsync();
-        Status = "Queued job released for correction.";
-    });
+    }, "Queued job released for correction.");
 
-    public AsyncCommand RetryAutomationCommand => Command(async () =>
+    public AsyncCommand RetryAutomationCommand => CommandWithReload(async () =>
     {
         if (SelectedAutomationJob is null)
         {
@@ -530,9 +523,7 @@ public sealed class AutomationViewModel : PageViewModel
         }
 
         await Session.Api.RetryAutomationJobAsync(SelectedAutomationJob.Id);
-        await LoadAsync();
-        Status = "Failed background job retried.";
-    });
+    }, "Failed background job retried.");
 
     public AsyncCommand ClearLogCommand => Command(async () =>
     {

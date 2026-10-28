@@ -5,6 +5,13 @@ proven correction engine**, preserved verbatim in
 `backend/app/engine/legacy_marking.py`, wrapped in a reliable multi-key,
 job-based, local-first application.
 
+> **New in 5.3:** assignments and combined assignments are one workflow, and the
+> mark scheme has its own review page — every question and sub-question, its
+> expected answer, and your handling decision, decidable before the first paper
+> is marked. Demo Mode builds a labelled synthetic scheme so the workflow can be
+> explored without an API key. See [Assignment workflow & mark-scheme
+> review](#assignment-workflow--mark-scheme-review-53) below.
+>
 > **New in 5.1 (productisation pass):** first-run setup wizard, configurable
 grade boundaries, deterministic result guard (a valid mark can never be
 silently replaced by a suspicious one), a human review queue with teacher
@@ -231,6 +238,28 @@ around it, plus the managed-vs-external Classroom architecture.
 > Principle: **never sacrifice correctness for appearance, and never report a
 > Classroom operation as successful unless Google confirmed it.**
 
+## Assignment workflow & mark-scheme review (5.3)
+
+Assignments and Combined Assignments are one workflow on one record: create the
+assignment, attach the question paper and the mark scheme, review how every
+question will be handled, then correct papers and read the results — all from
+the same assignment. The mark scheme is no longer an implicit side effect of the
+first correction.
+
+| Area | What was added |
+|---|---|
+| Mark scheme page | `desktop/.../Views/MarkSchemeView.xaml` + `MarkSchemeViewModel`: every question and sub-question with its hierarchy (`1`, `1(a)`, `1(b)(ii)`), the expected answer, the marking guidance, its extraction state (`answer extracted` / `guidance only` / `nothing extracted` / `demo structure`), a handling decision, a note and the decision history |
+| Read on demand | `POST /api/scheme/read` reads the attached PDF into the structure when the teacher asks, so the page is usable *before* the first paper of an assignment is corrected. Reading twice reuses the stored structure (`cached: true`) rather than rebuilding it |
+| Decisions | `POST /api/scheme/decision` (AUTO / MANUAL / SKIP), `POST /api/scheme/answer` (replace the expected answer, `null` restores it), `POST /api/scheme/finalize` (sign off before marking). `SKIP` is written through the same exclusion table the worker already reads, so the number on the page and the paper that gets marked cannot disagree |
+| No silent defaults | A row with no decision shows the *proposed* default and stays in the `undecided` count until it is decided or explicitly acknowledged at sign-off. An untrusted extraction proposes a manual check, never automatic marking |
+| Scheme defects | The existing discrepancy review (`/api/scheme/discrepancies`, proposals, approve/reject) still runs underneath: a defective scheme is flagged, never blindly trusted |
+| Demo Mode | With no API key, Demo Mode builds a labelled synthetic structure (`backend/app/engine/demo_scheme.py`): a paper-shaped mix of varied mark totals and multi-level sub-questions, so the review workflow can be explored without marking anything. Every row reports `DEMO`, every answer is a `[demo]` placeholder drawn in italic muted text, rows default to manual check, and the page carries a notice saying the structure was not read from the PDF |
+| Never mistaken for real | Demo answers are placeholders in the text and in the styling; typing your own answer turns that styling off and marks the row `(edited)`. Restoring puts the placeholder back and both changes appear in the decision history |
+| Tests | `backend/tests/test_scheme_review_api.py` (read, decisions, nested labels, demo structure shape) and `desktop/tests/MathChecker.Desktop.Tests/MarkSchemePageTests.cs` (listing, decisions, answer edit/restore, history, demo labelling) |
+
+> Principle: **a mark scheme decision is the teacher's, and the page never
+> decides on their behalf or shows a synthetic structure as a real one.**
+
 ## Shareable release system (5.2)
 
 The private master project is **never modified** by the release process. A
@@ -414,7 +443,22 @@ node --test "tests/*.test.ts"
 
 There is intentionally no `npm test` script. If the UI appears stale after a
 build, restart the existing backend with `start.bat` and confirm the displayed
-port is the one being served. For focused startup, scheme-review, and release
+port is the one being served.
+
+The desktop client has its own suite, plus a page audit that needs no window and
+takes no keyboard focus (so it can run while you work):
+
+```bat
+dotnet test desktop\tests\MathChecker.Desktop.Tests\MathChecker.Desktop.Tests.csproj
+dotnet run  --project desktop\tools\MathChecker.Desktop.UiAudit\MathChecker.Desktop.UiAudit.csproj -c Release
+```
+
+The audit starts its own backend in Demo Mode against a throwaway data folder,
+drives every page through the real view models, paints each one offscreen at
+three window widths (reporting binding errors and content past the right edge),
+and walks the end-to-end journeys — assignment → mark-scheme review →
+correction → review → report. It exits non-zero on any failed check and writes
+screenshots plus `report.md` under `data\scratch\ui-audit\`. For focused startup, scheme-review, and release
 checks, use the corresponding tests under `backend/tests/`; lifecycle runbook
 and commands are in [docs/SERVER_LIFECYCLE.md](docs/SERVER_LIFECYCLE.md).
 

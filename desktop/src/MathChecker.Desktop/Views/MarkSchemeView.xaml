@@ -38,6 +38,29 @@
                                Visibility="{Binding HasQuestions, Converter={StaticResource BoolToVis}}"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
 
+                    <!-- Demo Mode's structure is synthetic. Saying so here keeps it
+                         from reading as a scheme that was actually extracted. -->
+                    <TextBlock Text="{Binding DemoNotice}" FontSize="11.5" Margin="0,6,0,0"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HasDemoNotice, Converter={StaticResource BoolToVis}}"
+                               Foreground="{DynamicResource AccentBrush}" />
+
+                    <!-- A scheme that is attached but has not been read yet: the one
+                         action that turns it into questions, offered where the
+                         explanation is rather than hidden behind a menu. -->
+                    <WrapPanel Margin="0,10,0,0"
+                               Visibility="{Binding NeedsRead, Converter={StaticResource BoolToVis}}">
+                        <Button Content="Read the mark scheme"
+                                Style="{StaticResource PrimaryButton}"
+                                Command="{Binding ReadSchemeCommand}"
+                                AutomationProperties.Name="Read the mark scheme"
+                                ToolTip="Reads the attached PDF into the questions this page reviews" />
+                        <TextBlock Text="{Binding ReadHint}" FontSize="11.5" Margin="12,0,0,0"
+                                   MaxWidth="520" TextWrapping="Wrap"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </WrapPanel>
+
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                         <TextBox Width="240" VerticalAlignment="Center"
                                  Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
@@ -56,7 +79,7 @@
 
                     <TextBlock Text="{Binding FinalizeStatus}" FontSize="11.5" Margin="0,10,0,0"
                                TextWrapping="Wrap"
-                               Foreground="{DynamicResource AccentInkBrush}" />
+                               Foreground="{DynamicResource AccentBrush}" />
                 </StackPanel>
             </Border>
 
@@ -88,7 +111,13 @@
                         </Border>
 
                         <Grid>
+                            <!-- The answer is the column that must survive being
+                                 squeezed, so it is the measured fill column and
+                                 the two columns that repeat other information
+                                 (handling, then extraction) are the ones that
+                                 give way as the window narrows. -->
                             <DataGrid Style="{StaticResource DataTable}"
+                                      ui:TableLayout.FillColumn="1"
                                       AutoGenerateColumns="False"
                                       ItemsSource="{Binding Questions}"
                                       SelectedItem="{Binding Selected}"
@@ -97,15 +126,37 @@
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Question" Width="110"
                                                         Binding="{Binding DisplayLabel}" />
+                                    <!-- A demo placeholder is not an answer, so it is
+                                         set in italic muted text: it reads as a
+                                         placeholder at a glance, and an answer the
+                                         teacher types looks like a real answer again. -->
                                     <DataGridTextColumn Header="Expected answer" Width="*"
-                                                        Binding="{Binding AnswerSummary}" />
+                                                        Binding="{Binding AnswerSummary}">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                <Setter Property="VerticalAlignment" Value="Center" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding AnswerIsPlaceholder}"
+                                                                 Value="True">
+                                                        <Setter Property="FontStyle" Value="Italic" />
+                                                        <Setter Property="Foreground"
+                                                                Value="{DynamicResource TextMutedBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
                                     <DataGridTextColumn Header="Marks" Width="70"
-                                                        Binding="{Binding MarksText}" />
+                                                        Binding="{Binding MarksText}"
+                                                        ui:TableLayout.Priority="1" />
                                     <DataGridTextColumn Header="Extraction" Width="120"
-                                                        Binding="{Binding StatusText}" />
-                                    <DataGridTextColumn Header="Handling" Width="90"
-                                                        Binding="{Binding StateText}" />
-                                    <DataGridTemplateColumn Header="Decision" Width="190">
+                                                        Binding="{Binding StatusText}"
+                                                        ui:TableLayout.Priority="2" />
+                                    <DataGridTextColumn Header="Handling" Width="110"
+                                                        Binding="{Binding StateText}"
+                                                        ui:TableLayout.Priority="3" />
+                                    <DataGridTemplateColumn Header="Decision" Width="240">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <ComboBox Margin="2"
@@ -123,7 +174,7 @@
                             <TextBlock Style="{StaticResource EmptyText}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                        TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
-                                       Text="Open an assignment and choose “Review mark scheme” to see its questions."
+                                       Text="{Binding EmptyQuestionsText}"
                                        Visibility="{Binding HasQuestions, Converter={StaticResource InverseBoolToVis}}" />
                         </Grid>
                     </DockPanel>
@@ -153,8 +204,22 @@
                             <TextBlock Text="THE SCHEME SAYS" Style="{StaticResource SectionLabel}"
                                        Margin="0,16,0,0" />
                             <TextBlock Text="{Binding SelectedAnswer}" FontSize="12"
-                                       Margin="0,6,0,0" TextWrapping="Wrap"
-                                       Foreground="{DynamicResource TextBrush}" />
+                                       Margin="0,6,0,0" TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground"
+                                                Value="{DynamicResource TextBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SelectedAnswerIsPlaceholder}"
+                                                         Value="True">
+                                                <Setter Property="FontStyle" Value="Italic" />
+                                                <Setter Property="Foreground"
+                                                        Value="{DynamicResource TextMutedBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                             <TextBlock Text="{Binding SelectedCriteria}" FontSize="11.5"
                                        Margin="0,6,0,0" TextWrapping="Wrap"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />

@@ -4,6 +4,13 @@
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
 
     <UserControl.Resources>
+        <!-- A value filter tab: same pill as a page tab, named by the label the
+             user reads instead of by a page Title. -->
+        <Style x:Key="FilterTab" TargetType="ListBoxItem"
+               BasedOn="{StaticResource SpaceTab}">
+            <Setter Property="AutomationProperties.Name" Value="{Binding Label}" />
+        </Style>
+
         <!-- One worker card is a button so it is reachable by keyboard and by a
              screen reader; the template is the card itself, never a chrome
              around it. -->
@@ -202,8 +209,14 @@
                                    Visibility="{Binding SearchText,
                                                 Converter={StaticResource EmptyToVisibility}}" />
                     </Grid>
+                    <!-- The shared tab style names each tab from its page Title.
+                         These tabs are value filters, so the name has to come
+                         from the label the user reads: with the page style the
+                         container bound a Title these rows do not have, which
+                         left every filter announced as an unnamed tab. -->
                     <ListBox Style="{StaticResource SpaceTabs}" ItemsSource="{Binding Filters}"
                              SelectedValuePath="Value" SelectedValue="{Binding Filter}"
+                             ItemContainerStyle="{StaticResource FilterTab}"
                              AutomationProperties.Name="Filter jobs">
                         <ListBox.ItemTemplate>
                             <DataTemplate>

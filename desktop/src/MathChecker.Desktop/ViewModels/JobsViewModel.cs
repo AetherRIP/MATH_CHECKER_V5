@@ -124,7 +124,7 @@ public sealed class JobsViewModel : PageViewModel
         private set => SetProperty(ref _liveMode, value);
     }
 
-    public AsyncCommand CancelJobCommand => Command(async () =>
+    public AsyncCommand CancelJobCommand => CommandWithReload(async () =>
     {
         if (Selected is null)
         {
@@ -138,10 +138,9 @@ public sealed class JobsViewModel : PageViewModel
         }
 
         await Session.Api.CancelJobAsync(Selected.Id);
-        await LoadAsync();
-    });
+    }, "Job cancelled.");
 
-    public AsyncCommand RetryJobCommand => Command(async () =>
+    public AsyncCommand RetryJobCommand => CommandWithReload(async () =>
     {
         if (Selected is null)
         {
@@ -149,8 +148,7 @@ public sealed class JobsViewModel : PageViewModel
         }
 
         await Session.Api.RetryJobAsync(Selected.Id);
-        await LoadAsync();
-    });
+    }, "Job queued again.");
 
     public AsyncCommand ResizeWorkersCommand => Command(async () =>
     {

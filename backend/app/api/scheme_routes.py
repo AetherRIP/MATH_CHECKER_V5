@@ -11,6 +11,7 @@ approval). The original mark scheme is never modified by any of these routes.
 from __future__ import annotations
 
 import logging
+import threading
 
 from fastapi import APIRouter, Depends, Request
 
@@ -57,6 +58,44 @@ def _not_found(message: str) -> AppError:
     return AppError(message, code="not_found", status=404)
 
 
+def _attached_scheme_path(coursework_id: str | None) -> Path | None:
+    """The mark-scheme PDF this assignment has, if any.
+
+    The cached copy under ``mark_schemes/`` wins; an upload that has not been
+    promoted to that name yet is still an attached scheme, not a missing one.
+    """
+    from ..config import data_dir
+
+    if not coursework_id:
+        return None
+    path = Path(data_dir()) / "mark_schemes" / f"{coursework_id}.pdf"
+    if path.exists():
+        return path
+    pending = db.query_one(
+        "SELECT path FROM pending_mark_schemes WHERE coursework_id = ?",
+        (coursework_id,))
+    if pending and Path(pending["path"]).exists():
+        return Path(pending["path"])
+    return None
+
+
+def _no_blueprint_error(coursework_id: str | None) -> AppError:
+    """Why there is no question list for this assignment — said accurately.
+
+    A scheme that is attached but has never been read answered "no mark scheme
+    is attached yet", which is not true and sends the teacher looking for a file
+    that is already there. Reading a scheme is part of correcting a paper, so
+    that is what the message has to say.
+    """
+    if _attached_scheme_path(coursework_id) is None:
+        return _not_found("No mark scheme is attached to this assignment yet.")
+    return AppError(
+        "The mark scheme is attached but has not been read yet. MathChecker reads "
+        "it while correcting the first paper for this assignment; its questions "
+        "can be reviewed after that correction has started.",
+        code="scheme_not_read", status=409)
+
+
 def _scheme_blueprint(coursework_id: str | None) -> tuple[dict | None, dict | None]:
     """The cached mark-scheme record and blueprint for an assignment.
 
@@ -64,19 +103,11 @@ def _scheme_blueprint(coursework_id: str | None) -> tuple[dict | None, dict | No
     correction already cached. A missing scheme answers (None, None) and the
     caller says so, rather than inventing a question list.
     """
-    from ..config import data_dir
     from ..engine import blueprint as bp_mod
 
-    if not coursework_id:
+    path = _attached_scheme_path(coursework_id)
+    if path is None:
         return None, None
-    path = Path(data_dir()) / "mark_schemes" / f"{coursework_id}.pdf"
-    if not path.exists():
-        pending = db.query_one(
-            "SELECT path FROM pending_mark_schemes WHERE coursework_id = ?",
-            (coursework_id,))
-        if not pending or not Path(pending["path"]).exists():
-            return None, None
-        path = Path(pending["path"])
     try:
         record = bp_mod.load_record(bp_mod.file_hash(path)) or {}
     except OSError:
@@ -219,6 +250,115 @@ def _is_ignored(coursework_id: str | None, question_number: str | None) -> bool:
     return scheme_exclusions.canonical(question_number) in scheme_exclusions.ignored(coursework_id)
 
 
+# ============================================================ reading a scheme
+
+# One read per assignment at a time. Two clicks must not pay for two extractions
+# of the same PDF, and the second must see the structure the first stored.
+_read_locks: dict[str, "threading.Lock"] = {}
+_read_locks_guard = threading.Lock()
+
+
+def _read_lock(coursework_id: str) -> "threading.Lock":
+    with _read_locks_guard:
+        return _read_locks.setdefault(coursework_id, threading.Lock())
+
+
+def _extraction_client():
+    """The client a scheme read would use, chosen exactly as the worker chooses it."""
+    from ..config import get_config
+
+    if get_config().mock_mode:
+        from ..gemini.mock import MockGeminiClient
+        return MockGeminiClient()
+
+    from ..gemini.client_proxy import KeyAwareClient
+    from ..gemini.key_manager import KeyManager
+    return KeyAwareClient(KeyManager())
+
+
+def _read_payload(coursework_id: str, blueprint: dict, *, cached: bool) -> dict:
+    questions = blueprint.get("questions") or []
+    return {
+        "coursework_id": coursework_id,
+        "read": True,
+        "cached": cached,
+        "questions": len(questions),
+        "total_marks": sum(int(question.get("max_marks") or 0)
+                           for question in questions),
+    }
+
+
+@router.post("/read")
+def read_mark_scheme(coursework_id: str):
+    """Read this assignment's attached mark scheme into a question structure.
+
+    The review page exists to check the questions BEFORE a paper is corrected, but
+    a structure used to be produced only as a side effect of correcting one. A
+    teacher who uploaded a scheme and opened the review page got "not read yet"
+    with no way to change that. This is that way: it reads the scheme now, with
+    the same extractor the correction uses, and caches the result per file hash so
+    the correction that follows reuses it instead of paying twice.
+
+    Reading is best-effort, like every other caller of the extractor: a failure
+    answers ``read: false`` with the reason and leaves the stored state alone. It
+    never invents questions.
+    """
+    path = _attached_scheme_path(coursework_id)
+    if path is None:
+        raise _not_found("No mark scheme is attached to this assignment yet.")
+
+    from ..engine import blueprint as bp_mod
+
+    try:
+        sha = bp_mod.file_hash(path)
+    except OSError as exc:
+        raise AppError(f"The mark scheme could not be opened: {exc}",
+                       code="scheme_unreadable", status=422) from exc
+
+    # Already read: say so without touching the provider.
+    cached = bp_mod.load_cached(sha)
+    if cached:
+        return _read_payload(coursework_id, cached, cached=True)
+
+    from ..config import get_config
+    if get_config().mock_mode:
+        # Demo Mode has no model to read a scheme with, so it builds a LABELLED
+        # synthetic structure instead. That is what makes the review page and its
+        # per-question decisions explorable without an API key; every row is
+        # reported as DEMO, counted as unreliable, and defaults to a manual check
+        # so a synthetic answer is never marked against automatically.
+        from ..engine import demo_scheme
+
+        blueprint = demo_scheme.build(str(path))
+        if blueprint is None:
+            return {"coursework_id": coursework_id, "read": False, "cached": False,
+                    "questions": 0,
+                    "reason": "Demo Mode could not build a sample structure for "
+                              "this file. Connect a real API key and read it again."}
+        bp_mod.save_cached(sha, blueprint, model="demo")
+        log_event("api", "demo mark scheme structure created",
+                  coursework_id=coursework_id,
+                  questions=len(blueprint.get("questions") or []))
+        return {**_read_payload(coursework_id, blueprint, cached=False), "demo": True}
+
+    with _read_lock(coursework_id):
+        cached = bp_mod.load_cached(sha)
+        if cached:
+            return _read_payload(coursework_id, cached, cached=True)
+
+        blueprint, meta = bp_mod.get_blueprint(_extraction_client(), str(path))
+        if blueprint is None:
+            reason = meta.get("error") or meta.get("failure") or "the mark scheme could not be read"
+            log_event("api", "mark scheme read failed", coursework_id=coursework_id,
+                      reason=str(reason)[:200])
+            return {"coursework_id": coursework_id, "read": False, "cached": False,
+                    "questions": 0, "reason": str(reason)}
+
+        log_event("api", "mark scheme read on demand", coursework_id=coursework_id,
+                  questions=len(blueprint.get("questions") or []))
+        return _read_payload(coursework_id, blueprint, cached=False)
+
+
 # ================================================================ exclusions
 
 @router.get("/questions")
@@ -226,7 +366,7 @@ def list_questions(coursework_id: str):
     """The questions this assignment's mark scheme declares, and which are out."""
     record, blueprint = _scheme_blueprint(coursework_id)
     if blueprint is None:
-        raise _not_found("No mark scheme is attached to this assignment yet.")
+        raise _no_blueprint_error(coursework_id)
     ignored = scheme_exclusions.ignored(coursework_id)
     questions = []
     for question in blueprint.get("questions") or []:
@@ -510,7 +650,7 @@ def list_decisions(coursework_id: str):
     """
     record, blueprint = _scheme_blueprint(coursework_id)
     if blueprint is None:
-        raise _not_found("No mark scheme is attached to this assignment yet.")
+        raise _no_blueprint_error(coursework_id)
     rows, orphans = scheme_decisions.rows_for(blueprint, coursework_id)
     return {
         "coursework_id": coursework_id,
@@ -524,6 +664,9 @@ def list_decisions(coursework_id: str):
             "pages": (record or {}).get("blueprint", {}).get("paper")
                      if isinstance((record or {}).get("blueprint"), dict) else None,
             "verification": (record or {}).get("verification"),
+            # True when this structure was built by Demo Mode rather than read
+            # from the scheme. The page says so instead of implying a real read.
+            "demo": (record or {}).get("model") == "demo",
         },
     }
 

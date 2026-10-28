@@ -277,6 +277,220 @@ public class MarkSchemePageTests
         Assert.Fail("condition was not met before the timeout");
     }
 
+    /// <summary>
+    /// Opening the review page before the first paper is corrected is normal, and
+    /// the page has to say so. It used to show a red "No mark scheme is attached
+    /// to this assignment yet" over an assignment whose scheme was uploaded — a
+    /// failure message about a file that is already there.
+    /// </summary>
+    [Fact]
+    public async Task An_attached_but_unread_scheme_explains_itself_instead_of_erroring()
+    {
+        var page = await LoadedAsync(new SchemeHandler { DecisionsUnread = true });
+
+        Assert.False(page.HasError);
+        Assert.Null(page.Error);
+        Assert.Empty(page.Questions);
+        Assert.Contains("attached", page.SummaryLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("read", page.SummaryLine, StringComparison.OrdinalIgnoreCase);
+        // It must not offer a decision on a question it has not got.
+        Assert.False(page.FinalizeCommand.CanExecute(null));
+        // ...but it must offer the one action that produces them, and the empty
+        // list must not tell the teacher to open an assignment they are on.
+        Assert.True(page.NeedsRead);
+        Assert.True(page.ReadSchemeCommand.CanExecute(null));
+        Assert.Contains("Read the mark scheme", page.EmptyQuestionsText,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Open an assignment", page.EmptyQuestionsText,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The gap this closes: the structure used to exist only as a side effect of
+    /// correcting a paper, so a freshly uploaded scheme had nothing to review and
+    /// no way to produce it. Reading on demand fills the page in place.
+    /// </summary>
+    [Fact]
+    public async Task Reading_an_unread_scheme_makes_its_questions_reviewable()
+    {
+        var handler = new SchemeHandler { DecisionsUnread = true };
+        var page = await LoadedAsync(handler);
+        Assert.Empty(page.Questions);
+        Assert.True(page.NeedsRead);
+
+        page.ReadSchemeCommand.Execute(null);
+        await WaitUntilAsync(() => page.Questions.Count > 0);
+
+        Assert.Equal(1, handler.ReadCount);
+        Assert.Equal(5, page.Questions.Count);
+        Assert.False(page.NeedsRead);
+        Assert.DoesNotContain("attached but has not been read", page.SummaryLine,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("read", page.Status ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        // The page is now the review page it claims to be.
+        Assert.True(page.FinalizeCommand.CanExecute(null));
+        Assert.Equal("1(a)", page.Questions.First(q => q.Label == "1(a)").Label);
+    }
+
+    /// <summary>A read that produces nothing must not look like a read that
+    /// worked: the button stays, the reason is shown, and no error strip appears.</summary>
+    [Fact]
+    public async Task A_read_that_produces_nothing_keeps_the_button_and_says_why()
+    {
+        var handler = new SchemeHandler { DecisionsUnread = true, ReadSucceeds = false };
+        var page = await LoadedAsync(handler);
+
+        page.ReadSchemeCommand.Execute(null);
+        await WaitUntilAsync(() => !page.IsBusy
+                                  && page.ReadHint.Contains("Nothing was read",
+                                      StringComparison.OrdinalIgnoreCase));
+
+        Assert.False(page.HasError);
+        Assert.Empty(page.Questions);
+        Assert.True(page.NeedsRead);
+        Assert.True(page.ReadSchemeCommand.CanExecute(null));
+        Assert.Contains("mock mode", page.SummaryLine, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Demo Mode exists so the review page and its decisions can be explored
+    /// without an API key. The structure it serves is synthetic, so the page has
+    /// to say that plainly — a demo that reads like a real extraction would teach
+    /// the teacher to trust numbers no PDF ever produced.
+    /// </summary>
+    [Fact]
+    public async Task A_demo_structure_is_labelled_and_still_decidable()
+    {
+        var handler = new SchemeHandler { DemoMode = true };
+        var page = await LoadedAsync(handler);
+
+        // Labelled: the notice names Demo Mode and says it is not a read PDF.
+        Assert.True(page.HasDemoNotice);
+        Assert.Contains("demo mode", page.DemoNotice, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("synthetic", page.DemoNotice, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not read from the attached", page.DemoNotice,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("demonstration", page.SummaryLine, StringComparison.OrdinalIgnoreCase);
+
+        // Labelled per row too, so no single entry can pass for a real answer.
+        Assert.All(page.Questions, q => Assert.Contains("demo", q.StatusText,
+            StringComparison.OrdinalIgnoreCase));
+
+        // ...and the page still works: a decision is saved, exactly as on a real scheme.
+        page.Questions.First(q => q.Label == "1(a)").Decision = "MANUAL";
+        await WaitUntilAsync(() => handler.Decisions.Count > 0);
+        Assert.Equal(("1(a)", "MANUAL"), handler.Decisions[0]);
+
+        // The change is recorded in the history the page shows, so the demo
+        // exercise teaches the real workflow rather than a cut-down one.
+        await WaitUntilAsync(() => page.History.Count > 0 && page.History[0].Where == "1(a)");
+        Assert.Contains("manual independent check", page.History[0].What,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A demo answer must read as a placeholder, not as the scheme's wording.
+    /// It is tagged in the text AND drawn as a placeholder, so it is obvious at a
+    /// glance in a narrow column — and the moment the teacher types their own
+    /// answer, that answer is styled as a real one again.
+    /// </summary>
+    [Fact]
+    public async Task A_demo_answer_reads_as_a_placeholder_until_the_teacher_types()
+    {
+        var handler = new SchemeHandler { DemoMode = true };
+        var page = await LoadedAsync(handler);
+
+        var row = page.Questions.First(q => q.Label == "1(a)");
+        page.Selected = row;
+        Assert.StartsWith("[demo]", row.AnswerSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.True(row.AnswerIsPlaceholder);
+        Assert.True(page.SelectedAnswerIsPlaceholder);
+
+        page.AnswerDraft = "18y - 24";
+        page.SaveAnswerCommand.Execute(null);
+        await WaitUntilAsync(() => handler.Answers.Count > 0);
+
+        var edited = page.Questions.First(q => q.Label == "1(a)");
+        Assert.True(edited.IsEdited);
+        // Their text is theirs: no placeholder styling, and it says it is edited.
+        Assert.False(edited.AnswerIsPlaceholder);
+        Assert.Contains("18y - 24", edited.AnswerSummary);
+        Assert.Contains("(edited)", edited.AnswerSummary);
+        Assert.False(page.SelectedAnswerIsPlaceholder);
+    }
+
+    /// <summary>
+    /// Restoring a demo answer puts the demo placeholder back — it must not leave
+    /// the row blank, and the restore has to be visible in the decision history.
+    /// </summary>
+    [Fact]
+    public async Task Restoring_a_demo_answer_returns_the_placeholder_and_records_it()
+    {
+        var handler = new SchemeHandler { DemoMode = true };
+        var page = await LoadedAsync(handler);
+
+        page.Selected = page.Questions.First(q => q.Label == "1(b)");
+        page.AnswerDraft = "y = 2 or y = -10";
+        page.SaveAnswerCommand.Execute(null);
+        await WaitUntilAsync(() => handler.Answers.Count > 0
+                                  && page.Questions.Any(q => q.Label == "1(b)" && q.IsEdited));
+
+        // The edit itself is in the history.
+        await WaitUntilAsync(() => page.History.Count > 0
+                                  && page.History[0].What.StartsWith("Answer changed",
+                                      StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("y = 2 or y = -10", page.History[0].What);
+
+        page.RestoreAnswerCommand.Execute(null);
+        await WaitUntilAsync(() => handler.Answers.Count > 1);
+
+        var restored = page.Questions.First(q => q.Label == "1(b)");
+        Assert.False(restored.IsEdited);
+        Assert.True(restored.AnswerIsPlaceholder);
+        Assert.StartsWith("[demo]", restored.AnswerSummary, StringComparison.OrdinalIgnoreCase);
+
+        await WaitUntilAsync(() => page.History.Count > 0
+                                  && page.History[0].What.Contains("restored",
+                                      StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("restored", page.History[0].What, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A decision, answer or note response repeats the rows WITHOUT the scheme
+    /// block. The label was read from that block on every apply, so saving a
+    /// decision on a demo scheme silently relabelled it as a real extraction —
+    /// exactly the moment the teacher starts trusting the numbers.
+    /// </summary>
+    [Fact]
+    public async Task The_demo_label_survives_saving_a_decision()
+    {
+        var handler = new SchemeHandler { DemoMode = true };
+        var page = await LoadedAsync(handler);
+        Assert.True(page.HasDemoNotice);
+
+        page.Questions.First(q => q.Label == "1(b)").Decision = "SKIP";
+        await WaitUntilAsync(() => handler.Decisions.Count > 0);
+        await WaitUntilAsync(() => page.CountsLine.Contains("1 skipped"));
+
+        Assert.True(page.HasDemoNotice);
+        Assert.Contains("synthetic", page.DemoNotice, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("demonstration", page.SummaryLine, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A real scheme must show no notice at all: a warning that appears on every
+    /// scheme is noise, and it would make the demo label meaningless.
+    /// </summary>
+    [Fact]
+    public async Task A_read_scheme_carries_no_demo_notice()
+    {
+        var page = await LoadedAsync();
+
+        Assert.False(page.HasDemoNotice);
+        Assert.Equal(string.Empty, page.DemoNotice);
+        Assert.Equal("answer extracted", page.Questions.First(q => q.Label == "1(a)").StatusText);
+    }
+
     // ------------------------------------------------------------------- stub
 
     /// <summary>A backend that APPLIES what the page posts.</summary>
@@ -292,11 +506,38 @@ public class MarkSchemePageTests
                 criteria: "M1 A1 cao"),
         };
 
+        /// <summary>What the history endpoint returns: the decisions and answer
+        /// changes this stub has actually recorded, newest first.</summary>
+        private readonly List<Dictionary<string, object?>> _history = new()
+        {
+            new()
+            {
+                ["question_key"] = "1b", ["question_label"] = "1(b)",
+                ["action"] = "DECISION", ["previous_decision"] = "MANUAL",
+                ["new_decision"] = "SKIP", ["previous_answer"] = null,
+                ["new_answer"] = null, ["reason"] = "not on the printed paper",
+                ["source"] = "HUMAN", ["actor"] = "teacher", ["at"] = 1793000000.0,
+            },
+        };
+
         public List<string> Requests { get; } = new();
         public List<(string Question, string Decision)> Decisions { get; } = new();
         public List<(string Question, string? Answer)> Answers { get; } = new();
         public List<bool> Finalised { get; } = new();
         public bool RefuseDecisions { get; set; }
+
+        /// <summary>The scheme is on disk but has never been read, which is the
+        /// ordinary state before the first paper of an assignment is corrected.</summary>
+        public bool DecisionsUnread { get; set; }
+
+        /// <summary>Whether the on-demand read finds a structure.</summary>
+        public bool ReadSucceeds { get; set; } = true;
+
+        /// <summary>Demo Mode serves a labelled synthetic structure instead of
+        /// questions read from the PDF.</summary>
+        public bool DemoMode { get; set; }
+
+        public int ReadCount { get; private set; }
 
         private static Dictionary<string, object?> Row(string label, string key, int depth,
             int marks, string[] answers, string status, string decision, bool decided,
@@ -321,18 +562,35 @@ public class MarkSchemePageTests
             };
         }
 
-        private string Payload()
+        /// <summary>The backend repeats the rows after an edit, but only the
+        /// GET carries the scheme block. The stub matches that, so a page that
+        /// reads its scheme state from the wrong response fails here.</summary>
+        private string Payload(bool withScheme = true)
         {
-            var skipped = _rows.Where(r => (bool)r["skipped"]!).ToList();
-            var manual = _rows.Where(r => !(bool)r["skipped"]! && (string)r["decision"]! == "MANUAL").Count();
-            var auto = _rows.Where(r => !(bool)r["skipped"]! && (string)r["decision"]! == "AUTO").Count();
+            // Demo Mode serves placeholder answers, not the stub's real ones —
+            // the same shape the backend builds, tag first.
+            var rows = DemoMode
+                ? _rows.Select(r => new Dictionary<string, object?>(r)
+                {
+                    ["extraction_status"] = "DEMO",
+                    ["reliable"] = false,
+                    ["answers"] = new[]
+                    {
+                        $"[demo] placeholder answer for question {r["question_label"]}"
+                        + " — type over it to try editing",
+                    },
+                }).ToList()
+                : _rows;
+            var skipped = rows.Where(r => (bool)r["skipped"]!).ToList();
+            var manual = rows.Where(r => !(bool)r["skipped"]! && (string)r["decision"]! == "MANUAL").Count();
+            var auto = rows.Where(r => !(bool)r["skipped"]! && (string)r["decision"]! == "AUTO").Count();
             var marked = 8 - skipped.Sum(r => (int)r["max_marks"]!);
 
             return JsonSerializer.Serialize(new Dictionary<string, object?>
             {
                 ["coursework_id"] = "cw-1",
                 ["assignment_title"] = "Ch2L3 — Simplifying Expressions",
-                ["questions"] = _rows,
+                ["questions"] = rows,
                 ["orphaned"] = new List<object>(),
                 ["summary"] = new Dictionary<string, object?>
                 {
@@ -342,13 +600,38 @@ public class MarkSchemePageTests
                     ["automatic"] = auto,
                     ["manual"] = manual,
                     ["skipped"] = skipped.Count,
-                    ["unresolved"] = _rows.Count(r => !(bool)r["decided"]!),
-                    ["unreliable"] = _rows.Count(r => (string)r["extraction_status"]! != "RELIABLE"),
+                    ["unresolved"] = rows.Count(r => !(bool)r["decided"]!),
+                    ["unreliable"] = rows.Count(r => (string)r["extraction_status"]! != "RELIABLE"),
                     ["total_marks"] = 8,
                     ["skipped_marks"] = 8 - marked,
                     ["marked_marks"] = marked,
                     ["manual_marks"] = 0,
                 },
+                ["scheme"] = withScheme
+                    ? new Dictionary<string, object?> { ["demo"] = DemoMode }
+                    : null,
+            });
+        }
+
+        /// <summary>One history row, newest first — what the backend writes when
+        /// a decision or an answer actually changes.</summary>
+        private void Record(string label, string action, string? previousDecision = null,
+            string? newDecision = null, string? previousAnswer = null,
+            string? newAnswer = null, string? reason = null)
+        {
+            _history.Insert(0, new Dictionary<string, object?>
+            {
+                ["question_key"] = label,
+                ["question_label"] = label,
+                ["action"] = action,
+                ["previous_decision"] = previousDecision,
+                ["new_decision"] = newDecision,
+                ["previous_answer"] = previousAnswer,
+                ["new_answer"] = newAnswer,
+                ["reason"] = reason ?? string.Empty,
+                ["source"] = "HUMAN",
+                ["actor"] = "teacher",
+                ["at"] = 1793000100.0,
             });
         }
 
@@ -363,18 +646,42 @@ public class MarkSchemePageTests
 
             if (request.Method == HttpMethod.Get && path.EndsWith("/scheme/decisions"))
             {
+                if (DecisionsUnread)
+                {
+                    return Error(HttpStatusCode.Conflict, "scheme_not_read",
+                        "The mark scheme is attached but has not been read yet. "
+                        + "MathChecker reads it while correcting the first paper for "
+                        + "this assignment; its questions can be reviewed after that.");
+                }
+
                 return Json(Payload());
+            }
+
+            if (request.Method == HttpMethod.Post && path.EndsWith("/scheme/read"))
+            {
+                ReadCount++;
+                if (!ReadSucceeds)
+                {
+                    return Json("""
+                        {"coursework_id":"cw-1","read":false,"cached":false,"questions":0,
+                         "reason":"mock mode: blueprint extraction skipped"}
+                        """);
+                }
+
+                DecisionsUnread = false;
+                return Json("""
+                    {"coursework_id":"cw-1","read":true,"cached":false,"questions":5,
+                     "total_marks":8}
+                    """);
             }
 
             if (request.Method == HttpMethod.Get && path.EndsWith("/scheme/decision-history"))
             {
-                return Json("""
-                    {"items":[{"question_key":"1b","question_label":"1(b)","action":"DECISION",
-                       "previous_decision":"MANUAL","new_decision":"SKIP",
-                       "previous_answer":null,"new_answer":null,
-                       "reason":"not on the printed paper","source":"HUMAN","actor":"teacher",
-                       "at":1793000000.0}],"total":1}
-                    """);
+                return Json(JsonSerializer.Serialize(new Dictionary<string, object?>
+                {
+                    ["items"] = _history,
+                    ["total"] = _history.Count,
+                }));
             }
 
             if (request.Method == HttpMethod.Post && path.EndsWith("/scheme/decision"))
@@ -391,10 +698,13 @@ public class MarkSchemePageTests
                 Decisions.Add((question, decision));
 
                 var row = _rows.First(r => (string)r["question_label"]! == question);
+                Record(question, "DECISION", previousDecision: (string?)row["decision"],
+                    newDecision: decision,
+                    reason: doc.TryGetProperty("reason", out var why) ? why.GetString() : null);
                 row["decision"] = decision;
                 row["decided"] = true;
                 row["skipped"] = decision == "SKIP";
-                return Json(Payload());
+                return Json(Payload(withScheme: false));
             }
 
             if (request.Method == HttpMethod.Post && path.EndsWith("/scheme/answer"))
@@ -408,8 +718,11 @@ public class MarkSchemePageTests
                 Answers.Add((question, answer));
 
                 var row = _rows.First(r => (string)r["question_label"]! == question);
+                var previous = row["answer_text"] as string
+                               ?? ((string[])row["answers"]!)[0];
+                Record(question, "ANSWER", previousAnswer: previous, newAnswer: answer);
                 row["answer_text"] = answer;
-                return Json(Payload());
+                return Json(Payload(withScheme: false));
             }
 
             if (request.Method == HttpMethod.Post && path.EndsWith("/scheme/finalize"))

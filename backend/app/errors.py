@@ -107,6 +107,16 @@ _UNEXPECTED_RESPONSE_RE = re.compile(
 #: leased when the aggregate was recorded.
 _AGGREGATE_MARKERS = ("all configured gemini models failed",)
 
+#: The project has no usable Gemini entitlement ("The Gemini API free tier is
+#: not available for this project ... set up billing"). Google reports it as
+#: 403 PERMISSION_DENIED, so it must be recognised BEFORE the forbidden branch:
+#: left as ``forbidden`` it still never marks the key invalid, but the remedy is
+#: specific (billing, not permissions) and retrying it every rate-limit
+#: cooldown spends real requests on a project that cannot answer today.
+_BILLING_RE = re.compile(
+    r"free tier is not available|set up billing|upgrade to the paid tier|"
+    r"project[ -_]?unavailable|billing (?:account|is not|has not)", re.I)
+
 #: The provider's own HTTP status, read ONLY from a place a status actually
 #: lives: Google's JSON error envelope (``'code': 429``), an ``HTTP 503``
 #: prefix, or a status name after the number (``429 RESOURCE_EXHAUSTED``). A
@@ -204,6 +214,12 @@ def classify_gemini_error(exc: Exception) -> dict:
         return _result("invalid_key", (
             "Gemini rejected this API key. It has been removed from rotation — "
             "add a replacement key in Settings."))
+    if _BILLING_RE.search(lowered):
+        return _result("billing_required", (
+            "Gemini accepted the key but this key's Google Cloud project has no "
+            "usable Gemini quota — its free tier is not available. Enable "
+            "billing for that project in Google AI Studio (or remove the key). "
+            "The key itself is fine and has not been invalidated."))
     if _FORBIDDEN_RE.search(lowered):
         return _result("forbidden", (
             "Gemini received the key but refused access. The key's project may "

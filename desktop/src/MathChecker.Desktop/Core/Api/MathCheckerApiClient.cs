@@ -1087,6 +1087,19 @@ public sealed partial class MathCheckerApiClient : IDisposable
         CancellationToken cancellationToken = default) =>
         GetJsonAsync("scheme/decisions" + Query(("coursework_id", courseworkId)), cancellationToken);
 
+    /// <summary>Read this assignment's attached mark scheme into questions, now.
+    ///
+    /// The structure is otherwise produced only while correcting a paper, which
+    /// left a brand-new assignment with nothing to review. Answers ``read``
+    /// false with a ``reason`` when it could not: an unreadable file, or Demo
+    /// Mode, which never extracts a scheme.
+    /// </summary>
+    public Task<JsonElement> ReadMarkSchemeAsync(string courseworkId,
+        CancellationToken cancellationToken = default) =>
+        SendJsonRawAsync(HttpMethod.Post,
+            "scheme/read" + Query(("coursework_id", courseworkId)), new { },
+            cancellationToken);
+
     /// <summary>Set one question's handling decision (AUTO / MANUAL / SKIP).
     /// SKIP is written through the exclusion table, so the marking worker and
     /// this screen can never disagree about what is being marked.</summary>

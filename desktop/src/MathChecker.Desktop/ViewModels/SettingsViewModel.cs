@@ -75,7 +75,7 @@ public sealed class SettingsViewModel : PageViewModel
             : "Light appearance applied and saved.";
     }
 
-    public AsyncCommand SaveCommand => Command(async () =>
+    public AsyncCommand SaveCommand => CommandWithReload(async () =>
     {
         if (Concurrency is < 1 or > 8)
         {
@@ -102,9 +102,7 @@ public sealed class SettingsViewModel : PageViewModel
         };
 
         await Session.Api.SaveSettingsAsync(payload);
-        await LoadAsync();
-        Status = "Settings saved. Values shown are what the backend now reports.";
-    });
+    }, "Settings saved. Values shown are what the backend now reports.");
 
     protected override async Task LoadCoreAsync()
     {

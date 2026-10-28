@@ -454,3 +454,95 @@ def test_retry_stage_records_one_download_and_one_prepare(fresh_state,
     assert row["avoided_downloads"] == 1
     assert row["avoided_reprepare"] == 1
     cleanup_job_files("job-bw")
+
+
+# ===== a refused key must never be handed the submission to re-upload (§5)
+
+THREE_KEYS = ["bw-key-one-0000000000009", "bw-key-two-0000000000009",
+              "bw-key-three-000000000009"]
+
+BILLING_403 = (
+    "403 PERMISSION_DENIED. {'error': {'code': 403, 'message': 'The Gemini API "
+    "free tier is not available for this project. To use the Gemini API, "
+    "please set up billing to upgrade to the paid tier.', 'status': "
+    "'PERMISSION_DENIED'}}")
+FORBIDDEN_403 = ("403 PERMISSION_DENIED: The caller does not have permission "
+                 "to use this API.")
+
+
+class _RefusedModels:
+    def __init__(self, key, world):
+        self._key, self._world = key, world
+
+    def generate_content(self, *, model, contents, config=None, **kw):
+        is_probe = contents == "ping"
+        self._world["calls"].append((self._key, "probe" if is_probe else "real"))
+        reason = self._world["refused"].get(self._key)
+        if reason:
+            raise RuntimeError(reason)
+        if is_probe:
+            return types.SimpleNamespace(text="pong")
+        return types.SimpleNamespace(text='{"ok": true}')
+
+
+class _RefusedSDK:
+    def __init__(self, key, world):
+        self.files = _FakeFiles(key, world)
+        self.models = _RefusedModels(key, world)
+
+
+@pytest.fixture
+def refused_world(fresh_state, monkeypatch):
+    cfg = get_config()
+    cfg.mock_mode = False
+    save_config(cfg)
+    get_secrets().set_gemini_keys(THREE_KEYS)
+    world = {"uploads": [], "gets": [], "deletes": [], "live": set(),
+             "calls": [], "refused": {}}
+    monkeypatch.setattr(KeyAwareClient, "_sdk_client_for_key",
+                        lambda self, key: _RefusedSDK(key, world))
+    return world
+
+
+@pytest.mark.parametrize("refusal", [BILLING_403, FORBIDDEN_403])
+def test_the_preflight_probe_says_no_to_a_403(refused_world, refusal):
+    """The probe exists so rotation never pays a big upload to a key that
+    cannot answer. A 403 is exactly that — and treating it as "worth trying"
+    spent a whole submission re-upload to learn the same 403 again."""
+    refused_world["refused"] = {THREE_KEYS[1]: refusal}
+    client = KeyAwareClient(KeyManager(),
+                            preferred_fp=fingerprint(THREE_KEYS[1]),
+                            job_id="job-probe")
+
+    assert client._key_has_quota(fingerprint(THREE_KEYS[1]), "m-test") is False
+    assert client._key_has_quota(fingerprint(THREE_KEYS[2]), "m-test") is True
+
+    rec = KeyManager()._get_or_create(fingerprint(THREE_KEYS[1]))
+    assert rec.invalid is False, "a 403 is not a rejected credential"
+    assert rec.cooldown_until > time.time() + 600, "it is parked, not retried"
+
+
+@pytest.mark.parametrize("refusal", [BILLING_403, FORBIDDEN_403])
+def test_rotation_never_pays_an_upload_to_a_refused_key(refused_world,
+                                                        tmp_path, refusal):
+    """Two keys, so the rotation order is not a variable: the first is out of
+    quota, the second refuses the operation. The submission must never be
+    pushed under the refusing key — the re-upload is the expensive half of a
+    rotation and it cannot make a 403 succeed."""
+    get_secrets().set_gemini_keys(THREE_KEYS[:2])
+    refused_world["refused"] = {
+        THREE_KEYS[0]: "429 RESOURCE_EXHAUSTED quota exceeded",
+        THREE_KEYS[1]: refusal,
+    }
+    submission = _file(tmp_path / "work.pdf", 6_000)
+    client = KeyAwareClient(KeyManager(),
+                            preferred_fp=fingerprint(THREE_KEYS[0]),
+                            job_id="job-refused")
+    remote = client.upload_file(str(submission), purpose="submission")
+
+    with pytest.raises(RuntimeError):
+        client.models.generate_content(model="m-test", contents=[remote, "mark"])
+
+    assert (THREE_KEYS[1], "probe") in refused_world["calls"]
+    assert not [u for u in refused_world["uploads"] if u[0] == THREE_KEYS[1]],         "a key that refuses the operation must not be paid a full re-upload"
+    assert (THREE_KEYS[1], "real") not in refused_world["calls"]

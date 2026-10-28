@@ -21,6 +21,24 @@ public static class ThemeManager
     private const string LightSource = "Themes/LightTheme.xaml";
     private const string DarkSource = "Themes/DarkTheme.xaml";
 
+    /// <summary>
+    /// Absolute pack URI for a theme file, qualified with THIS assembly.
+    ///
+    /// A relative <c>Source</c> is resolved against the process's ENTRY
+    /// assembly. That is the desktop itself in a normal launch, so nothing was
+    /// ever noticed — but any host that starts the desktop assembly (the E2E
+    /// harness, an integration host, a future launcher) resolves it against its
+    /// own assembly and throws "Cannot locate resource 'themes/lighttheme.xaml'"
+    /// before a window can appear.
+    /// </summary>
+    internal static string SourceFor(AppAppearance appearance) =>
+        $"pack://application:,,,/{typeof(ThemeManager).Assembly.GetName().Name};component/"
+        + (appearance == AppAppearance.Dark ? DarkSource : LightSource);
+
+    private static Uri ThemeUri(string file) => new(
+        $"pack://application:,,,/{typeof(ThemeManager).Assembly.GetName().Name};component/{file}",
+        UriKind.Absolute);
+
     public static AppAppearance Current { get; private set; } = AppAppearance.Light;
 
     public static event EventHandler? Changed;
@@ -45,8 +63,7 @@ public static class ThemeManager
         var dictionaries = app.Resources.MergedDictionaries;
         var theme = new ResourceDictionary
         {
-            Source = new Uri(appearance == AppAppearance.Dark ? DarkSource : LightSource,
-                UriKind.Relative),
+            Source = ThemeUri(appearance == AppAppearance.Dark ? DarkSource : LightSource),
         };
 
         var index = -1;

@@ -55,14 +55,11 @@ public sealed class PromptsViewModel : PageViewModel
         private set => SetProperty(ref _info, value);
     }
 
-    public AsyncCommand SaveCommand => Command(async () =>
-    {
-        await Session.Api.SavePromptsAsync(SystemPrompt, UserPrompt);
-        await LoadAsync();
-        Status = "Prompt overrides saved (an empty box restores the built-in prompt).";
-    });
+    public AsyncCommand SaveCommand => CommandWithReload(
+        () => Session.Api.SavePromptsAsync(SystemPrompt, UserPrompt),
+        "Prompt overrides saved (an empty box restores the built-in prompt).");
 
-    public AsyncCommand ClearCommand => Command(async () =>
+    public AsyncCommand ClearCommand => CommandWithReload(async () =>
     {
         if (!Session.Dialogs.Confirm("Clear prompt overrides",
                 "Restore the built-in legacy prompts? This removes both overrides."))
@@ -71,7 +68,6 @@ public sealed class PromptsViewModel : PageViewModel
         }
 
         await Session.Api.SavePromptsAsync(string.Empty, string.Empty);
-        await LoadAsync();
     });
 
     protected override async Task LoadCoreAsync()

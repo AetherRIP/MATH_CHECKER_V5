@@ -601,7 +601,17 @@ public sealed class MainViewModel : ObservableObject
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is not null && !dispatcher.CheckAccess())
         {
-            dispatcher.Invoke(() => UpdateBackend(status));
+            // Queued, never blocking. A blocking Invoke holds the reporting
+            // thread until the UI thread drains the queue, so a status that
+            // arrives while the dispatcher is stopping (or after the window has
+            // gone) waits on a queue nothing will ever read — the process then
+            // stays alive with its backend already dead.
+            if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            dispatcher.BeginInvoke(new Action(() => UpdateBackend(status)));
             return;
         }
 

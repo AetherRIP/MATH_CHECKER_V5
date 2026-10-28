@@ -221,6 +221,36 @@ public abstract class PageViewModel : ObservableObject
         string? success = null, Func<Task>? after = null) =>
         new(() => RunAsync(action, success, after), canExecute, HandleError);
 
+    /// <summary>An action that changes backend state and then reloads the page.
+    ///
+    /// A command body CANNOT reload itself: <see cref="RunAsync"/> holds
+    /// <see cref="IsBusy"/> for the whole action, and <see cref="LoadAsync"/> returns
+    /// immediately while a page is busy. So <c>await LoadAsync()</c> inside a
+    /// command was dead code, and every page built that way kept showing the rows
+    /// from before the action — a cancelled job still read "running", an accepted
+    /// result still sat in the review queue, an uploaded mark scheme still showed
+    /// "not attached", all until Refresh was pressed by hand.
+    ///
+    /// The reload belongs here, after the busy window closes. <paramref name="status"/>
+    /// is set AFTER the reload so the page's own load-time status cannot overwrite
+    /// the confirmation the user needs to see.
+    /// </summary>
+    protected AsyncCommand CommandWithReload(Func<Task> action, string? status = null,
+        Func<Task>? also = null, Func<bool>? canExecute = null) =>
+        Command(action, canExecute, after: async () =>
+        {
+            if (also is not null)
+            {
+                await also().ConfigureAwait(true);
+            }
+
+            await LoadAsync().ConfigureAwait(true);
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                Status = status;
+            }
+        });
+
     protected AsyncCommand Command(Func<object?, Task> action, Func<object?, bool>? canExecute = null,
         string? success = null) =>
         new(async parameter => await RunAsync(() => action(parameter), success), canExecute, HandleError);

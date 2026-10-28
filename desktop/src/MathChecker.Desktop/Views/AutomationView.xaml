@@ -94,9 +94,13 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
+                        <!-- Both the search box and the class picker flex. A fixed
+                             220 DIP picker plus the labels and the count chip came
+                             out wider than the page at the 900 DIP window, so the
+                             chip's right edge was cut off. -->
                         <ColumnDefinition Width="*" MinWidth="140" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="220" />
+                        <ColumnDefinition Width="*" MinWidth="160" MaxWidth="260" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 

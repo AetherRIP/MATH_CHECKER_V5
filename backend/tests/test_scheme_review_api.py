@@ -191,3 +191,197 @@ def test_asking_for_investigation_keeps_the_row_open(fresh_state):
                                params={"review_status": sa.REVIEW_AWAITING}).json()
         assert [i["id"] for i in open_only["items"]] == [row["id"]]
         assert client.get("/api/scheme/summary").json()["open_discrepancies"] == 1
+
+
+def test_decisions_says_the_scheme_is_attached_but_unread(fresh_state):
+    """A scheme that exists but has never been read is not a missing scheme.
+
+    Reading a scheme happens while correcting the first paper, so opening the
+    review page before that is normal. The endpoint used to answer "No mark
+    scheme is attached to this assignment yet" — a 404 about a file that is
+    sitting on disk — which sends the teacher hunting for an upload they already
+    did. It now answers 409 and says what to do next.
+    """
+    from pathlib import Path
+
+    from app.config import data_dir
+
+    _seed_assignment()
+    scheme = Path(data_dir()) / "mark_schemes" / "cw1.pdf"
+    scheme.parent.mkdir(parents=True, exist_ok=True)
+    scheme.write_bytes(b"%PDF-1.4\n% an uploaded scheme that was never read\n")
+
+    with TestClient(app) as client:
+        answer = client.get("/api/scheme/decisions", params={"coursework_id": "cw1"})
+
+    assert answer.status_code == 409
+    assert answer.json()["code"] == "scheme_not_read"
+    assert "attached" in answer.json()["message"].lower()
+    assert "read" in answer.json()["message"].lower()
+
+
+def test_decisions_still_says_missing_when_nothing_was_uploaded(fresh_state):
+    """The honest 404 has to survive: with no scheme at all the message is right."""
+    _seed_assignment()
+
+    with TestClient(app) as client:
+        answer = client.get("/api/scheme/decisions", params={"coursework_id": "cw1"})
+
+    assert answer.status_code == 404
+    assert answer.json()["code"] == "not_found"
+    assert "no mark scheme" in answer.json()["message"].lower()
+
+
+def _scheme_pdf() -> "object":
+    """An attached scheme on disk, with no structure read from it yet."""
+    from pathlib import Path
+
+    from app.config import data_dir
+
+    scheme = Path(data_dir()) / "mark_schemes" / "cw1.pdf"
+    scheme.parent.mkdir(parents=True, exist_ok=True)
+    scheme.write_bytes(b"%PDF-1.4\n% a scheme nobody has read yet\n")
+    return scheme
+
+
+def test_reading_an_attached_scheme_makes_it_reviewable_before_any_correction(
+        fresh_state, monkeypatch):
+    """The review page exists to check questions BEFORE a paper is corrected.
+
+    Reading used to happen only as a side effect of a correction, so a brand-new
+    assignment could not be reviewed at all. Reading on demand fills that gap:
+    the questions come back, the structure is stored, and the very next
+    /decisions call can list them.
+    """
+    from app.engine import blueprint as bp
+
+    _seed_assignment()
+    _scheme_pdf()
+    calls: list[str] = []
+
+    def stub(client, path, **kwargs):
+        calls.append(str(path))
+        blueprint = {
+            "questions": [
+                {"question_number": "1", "max_marks": 3, "page": 1, "criteria": "M1 A1",
+                 "parts": [{"number": "a", "max_marks": 1, "answers": ["24 - 18y"]},
+                           {"number": "b", "max_marks": 2, "answers": ["y^2 + 8y - 20"]}]},
+                {"question_number": "2", "max_marks": 1, "answers": ["10p - 15"]},
+            ],
+            "total_marks": 4,
+        }
+        bp.save_cached(bp.file_hash(path), blueprint, model="test")
+        return blueprint, {"source": "built"}
+
+    monkeypatch.setattr(bp, "get_blueprint", stub)
+
+    with TestClient(app) as client:
+        read = client.post("/api/scheme/read", params={"coursework_id": "cw1"})
+
+        assert read.status_code == 200
+        assert read.json()["read"] is True
+        assert read.json()["questions"] == 2
+        assert read.json()["total_marks"] == 4
+        assert read.json()["cached"] is False
+
+        # The point of reading: the review page can now list the questions.
+        decisions = client.get("/api/scheme/decisions", params={"coursework_id": "cw1"})
+        assert decisions.status_code == 200
+        labels = [row["question_label"] for row in decisions.json()["questions"]]
+        assert labels == ["1", "1(a)", "1(b)", "2"]
+
+        # Reading again must not pay for a second extraction.
+        again = client.post("/api/scheme/read", params={"coursework_id": "cw1"})
+        assert again.json()["cached"] is True
+        assert len(calls) == 1
+
+
+def test_reading_with_no_scheme_says_there_is_none(fresh_state):
+    _seed_assignment()
+
+    with TestClient(app) as client:
+        answer = client.post("/api/scheme/read", params={"coursework_id": "cw1"})
+
+    assert answer.status_code == 404
+    assert "no mark scheme" in answer.json()["message"].lower()
+
+
+
+
+def test_demo_mode_builds_a_labelled_structure_to_review(fresh_state, monkeypatch):
+    """Demo Mode has no model to read a scheme with. It must still make the
+    review workflow usable — and say, on every row, that the structure is
+    synthetic, so nothing here can be mistaken for the real scheme."""
+    from app.config import get_config
+
+    _seed_assignment()
+    _scheme_pdf()
+    monkeypatch.setattr(get_config(), "mock_mode", True)
+
+    with TestClient(app) as client:
+        read = client.post("/api/scheme/read", params={"coursework_id": "cw1"})
+        assert read.status_code == 200
+        assert read.json()["read"] is True
+        assert read.json()["demo"] is True
+        assert read.json()["questions"] >= 1
+
+        decisions = client.get("/api/scheme/decisions", params={"coursework_id": "cw1"})
+        assert decisions.status_code == 200
+        body = decisions.json()
+        assert body["scheme"]["demo"] is True
+        assert body["questions"], "the review page has rows to show"
+
+        # Every row is labelled, none is trusted, none is auto-marked.
+        for row in body["questions"]:
+            assert row["extraction_status"] == "DEMO"
+            assert row["reliable"] is False
+            assert row["decision"] != "AUTO"
+            # The placeholder announces itself in the first word, so it reads as
+            # fake at a glance in a narrow table cell.
+            assert row["effective_answer"].startswith("[demo]"), row["effective_answer"]
+            assert "placeholder" in row["effective_answer"].lower()
+
+        # The shape has to be worth practising on: a real paper does not give
+        # every question the same marks in the same two-part form.
+        labels = [row["question_label"] for row in body["questions"]]
+        top = [row for row in body["questions"] if row["depth"] == 0]
+        assert len({row["max_marks"] for row in top}) > 1, [r["max_marks"] for r in top]
+        assert any("(ii)" in label for label in labels), labels
+        for question in top:
+            parts = [row for row in body["questions"]
+                     if row["parent_key"] == question["question_key"]]
+            if parts:
+                # The page shows "x of y marks marked": a question's parts must
+                # account for the question, or those two numbers disagree.
+                assert sum(part["max_marks"] for part in parts) == question["max_marks"], \
+                    question
+        assert body["summary"]["total_marks"] == sum(row["max_marks"] for row in top)
+
+        # A decision still works, which is the point of having the rows at all.
+        first = body["questions"][0]["question_label"]
+        decided = client.post("/api/scheme/decision", json={
+            "coursework_id": "cw1", "question_number": first,
+            "decision": "SKIP", "reason": "exploring the review workflow",
+        })
+        assert decided.status_code == 200
+        assert decided.json()["decision"]["decision"] == "SKIP"
+        skipped_row = next(row for row in decided.json()["questions"]
+                           if row["question_label"] == first)
+        assert skipped_row["skipped"] is True
+
+        # A two-level label is a marking point of its own, so a decision on
+        # 1(b)(ii) has to resolve to that row and not to its parent.
+        deepest = next(label for label in labels if label.endswith("(ii)"))
+        nested = client.post("/api/scheme/decision", json={
+            "coursework_id": "cw1", "question_number": deepest,
+            "decision": "MANUAL", "reason": "checking a nested part",
+        })
+        assert nested.status_code == 200, nested.json()
+        nested_row = next(row for row in nested.json()["questions"]
+                          if row["question_label"] == deepest)
+        assert nested_row["decision"] == "MANUAL"
+        assert nested_row["parent_key"] != nested_row["question_key"]
+
+        # Reading again reuses the structure rather than building a new one.
+        again = client.post("/api/scheme/read", params={"coursework_id": "cw1"})
+        assert again.json()["cached"] is True

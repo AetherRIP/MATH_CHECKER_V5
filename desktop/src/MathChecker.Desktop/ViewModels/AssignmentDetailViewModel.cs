@@ -267,7 +267,7 @@ public sealed class AssignmentDetailViewModel : PageViewModel
     /// the button is never offered as a dead end.</summary>
     public bool CanCorrectAll => HasCourse && _schemeAttached;
 
-    public AsyncCommand UploadMarkSchemeCommand => Command(async () =>
+    public AsyncCommand UploadMarkSchemeCommand => CommandWithReload(async () =>
     {
         if (!HasCourse)
         {
@@ -283,10 +283,8 @@ public sealed class AssignmentDetailViewModel : PageViewModel
         }
 
         await Session.Api.UploadMarkSchemeAsync(_courseId!, _courseworkId!, path);
-        Status = $"The mark scheme for “{_assignmentTitle}” was uploaded.";
-        await LoadSchemeAsync();
-        await LoadAsync();
-    });
+    }, $"The mark scheme for “{_assignmentTitle}” was uploaded.",
+        also: LoadSchemeAsync);
 
     /// <summary>The mark scheme is reviewed per question before a paper is
     /// marked, so the page that does it belongs on the assignment it acts on —
@@ -305,7 +303,7 @@ public sealed class AssignmentDetailViewModel : PageViewModel
     /// before that, and a dead button that explains itself is worse than none.</summary>
     public RelayCommand ReviewSchemeCommand => Sync(ReviewScheme, () => _schemeAttached);
 
-    public AsyncCommand AllowlistCommand => Command(async () =>
+    public AsyncCommand AllowlistCommand => CommandWithReload(async () =>
     {
         if (!CanAllowlist)
         {
@@ -315,11 +313,9 @@ public sealed class AssignmentDetailViewModel : PageViewModel
         await Session.Api.SetAllowlistAsync(_courseId!, _courseworkId!, true);
         _allowlisted = true;
         RaiseSettingUp();
-        Status = $"“{_assignmentTitle}” is allow-listed for automatic corrections.";
-        await LoadAsync();
-    });
+    }, $"“{_assignmentTitle}” is allow-listed for automatic corrections.");
 
-    public AsyncCommand CorrectAllCommand => Command(async () =>
+    public AsyncCommand CorrectAllCommand => CommandWithReload(async () =>
     {
         if (!CanCorrectAll)
         {
@@ -338,9 +334,7 @@ public sealed class AssignmentDetailViewModel : PageViewModel
         }
 
         await Session.Api.CorrectAllAsync(_courseId!, _courseworkId!, refresh: true);
-        Status = "Every eligible paper in this assignment was queued.";
-        await LoadAsync();
-    });
+    }, "Every eligible paper in this assignment was queued.");
 
     private void RaiseSettingUp()
     {

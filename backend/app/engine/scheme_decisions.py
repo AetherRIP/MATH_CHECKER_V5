@@ -63,6 +63,11 @@ RELIABLE = "RELIABLE"
 CRITERIA_ONLY = "CRITERIA_ONLY"
 MISSING = "MISSING"
 
+#: A structure Demo Mode built for exploration. It is NOT a read of the scheme:
+#: it is labelled as such, counted as unreliable, and defaults to a manual check
+#: so a synthetic answer can never be marked against automatically.
+DEMO = "DEMO"
+
 
 def _canon(value) -> str:
     return canonical_question_id(str(value or ""))
@@ -196,8 +201,8 @@ def _row(label: str, key: str, source: dict, stored: dict, ignored: dict,
          container_resolved: bool = False) -> dict:
     answers = _answers(source)
     criteria = str(source.get("criteria") or "").strip()
-    status = _status(answers, criteria)
-    if status != RELIABLE and container_resolved:
+    status = DEMO if source.get("demo") else _status(answers, criteria)
+    if status not in (RELIABLE, DEMO) and container_resolved:
         # The parts answer for the question; nothing is missing at this level.
         status = RELIABLE
     record = stored.get(key)

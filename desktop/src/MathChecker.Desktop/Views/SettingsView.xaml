@@ -226,8 +226,8 @@
 
                                 <CheckBox Content="Google Classroom enabled" Margin="0,12,0,0"
                                           IsChecked="{Binding ClassroomEnabled}"
-                                          ToolTip="Turns the Classroom pages and sync on or off" />
-                                <TextBlock Text="Shows the Classroom pages and allows synchronization."
+                                          ToolTip="Turns Classroom assignments in People and sync on or off" />
+                                <TextBlock Text="Shows Google Classroom assignments in People and allows synchronization."
                                            Style="{StaticResource OptionHint}" />
                             </StackPanel>
 

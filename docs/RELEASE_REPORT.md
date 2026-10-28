@@ -8,11 +8,14 @@ comes from the artefacts in `release\` and from the verification runs listed in
 
 | Item | Path | Size | SHA-256 |
 |---|---|---|---|
-| Installer | `release\MathChecker-Setup-x64-1.0.0.exe` | 78.0 MB | `611ffb411109dd8ab2c16fcdfef8bca56a3de5c5aac7d437c02f34999e17bb1e` |
-| Portable ZIP | `release\MathChecker-Portable-x64-1.0.0.zip` | 107.3 MB | `bc6343273bd54b5424c987dc456008c96917234141693728576f2f277da814b3` |
+| Installer | `release\MathChecker-Setup-x64-1.0.0.exe` | 78.0 MB | `5f2d35ff65c1851dfcecc7fec570395322925e5c6595c8120999b4279cc6c43e` |
+| Portable ZIP | `release\MathChecker-Portable-x64-1.0.0.zip` | 107.3 MB | `f72c2e54f3cf01b97b79b300447c2b6cbe036c154b3a68efdc70ecea3baee01f` |
 | Staged tree (input to both) | `desktop\artifacts\MATH_CHECKER_V5` | 258.5 MB | — |
 | Build record | `release\release_manifest.json` | — | — |
 
+* Built **2026-10-27 00:42** from the working tree that contains the readable
+  dialog surfaces, the Google Classroom connect card and the Create assignment
+  page; the previous artefacts (installer `611ffb41…`) are superseded.
 * Version **1.0.0** — read from `<Version>` in
   `desktop\src\MathChecker.Desktop\MathChecker.Desktop.csproj`, so the app, the
   Start Menu entry, Installed apps and the installer filename cannot drift apart.
