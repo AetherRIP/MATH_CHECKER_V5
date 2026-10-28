@@ -170,7 +170,10 @@ def factory_reset(payload: dict):
 # ------------------------------------------------------- diagnostic export
 
 _SECRET_PATTERNS = re.compile(
-    r"(AIza[0-9A-Za-z_\-]{10,}|sk-[A-Za-z0-9]{10,}|GOCSPX-[A-Za-z0-9_\-]{10,}|"
+    # AQ.<50 base64url chars> is the CURRENT Gemini key format; without it the
+    # diagnostic bundle shipped a teacher's live key to whoever they sent it to.
+    r"(AIza[0-9A-Za-z_\-]{10,}|AQ\.[0-9A-Za-z_\-]{20,}|sk-[A-Za-z0-9]{10,}|"
+    r"GOCSPX-[A-Za-z0-9_\-]{10,}|"
     r"refresh_token|Bearer\s+[A-Za-z0-9_\-\.]{10,}|-----BEGIN)", re.IGNORECASE)
 
 

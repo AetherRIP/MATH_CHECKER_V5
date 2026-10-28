@@ -26,7 +26,12 @@ RESERVED = logging.LogRecord("r", 0, "p", 1, "m", None, None).reserved_keys if h
 }
 
 _SECRET_PATTERNS = [
-    re.compile(r"AIza[0-9A-Za-z_\-]{20,}"),            # Gemini-style keys
+    re.compile(r"AIza[0-9A-Za-z_\-]{20,}"),            # legacy Gemini keys
+    # The CURRENT Gemini key format: "AQ." + 50 base64url characters. It was
+    # absent here, so every log line and every stored provider error that echoed
+    # one of these keys was written out in full. A format-shaped pattern is the
+    # only defence that does not need the key list to hand.
+    re.compile(r"AQ\.[0-9A-Za-z_\-]{20,}"),            # current Gemini keys
     re.compile(r"GOCSPX-[0-9A-Za-z_\-]{10,}"),         # Google OAuth client secrets
     re.compile(r"ya29\.[0-9A-Za-z_\-]{10,}"),          # Google access tokens
     re.compile(r"1//[0-9A-Za-z_\-]{20,}"),             # Google refresh tokens

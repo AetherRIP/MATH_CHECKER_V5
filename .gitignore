@@ -95,6 +95,11 @@ MathChecker_Distribution/logs/
 *.env
 API_KEYS.env
 !.env.example
+# Key drop files handed over for importing into data/secrets/. These hold live
+# credentials in plain text, so they must never be trackable: committing one
+# puts working keys in the remote history permanently.
+NEW_API_KEYS.txt
+*_API_KEYS.txt
 
 # --- graphify (knowledge graph) ---------------------------------------------
 # graphify-out/graph.json and GRAPH_REPORT.md are the shared graph artefacts and
