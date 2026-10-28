@@ -72,6 +72,34 @@ def find(blueprint: dict | None, question_number: str) -> dict | None:
     return None
 
 
+def _qualified(number: str, part) -> str:
+    """The printed id of a part: bare "b" under question 1 reads "1(b)"."""
+    raw = str((part or {}).get("number") or (part or {}).get("question_number") or "")
+    if not raw:
+        return str(number)
+    from .scheme_structure import parse_label
+    if parse_label(raw)[0] is not None:
+        return raw
+    return f"{number}({raw.strip('()')})"
+
+
+def _part_keys(number: str, part) -> set[str]:
+    """Every canonical id one part can be identified by.
+
+    A blueprint may store a part as the bare label it prints (``"a"``) or as
+    the qualified id (``"4(a)"``); both shapes exist in cached schemes. The
+    teacher's decision always names the qualified id, so matching only the bare
+    form silently failed to exclude a sub-question of a real scheme.
+    """
+    raw = str((part or {}).get("number") or (part or {}).get("question_number") or "")
+    keys = {_canon(raw)} if raw else set()
+    if raw and str(number):
+        from .scheme_structure import parse_label
+        if parse_label(raw)[0] is None:
+            keys.add(_canon(f"{number}({raw.strip('()')})"))
+    return {k for k in keys if k}
+
+
 def filter_blueprint(blueprint: dict | None,
                      coursework_id: str | None) -> tuple[dict | None, list[dict]]:
     """The blueprint without the excluded questions, plus what was removed.
@@ -97,18 +125,24 @@ def filter_blueprint(blueprint: dict | None,
             continue
 
         parts = question.get("parts") or []
-        dropped_parts = [p for p in parts if _canon(p.get("number")) in exclusions]
+        dropped_parts = [p for p in parts
+                         if _part_keys(number, p) & set(exclusions)]
         if not dropped_parts:
             kept_questions.append(question)
             continue
 
-        kept_parts = [p for p in parts if _canon(p.get("number")) not in exclusions]
+        kept_parts = [p for p in parts
+                      if not (_part_keys(number, p) & set(exclusions))]
         dropped_marks = sum(int(p.get("max_marks") or 0) for p in dropped_parts)
         for part in dropped_parts:
+            # Name the part the way a teacher reads it ("1(b)") and look its
+            # note up by whichever canonical key actually matched: a blueprint
+            # that stores the bare label "b" has no "b" row in exclusions.
+            matched = next((k for k in _part_keys(number, part) if k in exclusions), "")
             removed.append({
-                "question_number": str(part.get("number")),
+                "question_number": _qualified(number, part),
                 "max_marks": int(part.get("max_marks") or 0),
-                "note": exclusions[_canon(part.get("number"))]["note"],
+                "note": (exclusions.get(matched) or {}).get("note", ""),
             })
         adjusted = dict(question)
         adjusted["parts"] = kept_parts

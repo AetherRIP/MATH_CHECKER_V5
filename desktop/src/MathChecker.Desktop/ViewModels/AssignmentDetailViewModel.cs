@@ -288,6 +288,23 @@ public sealed class AssignmentDetailViewModel : PageViewModel
         await LoadAsync();
     });
 
+    /// <summary>The mark scheme is reviewed per question before a paper is
+    /// marked, so the page that does it belongs on the assignment it acts on —
+    /// and it opens on THIS assignment, not on whichever was reviewed last.</summary>
+    public void ReviewScheme()
+    {
+        if (string.IsNullOrWhiteSpace(_courseworkId))
+        {
+            return;
+        }
+
+        Session.OpenMarkScheme(_courseworkId);
+    }
+
+    /// <summary>Offered only once a scheme exists: there is nothing to review
+    /// before that, and a dead button that explains itself is worse than none.</summary>
+    public RelayCommand ReviewSchemeCommand => Sync(ReviewScheme, () => _schemeAttached);
+
     public AsyncCommand AllowlistCommand => Command(async () =>
     {
         if (!CanAllowlist)

@@ -457,6 +457,10 @@ public sealed class MainViewModel : ObservableObject
         // its assignment across a refresh and can be reached from the People
         // tab strip without going back through the list.
         Add(new AssignmentDetailViewModel(_session) { Group = "People" });
+        // The mark-scheme review belongs to one assignment, but it is a real
+        // page: it is reached from that assignment and keeps it across a
+        // refresh, so a long review is not lost by navigating away.
+        Add(new MarkSchemeViewModel(_session) { Group = "People" });
 
         Add(new SettingsViewModel(_session) { Group = "Settings" });
         Add(new AiKeysViewModel(_session) { Group = "Settings" });

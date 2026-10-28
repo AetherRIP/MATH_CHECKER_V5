@@ -734,6 +734,55 @@ CREATE TABLE IF NOT EXISTS scheme_ignored_questions (
 CREATE INDEX IF NOT EXISTS idx_scheme_ignored_coursework
     ON scheme_ignored_questions(coursework_id);
 
+-- The teacher's handling decision for one question or sub-question of an
+-- assignment's mark scheme: AUTO (mark it), MANUAL (a human checks it) or SKIP
+-- (never mark it). One row per question, keyed by the scheme's own identifier
+-- rather than by position, so a re-extraction that reorders questions cannot
+-- move a decision onto a different question.
+--
+-- ``answer_text`` is the teacher's edited expected answer. It is kept HERE, not
+-- written back into the blueprint or the PDF: the uploaded mark scheme is
+-- evidence and must stay exactly as it was uploaded.
+CREATE TABLE IF NOT EXISTS scheme_question_decisions (
+    coursework_id TEXT NOT NULL,
+    question_key TEXT NOT NULL,      -- canonical id: "1", "1(a)", "1(b)(ii)"
+    question_label TEXT,             -- the id as the scheme prints it
+    decision TEXT NOT NULL,          -- AUTO | MANUAL | SKIP
+    -- 0 when the row exists only because the teacher edited the ANSWER: an
+    -- edited answer is not a handling decision, and must not be reported as
+    -- one. Set to 1 by any real decision.
+    decided INTEGER NOT NULL DEFAULT 1,
+    answer_text TEXT,                -- teacher's edited answer, NULL = as extracted
+    note TEXT,
+    source TEXT NOT NULL DEFAULT 'HUMAN',   -- HUMAN | PROPOSED
+    updated_by TEXT,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY (coursework_id, question_key)
+);
+CREATE INDEX IF NOT EXISTS idx_scheme_decisions_coursework
+    ON scheme_question_decisions(coursework_id);
+
+-- Append-only history of every decision and answer edit. A decision is never
+-- overwritten without a row here first, so the teacher can see what they
+-- changed and when — including a change back to a value used before.
+CREATE TABLE IF NOT EXISTS scheme_decision_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    coursework_id TEXT NOT NULL,
+    question_key TEXT NOT NULL,
+    question_label TEXT,
+    action TEXT NOT NULL,            -- DECISION | ANSWER | NOTE | CLEARED
+    previous_decision TEXT,
+    new_decision TEXT,
+    previous_answer TEXT,
+    new_answer TEXT,
+    reason TEXT,
+    source TEXT NOT NULL DEFAULT 'HUMAN',
+    actor TEXT,
+    at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scheme_decision_history
+    ON scheme_decision_history(coursework_id, at);
+
 -- Append-only audit of human decisions on a discrepancy. Distinguishes the
 -- AI's recommendation (``ai_recommendation``) from the human's final decision.
 CREATE TABLE IF NOT EXISTS scheme_discrepancy_reviews (

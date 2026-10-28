@@ -42,6 +42,7 @@ public sealed class AppSession
 
     private string? _pendingResultId;
     private string? _pendingAssignmentId;
+    private string? _pendingSchemeAssignmentId;
 
     /// <summary>
     /// Opens one correction in the marking desk. Navigation is a page key, so
@@ -72,6 +73,26 @@ public sealed class AppSession
     {
         _pendingAssignmentId = courseworkId;
         GoTo("assignment");
+    }
+
+    /// <summary>
+    /// Opens one assignment's Mark scheme page. Kept separate from the details
+    /// page's identity: both can be in flight, and the scheme page must open on
+    /// the assignment the teacher clicked even if the details page has already
+    /// consumed its own id.
+    /// </summary>
+    public void OpenMarkScheme(string courseworkId)
+    {
+        _pendingSchemeAssignmentId = courseworkId;
+        GoTo("markscheme");
+    }
+
+    /// <summary>The assignment the next Mark scheme load should show, if any.</summary>
+    public string? TakePendingSchemeAssignment()
+    {
+        var id = _pendingSchemeAssignmentId;
+        _pendingSchemeAssignmentId = null;
+        return id;
     }
 
     /// <summary>The assignment the next details load should show, if any.</summary>

@@ -134,7 +134,7 @@ def _run(job: dict) -> dict:
     )
     from app.engine import double_check
     from app.engine.blueprint import apply_blueprint, get_blueprint
-    from app.engine import scheme_exclusions
+    from app.engine import scheme_decisions, scheme_exclusions
     from app.engine import model_health_store as mhs
     from app.config import get_config
 
@@ -405,6 +405,23 @@ def _run(job: dict) -> dict:
         result = scheme_exclusions.drop_questions(result, excluded_questions)
         if excluded_questions:
             blueprint_report["excluded_questions"] = excluded_questions
+
+        # Questions the teacher asked to have checked by hand. They are still
+        # marked — dropping them would invent a zero — but the row says so and
+        # the result cannot be presented as confidently verified.
+        #
+        # Only REAL decisions count here. The page proposes "manual" for an
+        # entry the extraction could not be trusted for, but a proposal is not
+        # the teacher's instruction: flagging every untrusted entry would put
+        # almost every paper into review, and the review page plus its sign-off
+        # gate already surface the undecided ones.
+        manual_keys = scheme_decisions.manual_keys(job.get("coursework_id"))
+        result, manual_count = scheme_decisions.mark_manual(result, manual_keys)
+        if manual_count:
+            blueprint_report["manual_questions"] = manual_count
+            blueprint_report["review_required"] = True
+            _emit(f"{manual_count} question(s) flagged for independent check",
+                  progress=0.78)
 
         from app.engine.mark_integrity import enforce_evidence
         result, integrity_report = enforce_evidence(result)

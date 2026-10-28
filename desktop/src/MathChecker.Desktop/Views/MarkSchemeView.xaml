@@ -1,0 +1,239 @@
+<UserControl x:Class="MathChecker.Desktop.Views.MarkSchemeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
+    <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}"
+                  Description="{Binding AssignmentTitle}"
+                  StatusText="{Binding Status}" ErrorText="{Binding Error}"
+                  IsBusy="{Binding IsBusy}" BodyPadding="0,18,0,0">
+        <ui:PageFrame.Actions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
+                <Button Content="Refresh" Command="{Binding RefreshCommand}"
+                        ToolTip="Re-read the questions and decisions from the backend" />
+                <Button Content="Finalise review" Style="{StaticResource PrimaryButton}"
+                        Command="{Binding FinalizeCommand}" Margin="0"
+                        ToolTip="Sign off these decisions before correction runs" />
+            </StackPanel>
+        </ui:PageFrame.Actions>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- ============================================================
+                 WHAT IS IN THE SCHEME AND HOW IT IS BEING HANDLED
+                 The counts are the backend's own summary, so the numbers here
+                 and the marks the paper is out of cannot disagree.
+                 ============================================================ -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <TextBlock Text="MARK SCHEME AND DECISIONS" Style="{StaticResource SectionLabel}" />
+
+                    <TextBlock Text="{Binding SummaryLine}" FontSize="12" Margin="0,8,0,0"
+                               TextWrapping="Wrap" Foreground="{DynamicResource TextBrush}" />
+                    <TextBlock Text="{Binding CountsLine}" FontSize="11.5" Margin="0,4,0,0"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HasQuestions, Converter={StaticResource BoolToVis}}"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <TextBox Width="240" VerticalAlignment="Center"
+                                 Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Search questions"
+                                 ToolTip="Find a question by its number, e.g. 4(b)(ii)" />
+                        <ComboBox Width="180" Margin="8,0,0,0" VerticalAlignment="Center"
+                                  ItemsSource="{Binding Filters}"
+                                  SelectedItem="{Binding Filter}"
+                                  AutomationProperties.Name="Filter questions" />
+                        <Border Style="{StaticResource Chip}" Padding="9,3" Margin="8,0,0,0"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="{Binding FilteredCount}" FontSize="10.5"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Border>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding FinalizeStatus}" FontSize="11.5" Margin="0,10,0,0"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource AccentInkBrush}" />
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Row="1" Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="400" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ========================================================
+                     EVERY QUESTION AND SUB-QUESTION
+                     The decision is editable in the row itself: reviewing a
+                     20-page scheme must not mean opening 91 questions one at
+                     a time.
+                     ======================================================== -->
+                <Border Style="{StaticResource TableCard}" Grid.Column="0">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
+                            <DockPanel>
+                                <Border DockPanel.Dock="Right" Style="{StaticResource Chip}"
+                                        Padding="9,2" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding CountsLine}" FontSize="10.5"
+                                               MaxWidth="380" TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                </Border>
+                                <TextBlock Text="Questions" Style="{StaticResource RowTitle}"
+                                           VerticalAlignment="Center" />
+                            </DockPanel>
+                        </Border>
+
+                        <Grid>
+                            <DataGrid Style="{StaticResource DataTable}"
+                                      AutoGenerateColumns="False"
+                                      ItemsSource="{Binding Questions}"
+                                      SelectedItem="{Binding Selected}"
+                                      SelectionMode="Single"
+                                      AutomationProperties.Name="Questions in this mark scheme">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Question" Width="110"
+                                                        Binding="{Binding DisplayLabel}" />
+                                    <DataGridTextColumn Header="Expected answer" Width="*"
+                                                        Binding="{Binding AnswerSummary}" />
+                                    <DataGridTextColumn Header="Marks" Width="70"
+                                                        Binding="{Binding MarksText}" />
+                                    <DataGridTextColumn Header="Extraction" Width="120"
+                                                        Binding="{Binding StatusText}" />
+                                    <DataGridTextColumn Header="Handling" Width="90"
+                                                        Binding="{Binding StateText}" />
+                                    <DataGridTemplateColumn Header="Decision" Width="190">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ComboBox Margin="2"
+                                                          ItemsSource="{Binding DataContext.DecisionOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                          DisplayMemberPath="Label"
+                                                          SelectedValuePath="Code"
+                                                          SelectedValue="{Binding Decision, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          AutomationProperties.Name="Handling decision" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <TextBlock Style="{StaticResource EmptyText}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
+                                       Text="Open an assignment and choose “Review mark scheme” to see its questions."
+                                       Visibility="{Binding HasQuestions, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+                    </DockPanel>
+                </Border>
+
+                <!-- ========================================================
+                     THE SELECTED QUESTION
+                     What the scheme says, where it says it, the answer the
+                     marker will actually use, and every change made to it.
+                     ======================================================== -->
+                <Border Style="{StaticResource Card}" Grid.Column="1" Margin="12,0,0,0">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+                        <StackPanel>
+                            <TextBlock Text="{Binding SelectedTitle}" FontSize="14"
+                                       FontWeight="SemiBold" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextBrush}" />
+                            <TextBlock Text="{Binding SelectedWhere}" FontSize="11.5" Margin="0,4,0,0"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextMutedBrush}" />
+
+                            <Border Style="{StaticResource Chip}" Padding="9,3" Margin="0,10,0,0"
+                                    HorizontalAlignment="Left">
+                                <TextBlock Text="{Binding SelectedStatus}" FontSize="10.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+
+                            <TextBlock Text="THE SCHEME SAYS" Style="{StaticResource SectionLabel}"
+                                       Margin="0,16,0,0" />
+                            <TextBlock Text="{Binding SelectedAnswer}" FontSize="12"
+                                       Margin="0,6,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextBrush}" />
+                            <TextBlock Text="{Binding SelectedCriteria}" FontSize="11.5"
+                                       Margin="0,6,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                            <TextBlock Text="ANSWER THE MARKER WILL USE" Style="{StaticResource SectionLabel}"
+                                       Margin="0,16,0,0" />
+                            <TextBox Margin="0,6,0,0" MinHeight="54" AcceptsReturn="True"
+                                     TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                     Text="{Binding AnswerDraft, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Expected answer"
+                                     ToolTip="Leave empty and save to restore the answer from the scheme" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button Content="Save answer" Style="{StaticResource PrimaryButton}"
+                                        Command="{Binding SaveAnswerCommand}"
+                                        IsEnabled="{Binding HasSelection}" Margin="0" />
+                                <Button Content="Restore from scheme" Margin="8,0,0,0"
+                                        Command="{Binding RestoreAnswerCommand}"
+                                        ToolTip="Discard your edit; the uploaded scheme is never modified" />
+                            </StackPanel>
+
+                            <TextBlock Text="YOUR DECISION" Style="{StaticResource SectionLabel}"
+                                       Margin="0,16,0,0" />
+                            <WrapPanel Margin="0,6,0,0">
+                                <Button Content="Mark automatically" Margin="0,0,6,6"
+                                        Command="{Binding SelectDecisionCommand}"
+                                        CommandParameter="AUTO"
+                                        IsEnabled="{Binding HasSelection}"
+                                        ToolTip="Mark it from the scheme under the normal safeguards" />
+                                <Button Content="Manual check" Margin="0,0,6,6"
+                                        Command="{Binding SelectDecisionCommand}"
+                                        CommandParameter="MANUAL"
+                                        IsEnabled="{Binding HasSelection}"
+                                        ToolTip="Do not trust the scheme here; a person checks this question" />
+                                <Button Content="Skip" Margin="0,0,0,6"
+                                        Command="{Binding SelectDecisionCommand}"
+                                        CommandParameter="SKIP"
+                                        IsEnabled="{Binding HasSelection}"
+                                        ToolTip="Never mark this question; its marks leave the total" />
+                            </WrapPanel>
+
+                            <TextBlock Text="NOTE" Style="{StaticResource SectionLabel}" Margin="0,10,0,0" />
+                            <TextBox Margin="0,6,0,0" TextWrapping="Wrap"
+                                     Text="{Binding NoteDraft, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Note"
+                                     ToolTip="Why this question is handled this way" />
+                            <Button Content="Save note" Margin="0,8,0,0" HorizontalAlignment="Left"
+                                    Command="{Binding SaveNoteCommand}"
+                                    IsEnabled="{Binding HasSelection}" />
+
+                            <TextBlock Text="DECISION HISTORY" Style="{StaticResource SectionLabel}"
+                                       Margin="0,16,0,0" />
+                            <TextBlock Text="No changes have been made to this question."
+                                       FontSize="11.5" Margin="0,6,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Visibility="{Binding History.Count, Converter={StaticResource ZeroToVis}}" />
+                            <ItemsControl ItemsSource="{Binding History}" Margin="0,6,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderThickness="0,0,0,1" Padding="0,6"
+                                                BorderBrush="{DynamicResource HairlineBrush}">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding What}" FontSize="11.5"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextBrush}" />
+                                                <TextBlock Text="{Binding Reason}" FontSize="11"
+                                                           Margin="0,2,0,0" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding When}" FontSize="10.5"
+                                                           Margin="0,2,0,0"
+                                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+        </Grid>
+    </ui:PageFrame>
+</UserControl>

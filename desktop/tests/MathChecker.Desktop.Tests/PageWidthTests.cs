@@ -99,6 +99,7 @@ public sealed class PageWidthTests
         yield return ("automation", () => new AutomationView());
         yield return ("review", () => new ReviewView());
         yield return ("scheme review", () => new SchemeReviewView());
+        yield return ("mark scheme", () => new MarkSchemeView());
         yield return ("results", () => new ResultsView());
         yield return ("reports", () => new ReportsView());
         yield return ("usage", () => new UsageView());

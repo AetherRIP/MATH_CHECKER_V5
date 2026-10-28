@@ -403,6 +403,49 @@ def _migrate(conn: sqlite3.Connection) -> None:
             coursework_id TEXT NOT NULL, question_number TEXT NOT NULL, note TEXT,
             created_at REAL NOT NULL, PRIMARY KEY (coursework_id, question_number))""")
 
+    # Per-question handling decisions (AUTO / MANUAL / SKIP) and their
+    # append-only history. schema.sql creates both for a new install; this
+    # covers databases built before the Mark scheme page existed.
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS scheme_question_decisions (
+            coursework_id TEXT NOT NULL,
+            question_key TEXT NOT NULL,
+            question_label TEXT,
+            decision TEXT NOT NULL,
+            decided INTEGER NOT NULL DEFAULT 1,
+            answer_text TEXT,
+            note TEXT,
+            source TEXT NOT NULL DEFAULT 'HUMAN',
+            updated_by TEXT,
+            updated_at REAL NOT NULL,
+            PRIMARY KEY (coursework_id, question_key));
+        CREATE INDEX IF NOT EXISTS idx_scheme_decisions_coursework
+            ON scheme_question_decisions(coursework_id);
+        CREATE TABLE IF NOT EXISTS scheme_decision_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            coursework_id TEXT NOT NULL,
+            question_key TEXT NOT NULL,
+            question_label TEXT,
+            action TEXT NOT NULL,
+            previous_decision TEXT,
+            new_decision TEXT,
+            previous_answer TEXT,
+            new_answer TEXT,
+            reason TEXT,
+            source TEXT NOT NULL DEFAULT 'HUMAN',
+            actor TEXT,
+            at REAL NOT NULL);
+        CREATE INDEX IF NOT EXISTS idx_scheme_decision_history
+            ON scheme_decision_history(coursework_id, at);
+    """)
+    # A database created by the first cut of this table has no ``decided``
+    # column; every row in it was a real decision, which is the default.
+    decision_cols = {row[1] for row in conn.execute(
+        "PRAGMA table_info(scheme_question_decisions)")}
+    if decision_cols and "decided" not in decision_cols:
+        conn.execute(
+            "ALTER TABLE scheme_question_decisions ADD COLUMN decided INTEGER NOT NULL DEFAULT 1")
+
     # One-active-per-submission: the pool leaves jobs in 'STARTING' (and the
     # recovery set includes PREPARING..RETRYING) while work runs; the older
     # index definition did not cover 'STARTING', so two enqueues of the same

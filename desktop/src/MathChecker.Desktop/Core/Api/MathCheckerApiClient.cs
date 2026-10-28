@@ -1080,6 +1080,62 @@ public sealed partial class MathCheckerApiClient : IDisposable
         CancellationToken cancellationToken = default) =>
         GetJsonAsync("scheme/questions" + Query(("coursework_id", courseworkId)), cancellationToken);
 
+    /// <summary>Every question and sub-question of one assignment's scheme with
+    /// its extracted answer, marks, extraction state and handling decision.
+    /// This is what the Mark scheme page reads.</summary>
+    public Task<JsonElement> SchemeDecisionsAsync(string courseworkId,
+        CancellationToken cancellationToken = default) =>
+        GetJsonAsync("scheme/decisions" + Query(("coursework_id", courseworkId)), cancellationToken);
+
+    /// <summary>Set one question's handling decision (AUTO / MANUAL / SKIP).
+    /// SKIP is written through the exclusion table, so the marking worker and
+    /// this screen can never disagree about what is being marked.</summary>
+    public Task<JsonElement> SetSchemeDecisionAsync(string courseworkId, string questionNumber,
+        string decision, string? note = null, string? reason = null,
+        CancellationToken cancellationToken = default) =>
+        SendJsonRawAsync(HttpMethod.Post, "scheme/decision", new
+        {
+            coursework_id = courseworkId,
+            question_number = questionNumber,
+            decision,
+            note,
+            reason,
+        }, cancellationToken);
+
+    /// <summary>Replace the expected answer used for one question. Send
+    /// <paramref name="answer"/> as null to restore the extracted answer; an
+    /// empty string is kept as "there is no acceptable answer".</summary>
+    public Task<JsonElement> SetSchemeAnswerAsync(string courseworkId, string questionNumber,
+        string? answer, string? reason = null, CancellationToken cancellationToken = default) =>
+        SendJsonRawAsync(HttpMethod.Post, "scheme/answer", new
+        {
+            coursework_id = courseworkId,
+            question_number = questionNumber,
+            // Named explicitly so the null is serialised: the backend treats a
+            // missing key as a bad request, and "clear the edit" must work.
+            answer = answer,
+            reason,
+        }, cancellationToken);
+
+    /// <summary>Every decision and answer change on one assignment, newest first.</summary>
+    public Task<JsonElement> SchemeDecisionHistoryAsync(string courseworkId,
+        string? questionNumber = null, CancellationToken cancellationToken = default) =>
+        GetJsonAsync("scheme/decision-history" + Query(
+            ("coursework_id", courseworkId), ("question_number", questionNumber)),
+            cancellationToken);
+
+    /// <summary>Sign off the review. Undecided questions need
+    /// <paramref name="acknowledgeUnresolved"/> or the backend refuses.</summary>
+    public Task<JsonElement> FinalizeSchemeReviewAsync(string courseworkId,
+        bool acknowledgeUnresolved, string? note = null,
+        CancellationToken cancellationToken = default) =>
+        SendJsonRawAsync(HttpMethod.Post, "scheme/finalize", new
+        {
+            coursework_id = courseworkId,
+            acknowledge_unresolved = acknowledgeUnresolved,
+            note,
+        }, cancellationToken);
+
     /// <summary>Take one question (or one subquestion) out of marking for an
     /// assignment. Existing results keep their marks; later corrections skip it
     /// and its marks leave the total.

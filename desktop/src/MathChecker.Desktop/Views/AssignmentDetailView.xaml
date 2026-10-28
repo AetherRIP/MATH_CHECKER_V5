@@ -263,6 +263,11 @@
                                 HorizontalAlignment="Stretch"
                                 AutomationProperties.Name="Upload mark scheme"
                                 ToolTip="Attach the PDF this assignment is marked against" />
+                        <Button Content="Review mark scheme…"
+                                Command="{Binding ReviewSchemeCommand}"
+                                HorizontalAlignment="Stretch"
+                                AutomationProperties.Name="Review mark scheme"
+                                ToolTip="See every question and sub-question, its answer, and how it is handled" />
                         <Button Content="Allow-list assignment"
                                 Command="{Binding AllowlistCommand}"
                                 IsEnabled="{Binding CanAllowlist}"

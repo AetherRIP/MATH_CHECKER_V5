@@ -18,7 +18,7 @@ from pathlib import Path
 
 from .. import auth_gate, db
 from ..errors import AppError
-from ..engine import scheme_audit, scheme_exclusions
+from ..engine import scheme_audit, scheme_decisions, scheme_exclusions
 from ..logging_setup import log_event
 
 def _authorized_reviewer(request: Request) -> None:
@@ -198,6 +198,18 @@ def _stored_answer(result_id: str | None, question_number: str | None) -> dict:
             "max_marks": question.get("max_marks"),
         }
     return {}
+
+
+def _assignment_title(coursework_id: str) -> str:
+    """The teacher's own name for the assignment, falling back to Google's.
+
+    Read-only, and empty when the row is unknown: the page has to be able to
+    say which assignment it is showing, but must never invent a title.
+    """
+    row = db.query_one(
+        "SELECT COALESCE(NULLIF(custom_title, ''), NULLIF(classroom_title, ''), "
+        "title) AS name FROM coursework WHERE id = ?", (coursework_id,))
+    return str(row["name"] or "") if row else ""
 
 
 def _is_ignored(coursework_id: str | None, question_number: str | None) -> bool:
@@ -481,6 +493,136 @@ def retry(proposal_id: str, payload: dict, request: Request):
         raise _bad_request(str(exc)) from exc
     except LookupError as exc:
         raise _not_found(str(exc)) from exc
+
+
+# ================================================================ summary
+
+# ============================================== per-question handling decisions
+
+@router.get("/decisions")
+def list_decisions(coursework_id: str):
+    """Every question of this assignment's scheme, with its handling decision.
+
+    The blueprint is read, never re-extracted: a review page must show exactly
+    what the correction will use. A stored decision whose question has since
+    disappeared from the scheme is returned under ``orphaned`` so a re-parse
+    that changed the structure is visible instead of silently reattached.
+    """
+    record, blueprint = _scheme_blueprint(coursework_id)
+    if blueprint is None:
+        raise _not_found("No mark scheme is attached to this assignment yet.")
+    rows, orphans = scheme_decisions.rows_for(blueprint, coursework_id)
+    return {
+        "coursework_id": coursework_id,
+        "assignment_title": _assignment_title(coursework_id),
+        "questions": rows,
+        "orphaned": orphans,
+        "summary": scheme_decisions.summary(rows, blueprint),
+        "total_marks": blueprint.get("total_marks"),
+        "labels": scheme_decisions.LABELS,
+        "scheme": {
+            "pages": (record or {}).get("blueprint", {}).get("paper")
+                     if isinstance((record or {}).get("blueprint"), dict) else None,
+            "verification": (record or {}).get("verification"),
+        },
+    }
+
+
+@router.post("/decision")
+def set_decision(payload: dict, request: Request):
+    """Set one question's handling decision, keeping the previous one.
+
+    ``SKIP`` is written through the existing exclusion table, so the marking
+    worker (which already drops excluded questions before totals) needs no
+    second rule that could disagree with this screen.
+    """
+    payload = payload or {}
+    coursework_id = str(payload.get("coursework_id") or "").strip()
+    number = str(payload.get("question_number") or "").strip()
+    if not coursework_id or not number:
+        raise _bad_request("An assignment and a question number are required.")
+    _, blueprint = _scheme_blueprint(coursework_id)
+    if blueprint is None:
+        raise _not_found("Attach the mark scheme before deciding how to handle a question.")
+    try:
+        stored = scheme_decisions.set_decision(
+            coursework_id, number, str(payload.get("decision") or ""),
+            note=str(payload.get("note") or ""),
+            reason=str(payload.get("reason") or ""),
+            actor=_actor(request), blueprint=blueprint)
+    except ValueError as exc:
+        raise _bad_request(str(exc)) from exc
+    log_event("api.scheme", "question decision", coursework_id=coursework_id,
+              question=number, decision=stored.get("decision"), by=_actor(request))
+    rows, orphans = scheme_decisions.rows_for(blueprint, coursework_id)
+    return {"decision": stored, "questions": rows, "orphaned": orphans,
+            "summary": scheme_decisions.summary(rows, blueprint)}
+
+
+@router.post("/answer")
+def set_answer(payload: dict, request: Request):
+    """Replace the expected answer used for one question.
+
+    The blueprint and the uploaded PDF are untouched: the edit lives in its own
+    column, so clearing it restores the extraction exactly.
+    """
+    payload = payload or {}
+    coursework_id = str(payload.get("coursework_id") or "").strip()
+    number = str(payload.get("question_number") or "").strip()
+    if not coursework_id or not number:
+        raise _bad_request("An assignment and a question number are required.")
+    if "answer" not in payload:
+        raise _bad_request("Send answer (use null to restore the extracted answer).")
+    _, blueprint = _scheme_blueprint(coursework_id)
+    if blueprint is None:
+        raise _not_found("Attach the mark scheme before editing an answer.")
+    try:
+        stored = scheme_decisions.set_answer(
+            coursework_id, number, payload.get("answer"),
+            reason=str(payload.get("reason") or ""),
+            actor=_actor(request), blueprint=blueprint)
+    except ValueError as exc:
+        raise _bad_request(str(exc)) from exc
+    log_event("api.scheme", "scheme answer edited", coursework_id=coursework_id,
+              question=number, cleared=payload.get("answer") is None,
+              by=_actor(request))
+    rows, orphans = scheme_decisions.rows_for(blueprint, coursework_id)
+    return {"question": stored, "questions": rows, "orphaned": orphans,
+            "summary": scheme_decisions.summary(rows, blueprint)}
+
+
+@router.get("/decision-history")
+def decision_history(coursework_id: str, question_number: str | None = None):
+    """Every decision and answer change made on this assignment, newest first."""
+    if not coursework_id:
+        raise _bad_request("An assignment is required.")
+    items = scheme_decisions.history(coursework_id, question_number)
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/finalize")
+def finalize_review(payload: dict, request: Request):
+    """Sign off the review. Undecided questions need explicit acknowledgement."""
+    payload = payload or {}
+    coursework_id = str(payload.get("coursework_id") or "").strip()
+    if not coursework_id:
+        raise _bad_request("An assignment is required.")
+    _, blueprint = _scheme_blueprint(coursework_id)
+    if blueprint is None:
+        raise _not_found("There is no mark scheme to finalise.")
+    try:
+        result = scheme_decisions.finalize(
+            coursework_id, actor=_actor(request),
+            note=str(payload.get("note") or ""),
+            acknowledge_unresolved=payload.get("acknowledge_unresolved") is True,
+            blueprint=blueprint)
+    except ValueError as exc:
+        raise _bad_request(str(exc)) from exc
+    log_event("api.scheme", "mark scheme review finalised",
+              coursework_id=coursework_id, manual=result.get("manual"),
+              skipped=result.get("skipped"),
+              acknowledged=result.get("acknowledged_unresolved"))
+    return result
 
 
 # ================================================================ summary
