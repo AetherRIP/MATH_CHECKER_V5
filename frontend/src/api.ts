@@ -37,16 +37,29 @@ export interface Job {
   progress: number;
   attempts: number;
   max_attempts: number;
+  /** Capacity waiting already spent (persisted across restarts), seconds. */
+  waited_seconds?: number;
+  /** How many separate capacity parks this job has had. */
+  park_count?: number;
+  /** Explicit teacher re-queues granted; capped by the backend. */
+  manual_retries?: number;
+  max_manual_retries?: number;
+  /** Last classified provider failure (HIGH_DEMAND, RATE_LIMIT, ...). */
+  last_failure_class?: string | null;
+  /** When a parked/retrying job is next allowed to run (epoch seconds). */
+  retry_due_at?: number | null;
   error: string | null;
+  error_code?: string | null;
   created_at: number;
   finished_at: number | null;
   result_id: string | null;
   bandwidth?: JobBandwidth | null;
 }
 
-/** Requeue a failed or cancelled correction. The backend resets attempts,
- *  progress and error to NULL, so a retry starts from a clean slate and never
- *  duplicates a completed marking (§16: nothing is deleted, the job is reused). */
+/** Requeue a failed or cancelled correction. The backend grants ONE attempt
+ *  (the attempt history is preserved, not reset), clears the capacity ledger and
+ *  caps how many manual retries a job may receive, so a Retry click can never be
+ *  an unlimited budget reset. Nothing is deleted — the same job row is reused. */
 export function retryJob(jobId: string): Promise<Job> {
   return api<Job>(`/jobs/${encodeURIComponent(jobId)}/retry`, { method: "POST" });
 }
@@ -87,7 +100,12 @@ export interface ApiKeyStatus {
 export interface Dashboard {
   corrections_today: number;
   first_run?: boolean;
+  /** Legacy aggregate: queued jobs + handed-in submissions not yet corrected. */
   pending: number;
+  /** Correction jobs actually waiting in the queue. */
+  queued?: number;
+  /** Submissions handed in and not yet corrected (not jobs). */
+  pending_submissions?: number;
   processing: number;
   completed: number;
   failed: number;
@@ -814,6 +832,21 @@ export interface FullSyncSummary {
   partial: boolean;
   synced_at: number;
   elapsed_s: number;
+}
+
+export interface ProviderHealth {
+  state: string;
+  ready: boolean;
+  blocking: boolean;
+  detail: string;
+  model: string | null;
+  checked_at: number | null;
+  age_seconds: number | null;
+  duration_ms?: number | null;
+  http_status?: number | null;
+  cache_seconds: number;
+  simulated: boolean;
+  cached: boolean;
 }
 
 export interface UsageState {

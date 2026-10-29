@@ -88,6 +88,7 @@ R_STORED_TOTAL_MISMATCH = "STORED_TOTAL_MISMATCH"
 R_OVER_AVAILABLE = "OVER_AVAILABLE"
 R_QUESTION_UNMARKED = "QUESTION_UNMARKED"
 R_SUBQUESTION_UNMARKED = "SUBQUESTION_UNMARKED"
+R_PARTIAL_COVERAGE = "PARTIAL_COVERAGE"
 R_SUBQUESTION_CONFLICT = "SUBQUESTION_CONFLICT"
 R_QUESTION_FLAGGED = "QUESTION_FLAGGED"
 R_SCHEME_DISAGREEMENT = "SCHEME_DISAGREEMENT"
@@ -334,6 +335,58 @@ def verify_result(result: dict, blueprint_report: dict | None = None) -> dict:
                   f"{entry.get('max')}).",
                   question=entry.get("question"), severity=SEVERITY_ADVISORY)
 
+    # 4b. Coverage: how much of the paper this result actually covers.
+    #
+    # A missing question is not a zero. When the mark scheme declares a question
+    # the marker never returned, the earned/available totals describe ONLY the
+    # marked subset — presenting that percentage as the student's mark would
+    # award, say, 22/22 for a paper whose other 45 marks were never looked at.
+    # The gap is recorded here (marks unchanged) so downstream surfaces can say
+    # "incomplete" instead of publishing a score computed on a subset.
+    coverage = None
+    paper_marks = None
+    unresolved_marks = 0
+    partial = False
+    if blueprint_report:
+        missing_q = [str(n) for n in (blueprint_report.get("missing_questions") or [])]
+        missing_sq = list(blueprint_report.get("missing_subquestions") or [])
+        still = list(blueprint_report.get("still_unresolved") or [])
+        try:
+            paper_marks = float(blueprint_report.get("blueprint_total") or 0) or None
+        except (TypeError, ValueError):
+            paper_marks = None
+        marked_numbers = {str(q.get("question_number")) for q in questions}
+        uncovered = (max(0.0, paper_marks - float(available))
+                     if paper_marks else 0.0)
+        unresolved_marks = int(round(uncovered)) if uncovered else 0
+        partial = bool(missing_q or missing_sq or still or unresolved_marks > 0)
+        if partial:
+            review_numbers = {str(n) for n in missing_q}
+            for item in still:
+                if isinstance(item, dict):
+                    number = item.get("question") or item.get("question_number")
+                    if number is not None:
+                        review_numbers.add(str(number))
+                elif item is not None:
+                    review_numbers.add(str(item))
+            coverage = {
+                "marked": len(marked_numbers),
+                "expected": len(marked_numbers | {str(n) for n in missing_q}),
+                "requires_review": len(review_numbers),
+                "marked_marks": available,
+                "paper_marks": paper_marks,
+            }
+            if not any(r["code"] in (R_QUESTION_UNMARKED,
+                                      R_SUBQUESTION_UNMARKED) for r in reasons):
+                declared = (f"of the {paper_marks:g} marks the mark scheme "
+                            f"declares" if paper_marks
+                            else "of the marks the mark scheme declares")
+                _flag(reasons, R_PARTIAL_COVERAGE, STAGE_VALIDATION,
+                      f"This correction covers {available:g} {declared}; the "
+                      f"score is computed on the marked subset only.",
+                      action="Re-correct the paper; if it persists, check the "
+                             "scan covers every page.")
+
     # 5. Per-question status aggregation (absent status = legacy result = valid).
     for q in questions:
         q_status = q.get("status")
@@ -481,6 +534,7 @@ def verify_result(result: dict, blueprint_report: dict | None = None) -> dict:
     review_level = any(r["severity"] == SEVERITY_REVIEW for r in reasons)
     status = (STATUS_VALID if not anomalies and not review_questions
               and not scheme_review_required and not review_level
+              and not partial
               else STATUS_REVIEW)
 
     return {
@@ -497,6 +551,13 @@ def verify_result(result: dict, blueprint_report: dict | None = None) -> dict:
         "anomalies": anomalies,
         "warnings": warnings,
         "verified_questions": len(questions),
+        # What the score actually covers. A partial result has no publishable
+        # percentage: earned/available are the MARKED subset only.
+        "partial": partial,
+        "score_basis": "MARKED_ONLY" if partial else "COMPLETE",
+        "paper_total_marks": paper_marks,
+        "unresolved_marks": unresolved_marks,
+        "coverage": coverage,
         "review_questions": sorted(set(review_questions)),
         # Coded, ordered reasons: what happened, which stage produced it, the
         # question it concerns, whether it needs a human, and what to do. The

@@ -562,3 +562,78 @@ class TestStageMessages:
         assert event == {"type": "stage",
                          "message": "Marking with gemini-3.8-flash",
                          "progress": 0.35}
+
+
+class TestCoverageIsNotAScore:
+    """A missing question is UNMARKED, never a confirmed 0 or a full paper."""
+
+    @staticmethod
+    def _result():
+        return {
+            "questions": [
+                {"question_number": "1", "max_marks": 3, "awarded_marks": 2},
+            ],
+            "totals": {"earned": 2},
+        }
+
+    def test_a_missing_question_makes_the_score_partial(self):
+        result = self._result()
+        verification = verify_result(result, {
+            "blueprint_total": 10,
+            "missing_questions": ["2", "3"],
+            "missing_subquestions": [],
+            "still_unresolved": [],
+        })
+
+        assert verification["partial"] is True
+        assert verification["score_basis"] == "MARKED_ONLY"
+        assert verification["paper_total_marks"] == 10
+        assert verification["unresolved_marks"] == 7
+        assert verification["coverage"] == {
+            "marked": 1, "expected": 3, "requires_review": 2,
+            "marked_marks": 3, "paper_marks": 10,
+        }
+        assert verification["status"] == "REVIEW"
+        # The marks themselves are untouched: verification reports, never rewrites.
+        assert result["questions"][0]["awarded_marks"] == 2
+        assert verification["earned"] == 2
+
+    def test_a_fully_covered_paper_is_complete(self):
+        verification = verify_result(self._result(), {
+            "blueprint_total": 3,
+            "missing_questions": [],
+            "missing_subquestions": [],
+            "still_unresolved": [],
+        })
+        assert verification["partial"] is False
+        assert verification["score_basis"] == "COMPLETE"
+        assert verification["unresolved_marks"] == 0
+        assert verification["coverage"] is None
+        assert verification["status"] == "VALID"
+
+    def test_a_partial_summary_names_the_gap(self):
+        from app.engine.verify import partial_summary
+        verification = verify_result(self._result(), {
+            "blueprint_total": 10,
+            "missing_questions": ["2"],
+            "missing_subquestions": [],
+            "still_unresolved": [],
+        })
+        summary = partial_summary(verification)
+        assert summary["expected_questions"] == 2
+        assert summary["marked_questions"] == 1
+        assert summary["unresolved_questions"] == 1
+        assert summary["paper_marks"] == 10
+        assert summary["unresolved_marks"] == 7
+
+    def test_a_missing_question_without_a_declared_total_still_reports(self):
+        verification = verify_result(self._result(), {
+            "missing_questions": ["2"],
+            "missing_subquestions": [],
+            "still_unresolved": [],
+        })
+        assert verification["partial"] is True
+        assert verification["paper_total_marks"] is None
+        assert verification["status"] == "REVIEW"
+        codes = [r["code"] for r in verification["review_reasons"]]
+        assert "QUESTION_UNMARKED" in codes

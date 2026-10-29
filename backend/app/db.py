@@ -335,6 +335,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for col, ddl in (("paper_name", "TEXT"), ("page_count", "INTEGER")):
         if job_cols and col not in job_cols:
             conn.execute(f"ALTER TABLE correction_jobs ADD COLUMN {col} {ddl}")
+    # Retry ledger. Before this, capacity waiting was counted only in the
+    # scheduler's memory: restarting the backend (or cancelling and re-arming)
+    # reset the 15-minute park budget, so an outage could be waited out forever.
+    for col, ddl in (
+            ("waited_seconds", "REAL NOT NULL DEFAULT 0"),
+            ("park_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("manual_retries", "INTEGER NOT NULL DEFAULT 0"),
+            ("last_failure_class", "TEXT"),
+            ("retry_due_at", "REAL")):
+        if job_cols and col not in job_cols:
+            conn.execute(f"ALTER TABLE correction_jobs ADD COLUMN {col} {ddl}")
 
     # The stages a job really passed through, with the time each one was seen.
     # The dashboard's detail panel shows this history; nothing here is derived

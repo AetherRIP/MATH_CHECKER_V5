@@ -520,7 +520,7 @@ function Shell() {
                   shows, always visible so work is never hidden behind
                   navigation. Opens the attention drawer. */}
               <button
-                className={`activity-pill ${dash && (dash.processing > 0 || dash.pending > 0) ? "busy" : ""}`}
+                className={`activity-pill ${dash && (dash.processing > 0 || (dash.queued ?? 0) > 0) ? "busy" : ""}`}
                 onClick={() => setAttentionOpen(true)}
                 data-tooltip="Background jobs — click for what needs attention"
                 aria-label={dash && dash.processing > 0
@@ -528,7 +528,9 @@ function Shell() {
                   : "No corrections running"}>
                 <span className="led-dot" aria-hidden="true" />
                 {dash && dash.processing > 0 ? `${dash.processing} correcting`
-                  : dash && dash.pending > 0 ? `${dash.pending} queued`
+                  : dash && (dash.queued ?? 0) > 0 ? `${dash.queued} queued`
+                  : dash && (dash.pending_submissions ?? 0) > 0
+                    ? `${dash.pending_submissions} to correct`
                   : "Idle"}
               </button>
               <div className="topbar-chips chip-hide-sm">

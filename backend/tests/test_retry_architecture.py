@@ -833,7 +833,10 @@ class TestPoolFailurePolicy:
         timers = _fake_timers(monkeypatch)
         job_id = _insert_job(attempts=1)
         pool = self._pool()
-        pool._api_wait_total[job_id] = 15 * 60 - 5   # budget nearly spent
+        # The ledger is PERSISTED on the job row (a fresh pool must honour the
+        # waiting already spent, including after a restart).
+        db.execute("UPDATE correction_jobs SET waited_seconds = ? WHERE id = ?",
+                   (15 * 60 - 5, job_id))
         pool._handle_failure(
             _worker(), _job_row(job_id),
             _worker_result(job_id, error="429 quota exceeded",

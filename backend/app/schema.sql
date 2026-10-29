@@ -74,6 +74,15 @@ CREATE TABLE IF NOT EXISTS correction_jobs (
     progress REAL NOT NULL DEFAULT 0,
     attempts INTEGER NOT NULL DEFAULT 0,
     max_attempts INTEGER NOT NULL DEFAULT 3,
+    -- Retry ledger (persisted so a restart cannot silently hand a stuck job a
+    -- fresh budget). ``waited_seconds`` is capacity waiting actually slept,
+    -- ``park_count`` the number of separate parks, and ``manual_retries`` the
+    -- explicit teacher re-queues already granted.
+    waited_seconds REAL NOT NULL DEFAULT 0,
+    park_count INTEGER NOT NULL DEFAULT 0,
+    manual_retries INTEGER NOT NULL DEFAULT 0,
+    last_failure_class TEXT,
+    retry_due_at REAL,
     worker_id TEXT,                -- which pool worker ran/is running this job
     -- Remark (re-mark) jobs: their attempt is recorded as PENDING and never
     -- auto-applied, so a re-mark can never destroy a valid correction.

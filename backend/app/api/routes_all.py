@@ -114,7 +114,12 @@ def dashboard(request: Request):
     keys = _km().status()
     return {
         "corrections_today": corrections_today,
-        "pending": counts.get("QUEUED", 0) + pending_subs,
+        # Queued JOBS and handed-in-but-uncorrected submissions are different
+        # facts; the top bar used to print their sum as "N queued", so 35
+        # completed corrections still read as 35 queued jobs.
+        "queued": counts.get("QUEUED", 0),
+        "pending_submissions": pending_subs,
+        "pending": counts.get("QUEUED", 0) + pending_subs,  # legacy aggregate
         "processing": sum(counts.get(s, 0) for s in
                           ("PREPARING", "DOWNLOADING", "UPLOADING", "MARKING",
                            "VERIFYING", "SAVING", "WAITING_FOR_API", "RETRYING")),
@@ -236,12 +241,19 @@ def cancel_job(job_id: str):
 
 @router.post("/jobs/{job_id}/retry")
 def retry_job(job_id: str):
-    job = _job_manager().retry(job_id)
+    manager = _job_manager()
+    job = manager.retry(job_id)
     if not job:
-        raise HTTPException(409, "Only failed or cancelled jobs can be retried.")
+        raise HTTPException(409, manager.last_retry_refusal
+                            or "Only failed or cancelled jobs can be retried.")
     _pool_wake = _pool()
     _pool_wake._wake.set()
     return job
+
+
+def _max_manual_retries() -> int:
+    from ..jobs.manager import MAX_MANUAL_RETRIES
+    return MAX_MANUAL_RETRIES
 
 
 def _job_public(job: dict) -> dict:
@@ -275,7 +287,17 @@ def _job_public(job: dict) -> dict:
         "status": job["status"],
         "stage_detail": job["stage_detail"], "progress": job["progress"],
         "attempts": job["attempts"], "max_attempts": job["max_attempts"],
-        "error": job["error"],
+        # The persisted retry ledger: what the job really spent waiting, how
+        # often it was parked, and whether a teacher already granted a retry.
+        # The UI needs these to explain a parked job instead of showing a
+        # bare "waiting" with no history behind it.
+        "waited_seconds": job.get("waited_seconds") or 0,
+        "park_count": job.get("park_count") or 0,
+        "manual_retries": job.get("manual_retries") or 0,
+        "max_manual_retries": _max_manual_retries(),
+        "last_failure_class": job.get("last_failure_class"),
+        "retry_due_at": job.get("retry_due_at"),
+        "error": job["error"], "error_code": job.get("error_code"),
         "created_at": job["created_at"], "started_at": job["started_at"],
         "finished_at": job["finished_at"], "result_id": job["result_id"],
         "bandwidth": api_stats.job_bandwidth(job["id"]),
@@ -2041,6 +2063,28 @@ def global_search(q: str = "", limit: int = 8):
 
     total = sum(len(g["items"]) for g in groups)
     return {"query": query, "groups": groups, "total": total}
+
+
+@router.get("/provider/health")
+def provider_health_status(recheck: bool = False):
+    """Is the configured provider actually able to mark right now?
+
+    GET is free and cache-only (``recheck=false``); ``?recheck=true`` performs
+    one tiny, student-data-free inference request. The distinction matters:
+    a settings page refresh must never spend provider quota, while the
+    "Check provider" button must really ask Gemini.
+    """
+    from ..gemini import preflight
+    state = preflight.snapshot(recheck=bool(recheck))
+    return preflight.describe(state)
+
+
+@router.post("/provider/health/check")
+def provider_health_check():
+    """Force a fresh provider readiness probe (no PDF, no student data)."""
+    from ..gemini import preflight
+    state = preflight.probe()
+    return preflight.describe({**state, "cached": False})
 
 
 @router.get("/usage")

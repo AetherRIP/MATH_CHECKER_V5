@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type UsageState } from "../api";
+import { api, type ProviderHealth, type UsageState } from "../api";
 import { DataTable, PageHeader, Stat, useToast } from "../components";
 import { BarChart } from "../charts/Charts";
 
@@ -53,6 +53,29 @@ export default function UsagePage() {
   const [hourly, setHourly] = useState("");
   const [daily, setDaily] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [health, setHealth] = useState<ProviderHealth | null>(null);
+  const [healthBusy, setHealthBusy] = useState(false);
+
+  useEffect(() => {
+    // Cache-only: opening this page must never spend provider quota.
+    api<ProviderHealth>("/provider/health").then(setHealth).catch(() => {});
+  }, []);
+
+  async function checkProvider() {
+    setHealthBusy(true);
+    try {
+      const next = await api<ProviderHealth>("/provider/health/check",
+        { method: "POST" });
+      setHealth(next);
+      toast(next.ready ? "ok" : "warn",
+        next.ready ? "The configured model answered — the provider is ready."
+          : next.detail);
+    } catch (e) {
+      toast("err", e instanceof Error ? e.message : "Provider check failed");
+    } finally {
+      setHealthBusy(false);
+    }
+  }
 
   const load = () =>
     api<UsageState>("/usage").then((s) => {
@@ -143,6 +166,32 @@ export default function UsagePage() {
               onChange={(e) => setDaily(e.target.value)} inputMode="numeric" aria-label="Daily limit in MB" />
           </label>
           <button className="btn primary sm" onClick={saveLimits}>Save limits</button>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <h3>AI provider health <span className="hint">one tiny request with no student data — never a PDF upload</span></h3>
+        {health ? (
+          <div className={`notice ${health.ready ? "ok" : health.blocking ? "warn" : ""}`}
+            style={{ marginBottom: 10 }}>
+            <strong>{health.state.split("_").join(" ")}</strong> — {health.detail}
+            {health.model ? ` · model ${health.model}` : ""}
+            {health.age_seconds != null ? ` · checked ${Math.round(health.age_seconds)}s ago` : ""}
+            {health.duration_ms ? ` · ${health.duration_ms} ms` : ""}
+            {health.simulated ? " · demo mode (no provider request)" : ""}
+          </div>
+        ) : (
+          <div className="notice" style={{ marginBottom: 10 }}>
+            No provider verdict yet — run a check before a large batch.
+          </div>
+        )}
+        <div className="row wrap small faint" style={{ gap: 10 }}>
+          <button className="btn primary sm" onClick={checkProvider}
+            disabled={healthBusy}>
+            {healthBusy ? "Checking…" : "Check provider now"}
+          </button>
+          <span>A fresh verdict is reused for {Math.round((health?.cache_seconds ?? 300) / 60)} min.
+            Queued batches pause while the provider is unavailable.</span>
         </div>
       </div>
 

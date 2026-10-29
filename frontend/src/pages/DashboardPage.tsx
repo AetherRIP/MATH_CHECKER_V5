@@ -434,7 +434,11 @@ export default function DashboardPage({ onNavigate, data }: {
             </div>
             <div className="kv">
               <span className="k">Pipeline</span>
-              <span className="v">{data.pending} queued · {data.processing} running</span>
+              <span className="v">
+                {data.queued ?? 0} queued · {data.processing} running
+                {(data.pending_submissions ?? 0) > 0
+                  && ` · ${data.pending_submissions} handed in, not yet corrected`}
+              </span>
             </div>
             {pipeline.length > 0 && (
               <div style={{ marginTop: "var(--s3)" }}>

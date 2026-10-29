@@ -27,6 +27,11 @@ os.environ["MC5_DATA_DIR"] = str(_TMP)
 # test_public_access_security.py (public mode).
 os.environ.setdefault("MC5_LOGIN_REQUIRED", "0")
 
+# The batch preflight asks Gemini one tiny question before a multi-paper start.
+# The suite must never touch the network, so it is switched off here; the
+# preflight module itself is covered by tests that mock the provider client.
+os.environ.setdefault("MC5_DISABLE_PREFLIGHT", "1")
+
 # Multi-account mode now DEFAULTS OFF (the shipped single-account mode), so the
 # suites that exercise the accounts/roles/teams implementation run with the
 # layer explicitly ON — exactly as the no-login mode above works. The disabled
