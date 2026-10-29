@@ -2,6 +2,17 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
+    <UserControl.Resources>
+        <!-- This table is read row by row, and every row carries a combo box a
+             teacher has to hit with the mouse. The shared table density is set
+             for tables you scan; here a taller row and a taller control are
+             what make it usable, especially with a hand-sized pointer. -->
+        <Style x:Key="ReviewTable" TargetType="DataGrid" BasedOn="{StaticResource DataTable}">
+            <Setter Property="RowHeight" Value="48" />
+            <Setter Property="ColumnHeaderHeight" Value="38" />
+        </Style>
+    </UserControl.Resources>
+
     <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}"
                   Description="{Binding AssignmentTitle}"
                   StatusText="{Binding Status}" ErrorText="{Binding Error}"
@@ -33,10 +44,6 @@
 
                     <TextBlock Text="{Binding SummaryLine}" FontSize="12" Margin="0,8,0,0"
                                TextWrapping="Wrap" Foreground="{DynamicResource TextBrush}" />
-                    <TextBlock Text="{Binding CountsLine}" FontSize="11.5" Margin="0,4,0,0"
-                               TextWrapping="Wrap"
-                               Visibility="{Binding HasQuestions, Converter={StaticResource BoolToVis}}"
-                               Foreground="{DynamicResource TextSecondaryBrush}" />
 
                     <!-- Demo Mode's structure is synthetic. Saying so here keeps it
                          from reading as a scheme that was actually extracted. -->
@@ -86,7 +93,9 @@
             <Grid Grid.Row="1" Margin="0,12,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="400" />
+                    <!-- Narrower than a reading panel: six columns and a combo per
+                         row need the width more than the detail panel does. -->
+                    <ColumnDefinition Width="372" />
                 </Grid.ColumnDefinitions>
 
                 <!-- ========================================================
@@ -97,17 +106,24 @@
                      ======================================================== -->
                 <Border Style="{StaticResource TableCard}" Grid.Column="0">
                     <DockPanel>
+                        <!-- The counts belong beside the list they describe, on a
+                             line that WRAPS. Squeezed into a chip at 10.5px they
+                             were trimmed mid-sentence, which is how a page ends up
+                             looking cramped while saying everything. -->
                         <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
-                            <DockPanel>
-                                <Border DockPanel.Dock="Right" Style="{StaticResource Chip}"
-                                        Padding="9,2" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding CountsLine}" FontSize="10.5"
-                                               MaxWidth="380" TextTrimming="CharacterEllipsis"
-                                               Foreground="{DynamicResource TextMutedBrush}" />
-                                </Border>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Text="Questions" Style="{StaticResource RowTitle}"
-                                           VerticalAlignment="Center" />
-                            </DockPanel>
+                                           VerticalAlignment="Top" Margin="0,1,16,0" />
+                                <TextBlock Grid.Column="1" Text="{Binding CountsLine}"
+                                           FontSize="11.5" TextWrapping="Wrap"
+                                           TextAlignment="Right" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Visibility="{Binding HasQuestions, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
                         </Border>
 
                         <Grid>
@@ -116,7 +132,7 @@
                                  the two columns that repeat other information
                                  (handling, then extraction) are the ones that
                                  give way as the window narrows. -->
-                            <DataGrid Style="{StaticResource DataTable}"
+                            <DataGrid Style="{StaticResource ReviewTable}"
                                       ui:TableLayout.FillColumn="1"
                                       AutoGenerateColumns="False"
                                       ItemsSource="{Binding Questions}"
@@ -124,7 +140,7 @@
                                       SelectionMode="Single"
                                       AutomationProperties.Name="Questions in this mark scheme">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Question" Width="110"
+                                    <DataGridTextColumn Header="Question" Width="100"
                                                         Binding="{Binding DisplayLabel}" />
                                     <!-- A demo placeholder is not an answer, so it is
                                          set in italic muted text: it reads as a
@@ -134,8 +150,15 @@
                                                         Binding="{Binding AnswerSummary}">
                                         <DataGridTextColumn.ElementStyle>
                                             <Style TargetType="TextBlock">
+                                                <!-- Two lines at this row height, so an
+                                                     answer reads instead of being clipped
+                                                     after twenty characters. The whole
+                                                     text is in the tooltip. -->
+                                                <Setter Property="TextWrapping" Value="Wrap" />
                                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                <Setter Property="MaxHeight" Value="34" />
                                                 <Setter Property="VerticalAlignment" Value="Center" />
+                                                <Setter Property="ToolTip" Value="{Binding AnswerSummary}" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding AnswerIsPlaceholder}"
                                                                  Value="True">
@@ -147,23 +170,26 @@
                                             </Style>
                                         </DataGridTextColumn.ElementStyle>
                                     </DataGridTextColumn>
-                                    <DataGridTextColumn Header="Marks" Width="70"
+                                    <DataGridTextColumn Header="Marks" Width="68"
                                                         Binding="{Binding MarksText}"
                                                         ui:TableLayout.Priority="1" />
-                                    <DataGridTextColumn Header="Extraction" Width="120"
+                                    <DataGridTextColumn Header="Extraction" Width="108"
                                                         Binding="{Binding StatusText}"
                                                         ui:TableLayout.Priority="2" />
-                                    <DataGridTextColumn Header="Handling" Width="110"
+                                    <DataGridTextColumn Header="Handling" Width="96"
                                                         Binding="{Binding StateText}"
                                                         ui:TableLayout.Priority="3" />
-                                    <DataGridTemplateColumn Header="Decision" Width="240">
+                                    <DataGridTemplateColumn Header="Decision" Width="242">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <ComboBox Margin="2"
+                                                <ComboBox Margin="6,4" MinHeight="30" MinWidth="196"
+                                                          VerticalAlignment="Center"
+                                                          Padding="8,3"
                                                           ItemsSource="{Binding DataContext.DecisionOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                           DisplayMemberPath="Label"
                                                           SelectedValuePath="Code"
                                                           SelectedValue="{Binding Decision, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          ToolTip="Mark automatically, check it by hand, or skip the question"
                                                           AutomationProperties.Name="Handling decision" />
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>

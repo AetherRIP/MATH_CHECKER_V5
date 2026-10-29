@@ -40,6 +40,12 @@ log = logging.getLogger("gemini.proxy")
 #: pure overhead: one paper with 20 prepared pages paid 20 lookups per job.
 REMOTE_VERIFY_TTL_SECONDS = 900.0
 
+#: How long a pre-flight probe verdict is trusted. A key that answered is
+#: trusted for an hour; a refusal only until a cooldown could have expired,
+#: so a recovered key is never sidelined by a stale verdict.
+PROBE_SUCCESS_TTL_SECONDS = 3600.0
+PROBE_FAILURE_TTL_SECONDS = 30.0
+
 # Errors that justify trying ANOTHER KEY within the same request:
 # invalid_key (this credential is dead) and rate_limited (this key's quota is
 # exhausted). "temporary" (503 high demand) is included as well: free-tier
@@ -161,7 +167,12 @@ class KeyAwareClient:
         # token. A quota-exhausted key answers 429 in a few KB, so a dead key
         # never costs 15 MB of uploads (§5/§6 — observed: 4 quota-dead keys
         # cost ~58 MB of pointless re-uploads for one student).
-        self._probe_cache: dict[tuple[str, str], bool] = {}
+        # (key, model) -> (usable, expires_at). A PASS is kept: re-probing a key
+        # that just answered spends a request to learn nothing. A REFUSAL is
+        # kept only briefly — a cooldown that has expired must be re-probed, or
+        # the key is quietly sidelined for the life of the process and its jobs
+        # wait on a verdict that is no longer true.
+        self._probe_cache: dict[tuple[str, str], tuple[bool, float]] = {}
         self._client_lock = threading.Lock()
         self._sdk_clients: dict[str, object] = {}
         self._current_fp: str | None = None
@@ -557,8 +568,11 @@ class KeyAwareClient:
         cache_key = (fp, model)
         with self._client_lock:
             cached = self._probe_cache.get(cache_key)
+        if cached is not None and cached[1] > time.time():
+            return cached[0]
         if cached is not None:
-            return cached
+            with self._client_lock:
+                self._probe_cache.pop(cache_key, None)
         try:
             client = self._client_for_fp(fp)
             client.models.generate_content(
@@ -584,8 +598,12 @@ class KeyAwareClient:
             log_event("gemini.proxy", "key pre-flight probe",
                       level=logging.WARNING, fingerprint=fp, model=model,
                       kind=kind, reupload_allowed=ok)
+        # A usable key stays usable for a long time; a refusal is provisional
+        # and re-tested once the key could plausibly have recovered.
+        expiry = time.time() + (PROBE_SUCCESS_TTL_SECONDS if ok
+                                else PROBE_FAILURE_TTL_SECONDS)
         with self._client_lock:
-            self._probe_cache[cache_key] = ok
+            self._probe_cache[cache_key] = (ok, expiry)
         return ok
 
     def _reupload_for_key(self, contents, fp: str):

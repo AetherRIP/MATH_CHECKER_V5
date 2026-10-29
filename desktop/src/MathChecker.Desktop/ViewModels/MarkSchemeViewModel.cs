@@ -221,6 +221,7 @@ public sealed class MarkSchemeViewModel : PageViewModel
     private string _summaryLine = "No mark scheme is open.";
     private string _countsLine = string.Empty;
     private int _unresolved;
+    private int _automatic;
     private int _manual;
     private int _skipped;
     private int _totalMarks;
@@ -544,6 +545,7 @@ public sealed class MarkSchemeViewModel : PageViewModel
 
         var summary = payload.TryGetProperty("summary", out var s) ? s : default;
         _unresolved = Int(summary, "unresolved");
+        _automatic = Int(summary, "automatic");
         _manual = Int(summary, "manual");
         _skipped = Int(summary, "skipped");
         _totalMarks = Int(summary, "total_marks");
@@ -555,7 +557,7 @@ public sealed class MarkSchemeViewModel : PageViewModel
         CountsLine =
             $"{questions} questions"
             + (parts > 0 ? $" with {parts} sub-questions" : string.Empty)
-            + $"  ·  {_manual} manual  ·  {_skipped} skipped"
+            + $"  ·  {_automatic} automatic  ·  {_manual} manual  ·  {_skipped} skipped"
             + (_unresolved > 0 ? $"  ·  {_unresolved} undecided" : "  ·  all decided")
             + $"  ·  {_markedMarks} of {_totalMarks} marks marked"
             + (_skippedMarks > 0 ? $" ({_skippedMarks} skipped)" : string.Empty);

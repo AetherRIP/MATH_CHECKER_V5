@@ -380,6 +380,174 @@ class TestProviderHealth:
         assert health.available()[0] is True
 
 
+# ======================================================= key-availability gate
+
+class TestKeyAvailabilityGate:
+    """No key can serve a request => no worker, no child, no prompt.
+
+    The recorded outage showed one paper starting 60 times because every
+    capacity park requeued it and the dispatcher started a fresh child for a
+    request the keys could only refuse.
+    """
+
+    _COOLING = {
+        "total": 3, "healthy": 0, "cooldown": 3, "invalid": 0,
+        "disabled": 0, "has_keys": True, "all_down": True,
+        "keys": [{"status": "COOLDOWN", "cooldown_remaining": 30} for _ in range(3)],
+    }
+
+    _HEALTHY = {
+        "total": 3, "healthy": 2, "cooldown": 1, "invalid": 0,
+        "disabled": 0, "has_keys": True, "all_down": False,
+        "keys": [{"status": "HEALTHY", "cooldown_remaining": 0}],
+    }
+
+    def test_dispatch_pauses_while_every_key_is_cooling(self, fresh_state, monkeypatch):
+        pool = _pool()
+        monkeypatch.setattr(pool.keys, "status", lambda: dict(self._COOLING))
+        job_id = _insert_job(status="QUEUED", attempts=0)
+
+        pool._keys_next_check = 0.0
+        pool._dispatch_queued()
+
+        row = _job_row(job_id)
+        assert row["status"] == "QUEUED", "nothing may be launched without a key"
+        assert pool._keys_blocked is True
+        assert "Waiting for an API key" in (row["stage_detail"] or "")
+
+        # The first key that frees up reopens the queue, and the message clears.
+        monkeypatch.setattr(pool.keys, "status", lambda: dict(self._HEALTHY))
+        pool._keys_next_check = 0.0
+        assert pool._keys_ready() is True
+        assert pool._keys_blocked is False
+
+    def test_a_configured_but_empty_key_store_is_not_this_gate(self, fresh_state):
+        """No keys at all is a setup problem, handled with an actionable error."""
+        pool = _pool()
+        pool.keys.status = lambda: {"total": 0, "healthy": 0, "cooldown": 0,
+                                    "invalid": 0, "disabled": 0,
+                                    "has_keys": False, "all_down": False,
+                                    "keys": []}
+        pool._keys_next_check = 0.0
+        assert pool._keys_ready() is True
+
+    def test_park_delay_follows_the_first_key_that_recovers(self, fresh_state):
+        pool = _pool()
+        pool.keys.status = lambda: {
+            "total": 2, "healthy": 0, "cooldown": 2, "invalid": 0, "disabled": 0,
+            "has_keys": True, "all_down": True,
+            "keys": [{"cooldown_remaining": 40}, {"cooldown_remaining": 6}],
+        }
+        # Waiting the LATEST cooldown would sleep through the window in which
+        # the second key is already usable.
+        assert pool._capacity_delay() == 8.0
+
+
+class TestStopForDiagnosis:
+    """A retry condition stops the job and keeps the evidence.
+
+    The whole point of this policy: no job may be sent again just because it
+    failed again. Past the retry budget the job is FAILED with
+    ``retry_suspended``, the diagnosis is in its stage history, and the teacher
+    resumes it deliberately.
+    """
+
+    def test_capacity_parks_stop_a_job_instead_of_grinding_the_budget(
+            self, fresh_state, monkeypatch):
+        timers = _fake_timers(monkeypatch)
+        pool = _pool()
+        job_id = _insert_job(status="WAITING_FOR_API", attempts=0)
+
+        for _ in range(pool.MAX_PARKS_BEFORE_SUSPEND):
+            pool._park_job(job_id, 5.0, reason="RATE_LIMIT: waiting for API capacity")
+        assert _job_row(job_id)["status"] == "WAITING_FOR_API"
+
+        pool._park_job(job_id, 5.0, reason="RATE_LIMIT: waiting for API capacity")
+
+        row = _job_row(job_id)
+        assert row["status"] == "FAILED"
+        assert row["error_code"] == "retry_suspended"
+        assert "Stopped for diagnosis" in (row["stage_detail"] or "")
+        # The evidence survives: stage history names the stop.
+        stages = [r["stage"] for r in db.query(
+            "SELECT stage FROM job_stage_events WHERE job_id = ? ORDER BY id", (job_id,))]
+        assert any("Stopped for diagnosis" in (s or "") for s in stages)
+        # And no further attempt was scheduled for it.
+        assert not [t for t in timers if job_id in str(t)]
+
+    def test_a_job_already_retried_past_budget_is_stopped_not_reissued(
+            self, fresh_state, monkeypatch):
+        _fake_timers(monkeypatch)
+        pool = _pool()
+        job_id = _insert_job(status="MARKING", attempts=3, max_attempts=3)
+
+        pool._handle_failure(
+            _worker(), _job_row(job_id),
+            _worker_result(job_id, error="Gemini answered but the body was cut off",
+                           error_kind="unexpected_response"))
+
+        row = _job_row(job_id)
+        assert row["status"] == "FAILED", "the attempt budget is a hard stop"
+        assert row["attempts"] == 3, "history is preserved, never reset"
+        stages = [r["stage"] for r in db.query(
+            "SELECT stage FROM job_stage_events WHERE job_id = ? ORDER BY id", (job_id,))]
+        assert any("Diagnosed" in (s or "") for s in stages), stages
+
+
+def test_concurrent_enqueues_create_exactly_one_job(fresh_state):
+    """Two callers asking at the same moment get one correction, not two."""
+    import threading
+    from app.jobs.manager import DuplicateJobError, JobManager
+
+    manager = JobManager()
+    results: list[str] = []
+    errors: list[Exception] = []
+    barrier = threading.Barrier(6)
+
+    def attempt() -> None:
+        barrier.wait(timeout=5)
+        try:
+            results.append(manager.enqueue(
+                submission_id="s-race", coursework_id="w-race", course_id="c",
+                student_id="u-race", student_name="Race")["id"])
+        except DuplicateJobError as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=attempt) for _ in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    rows = db.query("SELECT id, status FROM correction_jobs WHERE submission_id = 's-race'")
+    active = [r for r in rows if r["status"] in ("QUEUED", "STARTING", "PREPARING")]
+    assert len(active) == 1, rows
+    assert len(rows) == 1, "one row per submission, not just one active"
+    assert len(set(results)) == 1, results
+
+
+def test_an_aggregate_quota_storm_is_never_a_credential_verdict():
+    """A 429 storm across keys must stay retryable.
+
+    The recorded failures carried a joined "all configured models failed"
+    message with a 429 while `error_kind` said invalid_key: the job was
+    recorded as authentication_error (permanent) and failed on the spot,
+    though every key was merely out of quota.
+    """
+    storm = ("All configured Gemini models failed. gemini-3.6-flash: 429 "
+             "RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You "
+             "exceeded your current quota, please check your plan'}}")
+    for kind in ("invalid_key", "forbidden"):
+        f = rp.failure_for_kind(kind, storm)
+        assert f.cls == rp.RATE_LIMIT, (kind, f.cls)
+        assert f.retryable is True
+
+    # A verdict on ONE credential still fails fast — the rule is unchanged.
+    f = rp.failure_for_kind("invalid_key", "API key not valid. Please pass a valid API key.")
+    assert f.cls == rp.AUTHENTICATION_ERROR
+    assert f.retryable is False
+
+
 # ================================================= prepared-input cache
 
 def _pool(worker_count: int = 1):

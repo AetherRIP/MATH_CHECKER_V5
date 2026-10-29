@@ -220,6 +220,15 @@ def _record_scheme_audit(job: dict, result_id: str, result: dict,
 class WorkerPool:
     """Owns the worker set; round-robins QUEUED jobs onto idle workers."""
 
+    #: How many automatic retries a job may make before it is STOPPED for
+    #: diagnosis with its evidence intact. Retrying is not free: every attempt
+    #: is a full request, and a loop of them is how one paper burned 60 starts.
+    AUTO_RETRY_SUSPEND_AFTER = 2
+
+    #: Capacity parks allowed before a job is stopped for diagnosis. Four waits
+    #: for a cooldown that never clears is a provider problem, not patience.
+    MAX_PARKS_BEFORE_SUSPEND = 4
+
     def __init__(self, worker_count: int, key_manager: KeyManager | None = None):
         self._lock = threading.RLock()
         self._wake = threading.Event()
@@ -232,10 +241,19 @@ class WorkerPool:
         self._retries_total = 0
         self._usage_blocked = False
         self._provider_blocked = False
+        # Key-availability gate state (see _keys_ready).
+        self._keys_blocked = False
+        self._keys_next_check = 0.0
+        self._keys_last_ready = True
         # Parked-wait accounting per job (spec §2/§3): total seconds a job
         # has spent waiting for API capacity. Bounds the WAITING_FOR_API
         # loop so an outage ends in a clean FAILED, never an infinite park.
         self._api_wait_total: dict[str, float] = {}
+        # Capacity parks per job. Parks are cheap now (nothing is sent while
+        # keys cool), but a job that has parked this many times is not waiting
+        # for a cooldown — it is evidence that the provider cannot serve this
+        # paper. Stop and keep the evidence instead of grinding the budget.
+        self._park_counts: dict[str, int] = {}
         # Jobs the teacher explicitly asked to reprocess despite a stored
         # result (§23): the guard honours this as a deliberate override.
         self._force_reprocess: set[str] = set()
@@ -372,6 +390,14 @@ class WorkerPool:
                 "WHERE status = ?", (time.time(), "QUEUED"))
             log_event("workers", "dispatch resumed (provider healthy)")
 
+        # Key-availability gate (§4): when every key is cooling down there is
+        # nothing a worker can do — but the old behaviour started one anyway,
+        # spawned a child, rebuilt the whole multimodal prompt and took the
+        # refusal. One paper was logged starting 60 times that way. The queue
+        # now stands still until a key is actually usable.
+        if not self._keys_ready():
+            return
+
         jobs = db.query(
             "SELECT * FROM correction_jobs WHERE status = ? ORDER BY created_at ASC",
             ("QUEUED",),
@@ -419,6 +445,11 @@ class WorkerPool:
                     "updated_at = ? WHERE id = ?",
                     ("STARTING", worker.worker_id, time.time(), time.time(), job_row["id"]),
                 )
+            if (job_row["attempts"] or 0) == 0:
+                # A fresh (or re-armed) job starts with a clean capacity ledger:
+                # the sleep counts from a previous episode must not shorten the
+                # patience of a job the teacher deliberately queued again.
+                self._park_counts.pop(job_row["id"], None)
             self._report(job_row["id"], status="PREPARING",
                          stage="Preparing the PDFs", progress=0.0)
             try:
@@ -1399,6 +1430,42 @@ class WorkerPool:
             delay=round(decision.delay, 1),
         )
 
+        # Stop-on-retry: every retry condition is recorded as a diagnosis BEFORE
+        # another attempt may be scheduled, and a job that has already spent its
+        # automatic retries is stopped with its evidence intact instead of being
+        # sent again. The teacher resumes it deliberately from Corrections.
+        from ..jobs.manager import record_stage_event
+        record_stage_event(
+            job["id"], status=job["status"],
+            stage=(f"Diagnosed {failure.cls} (attempt {attempts}/"
+                   f"{job['max_attempts']}): {decision.reason[:90]}"),
+            progress=None)
+        if (decision.action == "retry"
+                and decision.retries_used >= self.AUTO_RETRY_SUSPEND_AFTER):
+            record_stage_event(
+                job["id"], status="FAILED",
+                stage=f"Stopped for diagnosis after {decision.retries_used} retries",
+                progress=None)
+            db.execute(
+                "UPDATE correction_jobs SET status = ?, stage_detail = ?, "
+                "error_code = 'retry_suspended', finished_at = ?, updated_at = ? "
+                "WHERE id = ?",
+                ("FAILED",
+                 f"Stopped for diagnosis after {decision.retries_used} automatic "
+                 f"retries ({failure.cls}) — evidence kept; retry when you have "
+                 f"checked why it failed",
+                 time.time(), time.time(), job["id"]),
+            )
+            # The prepared input and stage history are NOT cleaned up: they are
+            # the evidence.
+            self._api_wait_total.pop(job["id"], None)
+            log_event("workers", "job stopped for diagnosis (no further retries)",
+                      level=logging.ERROR, worker_id=worker.worker_id,
+                      job_id=job["id"], student=job.get("student_name"),
+                      error_class=failure.cls, retries=decision.retries_used,
+                      error=(result.error or "")[:300])
+            return
+
         if decision.action == "park":
             self._park_job(job["id"], decision.delay, reason=decision.reason)
             return
@@ -1456,14 +1523,68 @@ class WorkerPool:
 
     # -- retry architecture helpers (§2/§3/§5/§9/§11) -------------------------
 
+    def _keys_ready(self) -> bool:
+        """True when at least one key can serve a request right now.
+
+        Deliberately NOT about having no keys at all: that is a configuration
+        problem, and the dispatch path already fails it fast with a message the
+        teacher can act on. This gate only covers "all of them are cooling".
+        """
+        now_ts = time.time()
+        if now_ts < self._keys_next_check:
+            return self._keys_last_ready
+        # Re-reading key health touches the secret store; twice a second on a
+        # 0.5s wake loop is pointless, so the answer is good for two seconds.
+        self._keys_next_check = now_ts + 2.0
+        ready = True
+        detail = ""
+        try:
+            state = self.keys.status()
+            if state.get("has_keys") and int(state.get("healthy", 0)) == 0:
+                ready = False
+                remaining = min((int(k.get("cooldown_remaining") or 0)
+                                 for k in state.get("keys") or []
+                                 if int(k.get("cooldown_remaining") or 0) > 0),
+                                default=0)
+                detail = (f"Waiting for an API key — every key is cooling down "
+                          f"(~{remaining}s)" if remaining > 0
+                          else "Waiting for an API key — none is usable right now")
+        except Exception:
+            ready = True
+        self._keys_last_ready = ready
+
+        if ready:
+            if self._keys_blocked:
+                self._keys_blocked = False
+                db.execute(
+                    "UPDATE correction_jobs SET stage_detail = NULL, updated_at = ? "
+                    "WHERE status = ?", (time.time(), "QUEUED"))
+                log_event("workers", "dispatch resumed (API key available)")
+            return True
+
+        if not self._keys_blocked:
+            self._keys_blocked = True
+            db.execute(
+                "UPDATE correction_jobs SET stage_detail = ?, updated_at = ? "
+                "WHERE status = ?", (detail, time.time(), "QUEUED"))
+            log_event("workers", "dispatch paused (no usable API key)",
+                      level=logging.WARNING, detail=detail)
+        return False
+
     def _capacity_delay(self) -> float:
-        """How long until some key likely becomes usable (cooldown + buffer)."""
+        """How long until a key becomes usable again (the FIRST one to free up).
+
+        The earliest cooldown is the right wait: the maximum would sleep through
+        the window in which most keys are already back, and a fixed 15s ignored
+        a 5s cooldown that had already expired.
+        """
         try:
             status = self.keys.status()
-            remaining = max((int(k["cooldown_remaining"])
-                             for k in status["keys"]), default=0)
-            if remaining > 0:
-                return float(remaining + 5.0)
+            waiting = [int(k["cooldown_remaining"])
+                       for k in status["keys"]
+                       if int(k.get("cooldown_remaining") or 0) > 0]
+            if waiting:
+                return float(min(waiting) + 2.0)
         except Exception:
             pass
         return 15.0
@@ -1487,8 +1608,31 @@ class WorkerPool:
         API_WAIT_BUDGET_SECONDS, so an outage ends in a clean FAILED instead
         of an infinite park/requeue loop (spec §2 — no infinite retries).
         """
-        from ..jobs.manager import API_WAIT_BUDGET_SECONDS
+        from ..jobs.manager import API_WAIT_BUDGET_SECONDS, record_stage_event
         delay = max(1.0, float(delay))
+
+        parks = self._park_counts.get(job_id, 0) + 1
+        self._park_counts[job_id] = parks
+        if parks > self.MAX_PARKS_BEFORE_SUSPEND:
+            record_stage_event(job_id, status="FAILED",
+                               stage=f"Stopped for diagnosis after {parks - 1} "
+                                     f"capacity waits", progress=None)
+            db.execute(
+                "UPDATE correction_jobs SET status = ?, stage_detail = ?, "
+                "error_code = 'retry_suspended', finished_at = ?, updated_at = ? "
+                "WHERE id = ?",
+                ("FAILED",
+                 f"Stopped for diagnosis: the provider could not serve this paper "
+                 f"after {parks - 1} capacity waits ({reason[:80]}). Evidence and "
+                 f"prepared files kept — retry once the provider is healthy",
+                 time.time(), time.time(), job_id),
+            )
+            self._park_counts.pop(job_id, None)
+            self._api_wait_total.pop(job_id, None)
+            log_event("workers", "job stopped for diagnosis (capacity never returned)",
+                      level=logging.ERROR, job_id=job_id, parks=parks - 1,
+                      reason=reason[:160])
+            return
         waited = self._api_wait_total.get(job_id, 0.0)
         if waited + delay > API_WAIT_BUDGET_SECONDS:
             db.execute(

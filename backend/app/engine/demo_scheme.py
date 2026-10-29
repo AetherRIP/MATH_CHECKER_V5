@@ -11,8 +11,8 @@ never be mistaken for a real read:
 
 * every question carries ``"demo": True``;
 * the decision row reports the extraction state ``DEMO``, which is not
-  ``RELIABLE``, so each row is treated as needing a human and defaults to a
-  manual check rather than automatic marking;
+  ``RELIABLE``, so no row here can pass for an extraction and the review page
+  carries a notice while the synthetic structure is in use;
 * the record is stored with ``model="demo"``, and the review page shows a
   notice while that record is in use.
 

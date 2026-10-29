@@ -63,14 +63,30 @@ def test_an_entry_with_no_answer_is_flagged_rather_than_invented():
     assert by_label["3"]["answers"] == []
 
 
-def test_an_unreliable_entry_is_proposed_for_manual_check_not_auto():
+def test_every_entry_is_proposed_for_automatic_marking():
+    """Marking is the default; an independent check is the teacher's exception.
+
+    An unreachable answer must not silently turn a whole scheme into manual
+    checks nobody asked for. It stays visible as the row's extraction status
+    instead, and the teacher filters it and decides.
+    """
     rows, _ = sd.rows_for(_blueprint(), CW)
     by_label = {r["question_label"]: r for r in rows}
 
     assert by_label["1(a)"]["decision"] == sd.AUTO
     assert by_label["1(a)"]["decided"] is False, "a proposal is not a decision"
-    assert by_label["3"]["decision"] == sd.MANUAL
+    assert by_label["3"]["decision"] == sd.AUTO
     assert by_label["3"]["decided"] is False
+    # Nothing is hidden: the row still says the extraction could not support it.
+    assert by_label["3"]["reliable"] is False
+    assert by_label["3"]["extraction_status"] == sd.CRITERIA_ONLY
+    # And the teacher can still choose the other two handlings on that row.
+    sd.set_decision(CW, "3", sd.MANUAL, blueprint=_blueprint())
+    after, _ = sd.rows_for(_blueprint(), CW)
+    assert {r["question_label"]: r for r in after}["3"]["decision"] == sd.MANUAL
+    sd.set_decision(CW, "3", sd.SKIP, blueprint=_blueprint())
+    skipped, _ = sd.rows_for(_blueprint(), CW)
+    assert {r["question_label"]: r for r in skipped}["3"]["skipped"] is True
 
 
 # -------------------------------------------------------------- the decisions
@@ -155,9 +171,11 @@ def test_a_skipped_question_is_never_counted_as_earned_zero():
     assert stats["skipped"] == 1
     assert stats["skipped_marks"] == 2
     assert stats["marked_marks"] == 6
-    # Question 1, its remaining part (a) and question 2 are automatic; the
-    # skipped part is NOT folded into that count — it is its own state.
-    assert stats["automatic"] == 3
+    # Every other row is proposed for automatic marking (question 3 included:
+    # its handling is a proposal, and proposals are automatic). The skipped part
+    # is NOT folded into that count — it is its own state.
+    assert stats["automatic"] == 4
+    assert stats["manual"] == 0
 
 
 # --------------------------------------------------------------- answer edits
@@ -192,7 +210,8 @@ def test_an_edited_answer_does_not_silently_approve_the_question():
     rows, _ = sd.rows_for(_blueprint(), CW)
     row = next(r for r in rows if r["question_label"] == "3")
     assert row["decided"] is False
-    assert row["decision"] == sd.MANUAL
+    # It keeps the same proposed default every other row has.
+    assert row["decision"] == sd.AUTO
 
 
 # -------------------------------------------------------------- the history
@@ -328,13 +347,19 @@ def test_a_manual_question_is_flagged_for_review_without_losing_its_marks():
 
 
 def test_only_real_decisions_are_treated_as_manual():
-    """A PROPOSED manual check is not an instruction from the teacher."""
+    """A proposed handling is not an instruction from the teacher."""
     rows, _ = sd.rows_for(_blueprint(), CW)
     proposed = next(r for r in rows if r["question_label"] == "3")
-    assert proposed["decision"] == sd.MANUAL and proposed["decided"] is False
+    assert proposed["decision"] == sd.AUTO and proposed["decided"] is False
 
     # Nothing was decided, so correction is given no manual keys.
     assert sd.manual_keys(CW) == set()
+    assert sd.manual_keys(CW, _blueprint()) == set()
+
+    # Once the teacher asks for an independent check, correction is told.
+    sd.set_decision(CW, "3", sd.MANUAL, blueprint=_blueprint())
+    assert sd.manual_keys(CW) == {"3"}
+    assert sd.manual_keys(CW, _blueprint()) == {"3"}
 
     sd.set_decision(CW, "3", sd.MANUAL, blueprint=_blueprint())
     assert sd.manual_keys(CW) == {"3"}

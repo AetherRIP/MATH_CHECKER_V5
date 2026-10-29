@@ -266,21 +266,55 @@ class JobManager:
                 page_count: int | None = None) -> dict:
         now_ts = time.time()
         job_id = uuid.uuid4().hex
+        # One row per submission. The DB index only covers ACTIVE states, so a
+        # submission whose job FAILED or was CANCELLED used to get a SECOND row
+        # when the batch was re-run — 20 students ended up with two jobs for one
+        # paper, each paying the full prompt cost. Re-arm the existing row
+        # instead, and reuse an existing result rather than marking twice.
+        reused_id: str | None = None
+        rearmed = False
         try:
             with db.transaction() as conn:
-                conn.execute(
-                    """
-                    INSERT INTO correction_jobs(
-                        id, submission_id, coursework_id, course_id, student_id,
-                        student_name, status, created_at, updated_at, max_attempts,
-                        is_remark, paper_name, page_count)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    """,
-                    (job_id, submission_id, coursework_id, course_id,
-                     student_id, student_name, QUEUED, now_ts, now_ts,
-                     self._max_attempts, 1 if is_remark else 0,
-                     paper_name, page_count),
-                )
+                existing = None
+                if submission_id:
+                    existing = conn.execute(
+                        "SELECT id, status, result_id, is_remark FROM correction_jobs "
+                        "WHERE submission_id = ? ORDER BY created_at DESC LIMIT 1",
+                        (submission_id,)).fetchone()
+                if existing is not None and not is_remark:
+                    status = existing["status"]
+                    if status in ACTIVE_STATUSES:
+                        raise DuplicateJobError(existing["id"])
+                    if existing["result_id"]:
+                        # Already corrected: the caller gets that job, not a
+                        # second marking of the same paper.
+                        reused_id = existing["id"]
+                        job_id = existing["id"]
+                    elif not existing["is_remark"]:
+                        conn.execute(
+                            "UPDATE correction_jobs SET status = ?, attempts = 0, "
+                            "error = NULL, error_code = NULL, finished_at = NULL, "
+                            "started_at = NULL, progress = 0, stage_detail = ?, "
+                            "worker_id = NULL, updated_at = ?, max_attempts = ? "
+                            "WHERE id = ?",
+                            (QUEUED, "Queued again (same paper, no duplicate job)",
+                             now_ts, self._max_attempts, existing["id"]))
+                        rearmed = True
+                        job_id = existing["id"]
+                if reused_id is None and not rearmed:
+                    conn.execute(
+                        """
+                        INSERT INTO correction_jobs(
+                            id, submission_id, coursework_id, course_id, student_id,
+                            student_name, status, created_at, updated_at, max_attempts,
+                            is_remark, paper_name, page_count)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        """,
+                        (job_id, submission_id, coursework_id, course_id,
+                         student_id, student_name, QUEUED, now_ts, now_ts,
+                         self._max_attempts, 1 if is_remark else 0,
+                         paper_name, page_count),
+                    )
         except sqlite3.IntegrityError as exc:
             existing = db.query_one(
                 "SELECT id FROM correction_jobs WHERE submission_id = ? AND status IN "
@@ -289,7 +323,16 @@ class JobManager:
             )
             raise DuplicateJobError(existing["id"] if existing else None) from exc
         job = self.get(job_id)
-        record_stage_event(job_id, status=QUEUED, stage="Queued", progress=0.0)
+        if reused_id is not None:
+            log_event("jobs", "enqueue reused the existing correction", job_id=job_id,
+                      submission_id=submission_id, student=student_name)
+            return job
+        if rearmed:
+            log_event("jobs", "job re-armed instead of duplicated", job_id=job_id,
+                      submission_id=submission_id, student=student_name)
+        record_stage_event(job_id, status=QUEUED,
+                           stage="Queued again" if rearmed else "Queued",
+                           progress=0.0)
         log_event("jobs", "job enqueued", job_id=job_id,
                   submission_id=submission_id, student=student_name)
         self._publish_stage(job)
