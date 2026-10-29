@@ -64,6 +64,13 @@ _FORBIDDEN_RE = re.compile(
 #: rate-limited.
 _MODEL_ABSENT_RE = re.compile(
     r"limit\s*:\s*0|model_no_access|"
+    # Google's real 404 names the model as a path, not as the word "model":
+    # "models/gemini-9.9-x is not found for API version v1beta, or is not
+    # supported for generateContent". Without these two alternatives the
+    # verdict was ``unknown``, so a model that does not exist looked like an
+    # unexplained fault instead of a route that simply is not available.
+    r"models?/[a-z0-9._\-]+[^\n]{0,80}?\bis not found\b|"
+    r"\bis not found for api version\b|"
     r"\bmodel\b[^\n]{0,80}?\b(?:not found|not_found|does not exist|"
     r"is not supported|does not support|decommissioned|deprecated)\b", re.I)
 
@@ -148,6 +155,77 @@ def http_status_of(exc_or_message: object) -> int | None:
     return None
 
 
+_QUOTA_ID_RE = re.compile(
+    r"['\"]quotaId['\"]\s*:\s*['\"]([A-Za-z0-9_\-]+)")
+_RETRY_DELAY_JSON_RE = re.compile(
+    r"['\"]retryDelay['\"]\s*:\s*['\"]([0-9.]+)s")
+
+
+def _walk_quota_details(node: object, ids: list[str]) -> float | None:
+    """Collect ``quotaId`` values and any ``retryDelay`` from a provider body."""
+    delay: float | None = None
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "quotaId" and isinstance(value, str):
+                ids.append(value)
+            elif key == "retryDelay" and isinstance(value, str):
+                found = re.match(r"([0-9.]+)s", value.strip())
+                if found:
+                    delay = float(found.group(1))
+            else:
+                nested = _walk_quota_details(value, ids)
+                if nested is not None:
+                    delay = nested
+    elif isinstance(node, list):
+        for item in node:
+            nested = _walk_quota_details(item, ids)
+            if nested is not None:
+                delay = nested
+    return delay
+
+
+def quota_scope_of(exc_or_message: object) -> dict:
+    """Which quota a 429 actually hit, from the provider's own evidence.
+
+    Google's 429 body carries a ``QuotaFailure`` with ``quotaId`` values such as
+    ``GenerateRequestsPerMinutePerProjectPerModel-FreeTier`` (a request-RATE
+    limit that clears in seconds) or ``GenerateRequestsPerDayPerProjectPerModel
+    -FreeTier`` (the day's allowance is gone). They call for different waits, so
+    flattening both into "quota exhausted" either parks a healthy key for hours
+    over a per-minute burst or re-probes an exhausted project all day.
+
+    Returns ``{"scope": "daily"|"per_minute"|None, "quota_id": str|None,
+    "retry_after_s": float|None}``. ``None`` means the provider did not say —
+    an absence of evidence is never reported as an exhausted day.
+    """
+    ids: list[str] = []
+    delay: float | None = None
+    details = getattr(exc_or_message, "details", None)
+    if isinstance(details, (dict, list)):
+        delay = _walk_quota_details(details, ids)
+    text = str(exc_or_message or "")
+    if not ids:
+        ids = _QUOTA_ID_RE.findall(text)
+    if delay is None:
+        found = _RETRY_DELAY_JSON_RE.search(text)
+        if found:
+            try:
+                delay = float(found.group(1))
+            except ValueError:
+                delay = None
+
+    scope: str | None = None
+    for quota_id in ids:
+        lowered = quota_id.lower()
+        if "perday" in lowered:
+            scope = "daily"
+            break
+        if "perminute" in lowered or "persecond" in lowered:
+            scope = "per_minute"
+    return {"scope": scope, "quota_id": ids[0] if ids else None,
+            "retry_after_s": delay}
+
+
 def _credential_rejection(lowered: str) -> bool:
     """True only for an explicit "your credential is not accepted" verdict."""
     if any(phrase in lowered for phrase in _CREDENTIAL_REJECTION_PHRASES):
@@ -202,13 +280,23 @@ def classify_gemini_error(exc: Exception) -> dict:
     lowered = message.lower()
     status = http_status_of(message)
 
-    def _result(kind: str, text: str) -> dict:
+    def _result(kind: str, text: str, *, quota: dict | None = None) -> dict:
         # ``status`` is additive and safe: it is the provider's own number when
         # the message names one, and None otherwise. No payload, no credential.
-        return {"kind": kind, "message": text, "status": status}
+        result = {"kind": kind, "message": text, "status": status}
+        if quota is not None:
+            result["quota_scope"] = quota["scope"]
+            result["quota_id"] = quota["quota_id"]
+            result["retry_after_s"] = quota["retry_after_s"]
+        return result
 
     if any(marker in lowered for marker in _AGGREGATE_MARKERS):
-        return {**_classify_aggregate(message, message), "status": status}
+        aggregate = _classify_aggregate(message, message)
+        if aggregate["kind"] == "rate_limited":
+            quota = quota_scope_of(exc)
+            aggregate["quota_scope"] = quota["scope"]
+            aggregate["quota_id"] = quota["quota_id"]
+        return {**aggregate, "status": status}
 
     if _credential_rejection(lowered):
         return _result("invalid_key", (
@@ -229,9 +317,20 @@ def classify_gemini_error(exc: Exception) -> dict:
             "The key has no access to this model (quota limit 0); skipping to the "
             "next model in the fallback chain."))
     if _QUOTA_RE.search(lowered):
-        return _result("rate_limited", (
-            "Gemini rate/quota limit hit. The key was temporarily removed from "
-            "rotation; work continues on another available key."))
+        quota = quota_scope_of(exc)
+        if quota["scope"] == "daily":
+            text = ("This key's project has used its daily Gemini quota. The key "
+                    "is rested and the work continues on another key; it is not "
+                    "invalid and needs no replacement.")
+        elif quota["scope"] == "per_minute":
+            text = ("Gemini refused the request rate for this key (a short-lived "
+                    "limit, not an exhausted day). The key cools down briefly "
+                    "and another key takes the next request.")
+        else:
+            text = ("Gemini rate/quota limit hit. The key was temporarily "
+                    "removed from rotation; work continues on another "
+                    "available key.")
+        return _result("rate_limited", text, quota=quota)
     if _TIMEOUT_RE.search(lowered):
         return _result("timeout", (
             "The Gemini request timed out. It will retry with the next "

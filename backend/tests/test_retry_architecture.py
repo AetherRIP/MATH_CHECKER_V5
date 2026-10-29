@@ -193,6 +193,27 @@ class TestDecision:
 
 # ============================================== key cooldowns + Retry-After
 
+def _provider_429(quota_id: str, retry_delay: str) -> Exception:
+    """A 429 shaped exactly like Google's own body, including the details the
+    classification must read instead of guessing from the word "quota"."""
+    class _ProviderError(Exception):
+        def __init__(self, payload: dict):
+            self.details = payload
+            super().__init__(f"429 RESOURCE_EXHAUSTED. {json.dumps(payload)}")
+
+    return _ProviderError({"error": {
+        "code": 429,
+        "message": "You exceeded your current quota, please check your plan and billing details.",
+        "status": "RESOURCE_EXHAUSTED",
+        "details": [
+            {"@type": "type.googleapis.com/google.rpc.QuotaFailure",
+             "violations": [{"quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+                             "quotaId": quota_id, "quotaValue": "10"}]},
+            {"@type": "type.googleapis.com/google.rpc.RetryInfo",
+             "retryDelay": retry_delay},
+        ]}})
+
+
 class TestKeyCooldownPolicy:
     @pytest.fixture
     def km(self, fresh_state):
@@ -211,6 +232,30 @@ class TestKeyCooldownPolicy:
         picks = {km.acquire()[0] for _ in range(4)}
         assert picks == {next(k for k in status["keys"]
                               if k["fingerprint"] != fp)["fingerprint"]}
+
+    def test_per_minute_429_is_a_rate_limit_not_an_exhausted_day(self, km):
+        fp, _ = km.acquire()
+        km.record_failure(fp, _provider_429(
+            "GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "7s"))
+        rec = km._records[fp]
+        assert rec.rate_limit_events == 1
+        assert rec.quota_errors == 0          # a burst is not quota exhaustion
+        assert rec.cooldown_until - time.time() < 120
+
+    def test_daily_quota_429_parks_the_key_for_much_longer(self, km):
+        fp, _ = km.acquire()
+        km.record_failure(fp, _provider_429(
+            "GenerateRequestsPerDayPerProjectPerModel-FreeTier", "33s"))
+        rec = km._records[fp]
+        assert rec.quota_errors == 1
+        assert rec.cooldown_until - time.time() >= 1_500
+
+    def test_429_without_quota_evidence_is_not_reported_as_an_exhausted_day(self, km):
+        fp, _ = km.acquire()
+        km.record_failure(fp, Exception("429 RESOURCE_EXHAUSTED: slow down"))
+        rec = km._records[fp]
+        assert rec.quota_errors == 0
+        assert rec.cooldown_until - time.time() < 120
 
     def test_retry_after_hint_extends_cooldown(self, km):
         fp, _ = km.acquire()

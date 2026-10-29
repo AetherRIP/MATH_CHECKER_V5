@@ -39,6 +39,12 @@ PERMISSION_COOLDOWN_CAP_SECONDS = 3600.0      # 1 hour
 # spend one real request per hour per such key for nothing, so park it for six
 # hours: still automatic recovery, at a cost that rounds to zero.
 BILLING_COOLDOWN_SECONDS = 21_600.0           # 6 hours
+# A 429 whose own QuotaFailure says the DAY's allowance is gone cannot be fixed
+# by waiting out a per-minute cooldown. Rest it for a span a daily reset could
+# plausibly satisfy, then re-probe: long enough to stop a pointless retry storm,
+# short enough that a key never stays sidelined for the life of the process.
+DAILY_QUOTA_COOLDOWN_FLOOR_SECONDS = 1_800.0  # 30 minutes
+DAILY_QUOTA_COOLDOWN_CAP_SECONDS = 3_600.0    # 1 hour
 # How long an INVALID key rests before it is offered one trial when nothing
 # else is usable. An invalid key is skipped by ``acquire``, so it can never
 # record the success that would clear the flag: without a trial, "every key is
@@ -462,7 +468,8 @@ class KeyManager:
         rec.save()
 
     def record_failure(self, fp: str, exc: Exception) -> None:
-        kind = classify_gemini_error(exc)["kind"]
+        classified = classify_gemini_error(exc)
+        kind = classified["kind"]
         with self._lock:
             rec = self._get_or_create(fp)
         rec.failures += 1
@@ -476,9 +483,22 @@ class KeyManager:
                       level=logging.WARNING, fingerprint=fp,
                       status=http_status_of(exc))
         elif kind == "rate_limited":
+            # Both counters existed but every 429 was charged to BOTH, so the
+            # records could not tell a per-minute burst from an exhausted day.
+            # The provider's quotaId decides, and "it did not say" stays a
+            # rate-limit event rather than being invented as quota exhaustion.
             rec.rate_limit_events += 1
-            rec.quota_errors += 1
-            self._apply_cooldown(rec, kind, message=str(exc))
+            scope = classified.get("quota_scope")
+            if scope == "daily":
+                rec.quota_errors += 1
+                self._apply_cooldown(
+                    rec, kind, message=str(exc),
+                    floor=DAILY_QUOTA_COOLDOWN_FLOOR_SECONDS,
+                    cap=DAILY_QUOTA_COOLDOWN_CAP_SECONDS,
+                    quota_scope=scope)
+            else:
+                self._apply_cooldown(rec, kind, message=str(exc),
+                                     quota_scope=scope)
         elif kind == "temporary":
             # 503 / high demand (spec §4): cool THIS key down and let a
             # healthy alternative serve the next request instead of
@@ -519,7 +539,8 @@ class KeyManager:
     def _apply_cooldown(self, rec: KeyRecord, kind: str,
                         message: str | None = None, *,
                         floor: float | None = None,
-                        cap: float | None = None) -> None:
+                        cap: float | None = None,
+                        quota_scope: str | None = None) -> None:
         # exponential backoff with jitter, hard-capped — and the provider's
         # Retry-After hint always wins when it asks for longer. ``floor``/``cap``
         # let a caller that knows its failure is not a rate limit (a permission
@@ -544,7 +565,8 @@ class KeyManager:
         log_event("gemini.keys", "key entered cooldown",
                   level=logging.WARNING, fingerprint=rec.fingerprint,
                   cooldown_seconds=round(delay), kind=kind,
-                  retry_after=retry_after, status=status)
+                  retry_after=retry_after, status=status,
+                  quota_scope=quota_scope)
 
     def re_enable(self, fp: str) -> None:
         with self._lock:
