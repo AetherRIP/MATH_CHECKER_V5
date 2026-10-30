@@ -77,6 +77,23 @@ FIXED_REQUEST_TIMEOUT_MS = 120_000
 MAX_REQUEST_TIMEOUT_MS = 1_800_000  # 30 minutes
 
 
+#: The proxy's own attempt loop (``_MAX_ATTEMPTS``) is the ONE retry owner.
+#: google-genai retries inside the HTTP layer when it is given retry options,
+#: and its own default is a policy we do not control: a future SDK bump that
+#: defaulted to 3 attempts would silently multiply every 503 by the proxy's 8
+#: attempts — 24 provider requests, and 24 charges against the quota, for one
+#: logical retry. Pinning it to a single attempt also disables the SDK's
+#: implicit aiohttp retry path, so "how many times was this sent" is answerable
+#: from this file alone.
+SDK_RETRY_ATTEMPTS = 1
+
+
+def _http_options(types, timeout_ms: int):
+    """HTTP options that make this proxy the only thing that retries."""
+    retry = types.HttpRetryOptions(attempts=SDK_RETRY_ATTEMPTS)
+    return types.HttpOptions(timeout=timeout_ms, retry_options=retry)
+
+
 def timeout_for_pages(pages: int | None, configured_ms: int | None = None) -> int:
     """Per-request timeout for a paper of ``pages`` pages.
 
@@ -239,19 +256,14 @@ class KeyAwareClient:
         # Scale with the paper, not just the configured floor: a 70-page
         # booklet must not inherit the budget that fits 15 pages.
         cfg = timeout_for_pages(self.pages)
-        return genai.Client(
-            api_key=key,
-            http_options=types.HttpOptions(timeout=cfg),
-        )
+        return genai.Client(api_key=key, http_options=_http_options(types, cfg))
 
     def _sdk_client_for_current_key(self):
         from google.genai import types
         import google.genai as genai
         cfg = timeout_for_pages(self.pages)
-        return genai.Client(
-            api_key=self._current_key(),
-            http_options=types.HttpOptions(timeout=cfg),
-        )
+        return genai.Client(api_key=self._current_key(),
+                            http_options=_http_options(types, cfg))
 
     def _current_key(self) -> str:
         from ..config import get_secrets
@@ -758,6 +770,16 @@ class KeyAwareClient:
                 model, ok=error is None,
                 error=(str(error) if error is not None else ""))
         except Exception:  # noqa: BLE001 — statistics are never fatal
+            pass
+
+        try:
+            # A correction runs in a worker child process, so THIS is the
+            # process that sees a 429/503 first. The AIMD controller persists
+            # its decision, which is how the parent pool learns to slow down.
+            from ..workers.concurrency import concurrency_control
+            concurrency_control().note_outcome(ok=error is None,
+                                               error_class=error_class)
+        except Exception:  # noqa: BLE001
             pass
 
         try:

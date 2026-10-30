@@ -2095,11 +2095,14 @@ def usage_report(hours: int = 24):
     from ..net_usage import history, usage_state
     from ..api_stats import snapshot as api_stats_snapshot
     from ..gemini.provider_health import provider_health
+    from ..workers.concurrency import concurrency_control
     state = usage_state()
     from ..api_stats import ai_usage_summary
     api = {
         **api_stats_snapshot(),
         "provider": provider_health().snapshot(),
+        # The AIMD limit the pool is actually dispatching at, and why.
+        "concurrency": concurrency_control().snapshot(),
         "keys": _km().aggregate(),
         # Measured cost of recent corrections ("how many AI requests does a
         # paper take"), including the requests that failed.

@@ -307,14 +307,27 @@ class WorkerPool:
         return len(self._workers)
 
     def recommended_workers(self) -> int:
-        """Configured workers, capped by healthy API keys and sane bounds (§6)."""
+        """Configured workers, capped by healthy API keys, bounds and the
+        adaptive limit (§6).
+
+        The configured value is a CEILING. The AIMD controller can only lower
+        the figure while the provider is throttling, so a 429 storm is not
+        amplified by every worker discovering it at once; it recovers one slot
+        at a time afterwards, and its state is persisted so a restart during an
+        outage does not restore full parallelism.
+        """
         cfg = get_config()
         configured = max(1, cfg.worker.concurrency)
         healthy = max(0, self.keys.status()["healthy"])
         cap = max(1, min(8, configured))
         if healthy == 0:
             return cap  # let the WAITING_FOR_API path handle no-keys cleanly
-        return max(1, min(cap, healthy))
+        base = max(1, min(cap, healthy))
+        try:
+            from .concurrency import concurrency_control
+            return max(1, min(base, concurrency_control().limit(base)))
+        except Exception:  # noqa: BLE001 — dispatch must survive a bad stat
+            return base
 
     # -- scheduling loop (§4) ---------------------------------------------------
 
