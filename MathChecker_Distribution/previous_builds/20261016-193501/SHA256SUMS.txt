@@ -1,2 +1,0 @@
-f1ded1ea4490b2ffd190bc53aca98eb0f1e4e3beeb02fbc0cc2c71a63ea575c7  MathChecker_Setup.exe
-d595cf01b3a37f87bb2edd5afa88e89452b9c96aaf9778a20c7baa6f12842736  MathChecker_Portable.zip

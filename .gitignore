@@ -39,7 +39,11 @@ frontend/node_modules/
 *.local
 
 # --- Portable distribution build output --------------------------------------
-dist/
+# Anchored: an unanchored `dist/` or `release/` also matched
+# MathChecker_Distribution/release/, which is the finished package that IS
+# meant to be committed.
+/dist/
+/release/
 portable.flag
 
 # --- Release pipeline working copies ------------------------------------------
@@ -60,7 +64,6 @@ desktop/artifacts/
 # The finished installer/ZIP/checksums are build output (~190 MB): reproducible
 # with desktop\build_release.ps1 and too large for history. The configuration
 # that produces them (desktop\installer, desktop\build_release.ps1) is tracked.
-release/
 desktop/**/TestResults/
 *.trx
 .vs/
@@ -68,9 +71,10 @@ desktop/**/TestResults/
 *.suo
 
 # --- Logs and temp ------------------------------------------------------------
-logs/
+# Anchored so a nested `logs/` that ships with the app is not silently ignored.
+/logs/
 *.log
-tmp/
+/tmp/
 .DS_Store
 Thumbs.db
 
@@ -101,6 +105,30 @@ API_KEYS.env
 NEW_API_KEYS.txt
 *_API_KEYS.txt
 
+# --- Per-machine runtime identity and state ----------------------------------
+# These files are created on first run and describe THIS machine, not the
+# project: a device UUID, the agent's PID lock, the paused/enabled state and the
+# Windows autostart receipt (which also contains absolute local paths). They were
+# tracked once, so `git rm --cached` was needed to stop tracking them - an
+# ignore rule alone never untracks a file. The code recreates every one of them
+# on demand (tiny_agent.device_identity writes device_id when it is missing),
+# and the release allowlist already excludes them from shipped builds.
+agent/device_id
+agent/agent.lock
+agent/agent_state.json
+agent/events_queue.jsonl
+agent/agent.json
+autostart/service_install.json
+
+# --- Local scratch and agent tooling -----------------------------------------
+# .tmp/ holds throwaway probes and command output; .agents/, .claude/ and
+# .opencode/ are editor/agent tooling installed on one machine (the skills are
+# third-party content, not this project's source).
+/.tmp/
+/.agents/
+/.claude/
+/.opencode/
+
 # --- graphify (knowledge graph) ---------------------------------------------
 # graphify-out/graph.json and GRAPH_REPORT.md are the shared graph artefacts and
 # stay trackable: AGENTS.md tells agents to query graph.json before grepping and
@@ -109,6 +137,10 @@ NEW_API_KEYS.txt
 # versioned: the extraction cache, the incremental manifest, and graphify's own
 # bookkeeping files. To drop the graph from version control entirely instead,
 # replace the three lines below with a single `graphify-out/`.
+# The whole directory is machine-local: graph.json is ~20 MB and is rewritten
+# whole on every rebuild, so it is not kept in version control (it inflated
+# every diff it touched). Recreate it with `graphify update .` when you want it.
+graphify-out/
 graphify-out/cache/
 graphify-out/manifest.json
 graphify-out/.graphify_*
