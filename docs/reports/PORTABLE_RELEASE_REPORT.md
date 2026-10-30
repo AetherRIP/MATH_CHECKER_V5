@@ -103,7 +103,7 @@ completes a job) and the adapter's launch contract.
 ### 4.1 Packaged end-to-end verification — `36/36 PASS`
 `MathChecker_Distribution/scripts/verify_portable.py --zip release/MathChecker_Portable.zip`
 extracts the ZIP into a temp folder with spaces and an umlaut, then drives the
-real launchers. Full output: [PORTABLE_VERIFY_REPORT_20261012.txt](../logs/PORTABLE_VERIFY_REPORT_20261012.txt)
+real launchers. Full output: `docs/logs/PORTABLE_VERIFY_REPORT_20261012.txt`
 (this is the run against the final, UI-corrected package: `36/36`, and the
 served bundle in the ZIP is the corrected one, `assets/index-BM-mpZrv.js`).
 
