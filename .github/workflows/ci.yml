@@ -1,0 +1,115 @@
+name: CI
+
+# Every push and every pull request: the four checks that back the claims in
+# README.md ("2 555 passed", "335 passed", "build succeeds", "0 broken links").
+# Nothing here needs a provider key or the network beyond package installs; the
+# backend suite mocks every Gemini call.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  documentation:
+    name: Documentation links
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The checker only reads the working tree; no history is needed.
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # The checker is standard library only on purpose, so this job has no
+      # dependency install step that could fail for unrelated reasons.
+      - name: Check every local Markdown link
+        run: python scripts/check_doc_links.py --strict
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # `npm run build` is `tsc -b && vite build`: a type error fails the job,
+      # so this is a typecheck as well as a bundle.
+      - name: Type-check and build
+        run: npm run build
+
+  backend:
+    name: Backend tests
+    # Windows, not Linux: part of the suite exercises Windows-only behaviour
+    # (portable launcher lifecycle, release management, file locking), and this
+    # is the platform the application actually runs on.
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements-dev.txt
+
+      # conftest.py puts every test in an isolated MC5_DATA_DIR and disables the
+      # network preflight, so no keys or secrets are required here.
+      - name: Run the suite
+        run: python -m pytest backend/tests -q
+
+  desktop:
+    name: Desktop build and tests
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: "**/*.csproj"
+
+      # Release, because the WPF app's Debug build cannot be loaded on some
+      # locked-down machines (see docs/results/RELIABILITY_TEST_REPORT.md) and
+      # Release is what ships.
+      - name: Restore, build and test
+        run: dotnet test desktop/MathChecker.Desktop.slnx -c Release --nologo

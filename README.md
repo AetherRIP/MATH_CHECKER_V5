@@ -308,7 +308,10 @@ Provider calls in the backend suite are mocked; no test needs an API key and no
 test touches the network. The suite covers the marking engine and its guards,
 determinism, key management and rotation, the retry/park taxonomy, the worker
 pool (concurrency, cancellation, duplicate prevention, crash recovery), reports,
-and the HTTP surface.
+and the HTTP surface. [.github/workflows/ci.yml](.github/workflows/ci.yml) runs
+the four checks above on every push and pull request: backend and desktop on
+Windows (the platform the application runs on, and where part of the suite's
+portable-launcher coverage only applies), documentation and frontend on Linux.
 
 Beyond unit tests, the repository has three kinds of evidence:
 

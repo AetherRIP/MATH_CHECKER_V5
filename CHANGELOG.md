@@ -22,6 +22,9 @@ planned.
   randomised arm order and recorded failures.
 - `scripts/check_doc_links.py` — verifies every local Markdown link; wired into
   the development workflow.
+- `.github/workflows/ci.yml` — runs the backend suite and the desktop Release
+  tests on Windows, and the frontend build and the documentation link check on
+  Linux, on every push and pull request.
 - 16 new tests: retry amplification (9) and worker liveness (7).
 - Reports: `docs/results/PERFORMANCE_HARDENING_REPORT.md`,
   `PERFORMANCE_BENCHMARK_REPORT.md`, `RELIABILITY_TEST_REPORT.md`, plus raw

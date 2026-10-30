@@ -181,10 +181,11 @@ All commands were run from the repository root on the cleaned tree.
    how releases are distributed.
 2. **No screenshots.** Deliberate: live screens contain student names. The README
    lists the six screenshots to capture from offline demo mode.
-3. **No CI.** Every result above is a local run. A single GitHub Actions workflow
-   running `pytest`, `dotnet test -c Release`, `npm run build` and
-   `check_doc_links.py --strict` would make the badges and the claims
-   self-verifying.
+3. **CI has been written but never executed.** `.github/workflows/ci.yml` runs
+   `pytest`, `dotnet test -c Release`, `npm run build` and
+   `check_doc_links.py --strict` on every push and pull request. Every result in
+   this report is still a local run: the workflow is committed unpushed, so its
+   first green run on GitHub has not been observed yet.
 4. **Concurrent desktop refactor** is uncommitted and undescribed by these
    reports; it needs its own review and commit when it is finished.
 5. **Desktop `Debug` tests remain blocked** by the machine's application-control
