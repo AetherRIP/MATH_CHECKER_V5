@@ -84,6 +84,17 @@ def fresh_state(tmp_path, monkeypatch):
     monkeypatch.setattr(_concurrency, "_control",
                         _concurrency.ConcurrencyControl())
 
+    # The per-correction request ledger is process-global too, and unlike the
+    # other singletons it is NOT recreated per job inside a test process: a test
+    # that calls ``call_audit.begin(...)`` leaves its job id and its send count
+    # behind, and every provider call the NEXT test makes is then charged to
+    # that finished correction. Once the account reached 12 the ledger started
+    # raising ProviderBudgetExceeded inside unrelated tests — an order-dependent
+    # failure with nothing wrong in the code under test. Each test now starts
+    # with no correction in flight.
+    from app.gemini import call_audit as _call_audit
+    _call_audit.reset()
+
     # The provider circuit breaker is process-global for the same reason: a test
     # that simulates a 503 benches the model for every later test in the run, so
     # a following test would find the model "cooling down" and send nothing.

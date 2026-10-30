@@ -282,7 +282,11 @@ def classify_kind(kind: str | None, message: str = "") -> str:
 
 def classify_kind_kind_fallback(kind: str) -> str:
     """Last resort for kinds we do not know by name."""
-    if kind == "worker_crash":
+    if kind in ("worker_crash", "worker_stalled"):
+        # A stalled child was terminated by the pool (no line at all for
+        # WORKER_STALL_SECONDS). Same treatment as a crash: the process is
+        # gone, the request went with it, and infra failures earn a small
+        # bounded retry rather than a provider-request retry loop.
         return WORKER_CRASH
     if kind in FAILURE_CLASSES:
         return kind
@@ -369,6 +373,15 @@ _WAIT_BUDGET_SECONDS = 15 * 60  # total parked time per job (matches JobManager)
 #: longer provider cooldown always wins over it.
 HIGH_DEMAND_MIN_PARK_SECONDS = 60.0
 
+#: Repeated overload grows the wait: 60 s, 120 s, 240 s, 480 s, capped at
+#: 10 minutes and jittered, so a fleet of workers does not resume in lockstep
+#: against a provider that is still shedding. Parks do not consume attempts, so
+#: this growth (not the task's retry budget) is what stops a job from probing an
+#: outage every minute for hours; the existing park count and 15-minute waiting
+#: budget bound it from above.
+HIGH_DEMAND_BACKOFF_BASE_SECONDS = 60.0
+HIGH_DEMAND_BACKOFF_CAP_SECONDS = 600.0
+
 
 @dataclass(frozen=True)
 class Decision:
@@ -380,11 +393,26 @@ class Decision:
     retries_used: int = 0
 
 
+def compute_park_backoff(parks: int) -> float:
+    """Wait before re-probing the provider after the ``parks``-th park.
+
+    First park: ~60 s. Then 120, 240, 480 — capped at 10 minutes, always
+    jittered, and never below ``HIGH_DEMAND_MIN_PARK_SECONDS`` so a jitter draw
+    cannot produce a two-second storm retry.
+    """
+    parks = max(1, int(parks))
+    delay = min(HIGH_DEMAND_BACKOFF_CAP_SECONDS,
+                HIGH_DEMAND_BACKOFF_BASE_SECONDS * (2 ** (parks - 1)))
+    delay *= random.uniform(*BACKOFF_JITTER)
+    return max(HIGH_DEMAND_MIN_PARK_SECONDS, delay)
+
+
 def decide(failure: Failure, *, attempts: int, max_attempts: int,
            cfg_max_retries: int, waited_seconds: float = 0.0,
            wait_budget: float = _WAIT_BUDGET_SECONDS,
            park_hint_delay: float | None = None,
-           retry_index: int | None = None) -> Decision:
+           retry_index: int | None = None,
+           parks: int = 0) -> Decision:
     """The one question every retry must answer (spec §16).
 
     ``attempts`` = number of runs already started (claims). ``retries_used``
@@ -399,7 +427,7 @@ def decide(failure: Failure, *, attempts: int, max_attempts: int,
         if delay <= 0:
             delay = compute_backoff(max(1, retries_used + 1))
         if failure.cls == HIGH_DEMAND:
-            delay = max(delay, HIGH_DEMAND_MIN_PARK_SECONDS)
+            delay = max(delay, compute_park_backoff(parks + 1))
         if waited_seconds + delay > wait_budget:
             return Decision(
                 action=ACTION_FAIL, delay=0.0,

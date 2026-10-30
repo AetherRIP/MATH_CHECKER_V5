@@ -55,6 +55,18 @@ PROBE_FAILURE_TTL_SECONDS = 30.0
 _KEY_LEVEL_KINDS = {"invalid_key", "rate_limited", "temporary"}
 _MAX_ATTEMPTS = 8
 
+#: How many KEYS one request may be re-sent through when the failure is
+#: "temporary" (503 high demand / 500-504).
+#:
+#: A 503 means the provider is shedding work for that MODEL; it is not a
+#: property of the key, so rotating past a second key re-sends the same
+#: 41-page request into a queue that is already refusing it. Before this bound
+#: one marking call could be sent up to 8 times (the attempt loop) — each send
+#: a full page-scaled request, each charged whether or not it is answered.
+#: Rate-limited and dead keys are still rotated fully, because those failures
+#: really are per key.
+MAX_OVERLOAD_KEY_ATTEMPTS = 2
+
 # Rotating to another key means re-uploading every attached file (Gemini files
 # are key-scoped). For a large scanned submission that is tens of MB per key,
 # and quota pools are usually account-wide, so rotation buys nothing while
@@ -309,6 +321,7 @@ class KeyAwareClient:
         last_error: Exception | None = None
         tried: set[str] = set()
         cooldown_escalation = 0
+        overload_attempts = 0
         failed_fp: str | None = None
 
         for attempt in range(_MAX_ATTEMPTS):
@@ -477,11 +490,33 @@ class KeyAwareClient:
                 self._record_generate(model, request_started, error=exc,
                                       error_class=error_class,
                                       attempt=attempt + 1)
+                if kind == "timeout":
+                    # Diagnostic for a "why did this take so long" question:
+                    # the deadline in force, the paper size that set it and how
+                    # long the request actually ran before it gave up. The
+                    # request itself is abandoned client-side; the provider may
+                    # have finished (and charged) it — that is a provider fact
+                    # this process cannot observe, so it is stated, not hidden.
+                    log_event(
+                        "gemini.proxy", "request timed out",
+                        level=logging.WARNING, fingerprint=fp, model=model,
+                        pages=self.pages,
+                        timeout_ms=timeout_for_pages(self.pages),
+                        duration_ms=(int((time.time() - request_started) * 1000)
+                                     if request_started is not None else None))
                 if kind not in _KEY_LEVEL_KINDS:
                     # Model-level, invalid-request, timeout or unknown error:
                     # do not burn another key on the same failing request —
                     # hand it to the legacy per-model loop / job policy.
                     raise
+                if kind == "temporary":
+                    # Provider-side overload, not a key fault: allow one retry
+                    # on another key (a second project's quota sometimes has
+                    # room) and then surface it so the job parks instead of
+                    # re-sending the whole paper up to 8 times.
+                    overload_attempts += 1
+                    if overload_attempts >= MAX_OVERLOAD_KEY_ATTEMPTS:
+                        raise
                 # key-level problem → release the sticky key and let the next
                 # attempt pick a fresh one (same call) — or surface the error
                 # to the legacy loop when no other key exists.

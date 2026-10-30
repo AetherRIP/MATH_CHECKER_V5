@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -99,6 +100,27 @@ class _UsageRecordingClient:
         return getattr(self._inner_client, name)
 
 
+#: One journal line at a time: the heartbeat thread and the engine write to
+#: the same fd, and an interleaved line would corrupt both.
+_STDOUT_LOCK = threading.Lock()
+
+#: How often the child proves it is alive. The parent kills a child that has
+#: said nothing at all for ``adapter.WORKER_STALL_SECONDS``; a single AI call
+#: prints no stage event while it runs, so without this the parent could not
+#: tell "thinking hard" from "deadlocked".
+HEARTBEAT_SECONDS = 5.0
+
+
+def _write_line(event: dict) -> None:
+    """Write one JSON line to stdout, atomically and flushed."""
+    try:
+        with _STDOUT_LOCK:
+            sys.stdout.write(json.dumps(event, ensure_ascii=False) + "\n")
+            sys.stdout.flush()
+    except Exception:  # noqa: BLE001 — progress must never break a correction
+        pass
+
+
 def _emit(message: str | None = None, progress: float | None = None,
           stage: str | None = None) -> None:
     """Write one progress event to stdout (the result is the last line).
@@ -115,11 +137,25 @@ def _emit(message: str | None = None, progress: float | None = None,
         event["stage"] = stage
     if progress is not None:
         event["progress"] = progress
-    try:
-        sys.stdout.write(json.dumps(event, ensure_ascii=False) + "\n")
-        sys.stdout.flush()
-    except Exception:  # noqa: BLE001 — progress must never break a correction
-        pass
+    _write_line(event)
+
+
+def _start_heartbeat() -> threading.Event:
+    """Emit a heartbeat line every few seconds until the returned event is set.
+
+    Liveness only: it carries a timestamp and nothing else, so it can never
+    leak a key, a mark or a student's text into the parent's logs. It exists
+    because the parent needs to distinguish a slow provider call (which the
+    SDK bounds) from a wedged child (which nothing else bounds).
+    """
+    stop = threading.Event()
+
+    def _beat() -> None:
+        while not stop.wait(HEARTBEAT_SECONDS):
+            _write_line({"type": "heartbeat", "ts": time.time()})
+
+    threading.Thread(target=_beat, name="worker-heartbeat", daemon=True).start()
+    return stop
 
 
 def _run(job: dict) -> dict:
@@ -556,10 +592,11 @@ def main() -> int:
     try:
         job = json.loads(raw)
     except json.JSONDecodeError as exc:
-        json.dump({"ok": False, "status": "FAILED",
-                   "error": f"Bad job descriptor: {exc}"}, sys.stdout)
+        _write_line({"ok": False, "status": "FAILED",
+                     "error": f"Bad job descriptor: {exc}"})
         return 1
 
+    heartbeat_stop = _start_heartbeat()
     try:
         payload = _run(job)
     except KeyboardInterrupt:
@@ -576,8 +613,13 @@ def main() -> int:
     from app.gemini import call_audit as _audit
     payload.setdefault("ai_usage", _audit.snapshot())
 
-    json.dump(payload, sys.stdout, ensure_ascii=False, default=str)
-    sys.stdout.write("\n")
+    # The result is the LAST line: stop the heartbeat first so it cannot
+    # append a line after it (the parent takes the final line as the result).
+    heartbeat_stop.set()
+    serialised = json.dumps(payload, ensure_ascii=False, default=str)
+    with _STDOUT_LOCK:
+        sys.stdout.write(serialised + "\n")
+        sys.stdout.flush()
     return 0
 
 

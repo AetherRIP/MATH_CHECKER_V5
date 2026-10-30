@@ -1,0 +1,428 @@
+{
+  "measured_at": "2026-10-30T19:45:52Z",
+  "model": "gemini-3.6-flash",
+  "certified": false,
+  "certification_note": "No teacher has certified these papers. Marks are compared between configurations on identical input; they are not an accuracy claim against a marking scheme.",
+  "method": {
+    "prompt_version": "0c611c6b6d2c76f5",
+    "sampling": {
+      "temperature": 0.0,
+      "seed": 42
+    },
+    "scheme_pages": 21,
+    "arm_order": "randomised per paper",
+    "seed": 20261030
+  },
+  "arms": [
+    {
+      "arm": "production",
+      "settings": {},
+      "papers_attempted": 5,
+      "papers_ok": 2,
+      "papers_failed": 3,
+      "call_seconds": [
+        48.0,
+        108.6
+      ],
+      "call_median_s": 78.3,
+      "call_total_s": 156.6,
+      "input_tokens": 32779,
+      "output_tokens": 10583,
+      "thoughts_tokens": 14327,
+      "tokens_measured": 2
+    },
+    {
+      "arm": "no-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 0
+        }
+      },
+      "papers_attempted": 5,
+      "papers_ok": 0,
+      "papers_failed": 5,
+      "call_seconds": [],
+      "call_median_s": null,
+      "call_total_s": null,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "thoughts_tokens": 0,
+      "tokens_measured": 0
+    }
+  ],
+  "records": [
+    {
+      "arm": "no-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 0
+        }
+      },
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:41:58Z",
+      "upload_s": 6.9,
+      "call_s": null,
+      "wall_s": 13.9,
+      "status": "error",
+      "error": "ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}",
+      "tokens": null,
+      "questions_detected": 0,
+      "marks_awarded": null,
+      "questions": {},
+      "paper": "paper-1",
+      "paper_class": "short",
+      "paper_pages": 26,
+      "paper_sha256": "f8d88958913e4055c18f5cb76a79e1583219cfc3e219e00f3e7a048e1eaa05d7",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "production",
+      "settings": {},
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:42:12Z",
+      "upload_s": 5.4,
+      "call_s": 48.0,
+      "wall_s": 53.4,
+      "status": "ok",
+      "error": null,
+      "tokens": {
+        "input_tokens": 14752,
+        "output_tokens": 4433,
+        "cached_tokens": null,
+        "thoughts_tokens": 6130,
+        "total_tokens": 25315,
+        "estimated": false
+      },
+      "questions_detected": 9,
+      "marks_awarded": 33,
+      "questions": {
+        "47": {
+          "awarded": 4,
+          "max": 4
+        },
+        "48": {
+          "awarded": 3,
+          "max": 3
+        },
+        "49": {
+          "awarded": 3,
+          "max": 3
+        },
+        "50": {
+          "awarded": 3,
+          "max": 3
+        },
+        "51": {
+          "awarded": 5,
+          "max": 5
+        },
+        "52": {
+          "awarded": 3,
+          "max": 3
+        },
+        "53": {
+          "awarded": 3,
+          "max": 3
+        },
+        "54": {
+          "awarded": 4,
+          "max": 4
+        },
+        "55": {
+          "awarded": 5,
+          "max": 5
+        }
+      },
+      "marks_available": 33,
+      "paper": "paper-1",
+      "paper_class": "short",
+      "paper_pages": 26,
+      "paper_sha256": "f8d88958913e4055c18f5cb76a79e1583219cfc3e219e00f3e7a048e1eaa05d7",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "production",
+      "settings": {},
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:43:06Z",
+      "upload_s": 15.9,
+      "call_s": 108.6,
+      "wall_s": 124.4,
+      "status": "ok",
+      "error": null,
+      "tokens": {
+        "input_tokens": 18027,
+        "output_tokens": 6150,
+        "cached_tokens": null,
+        "thoughts_tokens": 8197,
+        "total_tokens": 32374,
+        "estimated": false
+      },
+      "questions_detected": 17,
+      "marks_awarded": 39,
+      "questions": {
+        "1(a)": {
+          "awarded": 3,
+          "max": 3
+        },
+        "1(b)": {
+          "awarded": 3,
+          "max": 3
+        },
+        "2": {
+          "awarded": 3,
+          "max": 3
+        },
+        "3": {
+          "awarded": 3,
+          "max": 3
+        },
+        "4(a)": {
+          "awarded": 2,
+          "max": 2
+        },
+        "4(b)": {
+          "awarded": 2,
+          "max": 2
+        },
+        "5(a)": {
+          "awarded": 3,
+          "max": 3
+        },
+        "5(b)": {
+          "awarded": 1,
+          "max": 3
+        },
+        "6": {
+          "awarded": 3,
+          "max": 3
+        },
+        "7(a)": {
+          "awarded": 2,
+          "max": 2
+        },
+        "8(a)": {
+          "awarded": 2,
+          "max": 2
+        },
+        "9": {
+          "awarded": 0,
+          "max": 2
+        },
+        "10(a)": {
+          "awarded": 2,
+          "max": 2
+        },
+        "10(b)": {
+          "awarded": 2,
+          "max": 2
+        },
+        "11": {
+          "awarded": 3,
+          "max": 3
+        },
+        "12": {
+          "awarded": 3,
+          "max": 3
+        },
+        "13": {
+          "awarded": 2,
+          "max": 2
+        }
+      },
+      "marks_available": 43,
+      "paper": "paper-2",
+      "paper_class": "medium",
+      "paper_pages": 32,
+      "paper_sha256": "71570eccf1ac4235046e3698b12c16f2aa51cf9c46971bd02d6fa9f7cf0346c6",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "no-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 0
+        }
+      },
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:45:10Z",
+      "upload_s": 0.0,
+      "call_s": null,
+      "wall_s": 7.5,
+      "status": "error",
+      "error": "ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}",
+      "tokens": null,
+      "questions_detected": 0,
+      "marks_awarded": null,
+      "questions": {},
+      "paper": "paper-2",
+      "paper_class": "medium",
+      "paper_pages": 32,
+      "paper_sha256": "71570eccf1ac4235046e3698b12c16f2aa51cf9c46971bd02d6fa9f7cf0346c6",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "production",
+      "settings": {},
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:45:18Z",
+      "upload_s": 4.1,
+      "call_s": null,
+      "wall_s": 9.9,
+      "status": "error",
+      "error": "ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}",
+      "tokens": null,
+      "questions_detected": 0,
+      "marks_awarded": null,
+      "questions": {},
+      "paper": "paper-3",
+      "paper_class": "medium",
+      "paper_pages": 36,
+      "paper_sha256": "41725bb709dfb89d06c5ccf2193d8ad50c8cf6a3002f97c121cc251fa71367c0",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "no-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 0
+        }
+      },
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:45:28Z",
+      "upload_s": 4.9,
+      "call_s": null,
+      "wall_s": 4.9,
+      "status": "error",
+      "error": "ProviderCoolingError: Gemini model gemini-3.6-flash is cooling down after high demand \u2014 request not sent (55s cooldown remaining).",
+      "tokens": null,
+      "questions_detected": 0,
+      "marks_awarded": null,
+      "questions": {},
+      "paper": "paper-3",
+      "paper_class": "medium",
+      "paper_pages": 36,
+      "paper_sha256": "41725bb709dfb89d06c5ccf2193d8ad50c8cf6a3002f97c121cc251fa71367c0",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "no-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 0
+        }
+      },
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:45:33Z",
+      "upload_s": 14.1,
+      "call_s": null,
+      "wall_s": 14.1,
+      "status": "error",
+      "error": "ProviderCoolingError: Gemini model gemini-3.6-flash is cooling down after high demand \u2014 request not sent (41s cooldown remaining).",
+      "tokens": null,
+      "questions_detected": 0,
+      "marks_awarded": null,
+      "questions": {},
+      "paper": "paper-4",
+      "paper_class": "long",
+      "paper_pages": 45,
+      "paper_sha256": "b35f55a208639e08fb0973bcd3edcd883fbcb1d5dd74dcf17cf962acc8dd133a",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "production",
+      "settings": {},
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:45:47Z",
+      "upload_s": 0.0,
+      "call_s": null,
+      "wall_s": 0.0,
+      "status": "error",
+      "error": "ProviderCoolingError: Gemini model gemini-3.6-flash is cooling down after high demand \u2014 request not sent (41s cooldown remaining).",
+      "tokens": null,
+      "questions_detected": 0,
+      "marks_awarded": null,
+      "questions": {},
+      "paper": "paper-4",
+      "paper_class": "long",
+      "paper_pages": 45,
+      "paper_sha256": "b35f55a208639e08fb0973bcd3edcd883fbcb1d5dd74dcf17cf962acc8dd133a",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "production",
+      "settings": {},
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:45:47Z",
+      "upload_s": 4.8,
+      "call_s": null,
+      "wall_s": 4.8,
+      "status": "error",
+      "error": "ProviderCoolingError: Gemini model gemini-3.6-flash is cooling down after high demand \u2014 request not sent (36s cooldown remaining).",
+      "tokens": null,
+      "questions_detected": 0,
+      "marks_awarded": null,
+      "questions": {},
+      "paper": "paper-5",
+      "paper_class": "long",
+      "paper_pages": 50,
+      "paper_sha256": "af4313621ec3a5b469e0949e38ed0fa4e58970ac9a281491647cf81ec9e2bc47",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "no-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 0
+        }
+      },
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:45:52Z",
+      "upload_s": 0.0,
+      "call_s": null,
+      "wall_s": 0.0,
+      "status": "error",
+      "error": "ProviderCoolingError: Gemini model gemini-3.6-flash is cooling down after high demand \u2014 request not sent (36s cooldown remaining).",
+      "tokens": null,
+      "questions_detected": 0,
+      "marks_awarded": null,
+      "questions": {},
+      "paper": "paper-5",
+      "paper_class": "long",
+      "paper_pages": 50,
+      "paper_sha256": "af4313621ec3a5b469e0949e38ed0fa4e58970ac9a281491647cf81ec9e2bc47",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    }
+  ],
+  "comparisons": [
+    {
+      "arm_a": "production",
+      "arm_b": "no-thinking",
+      "questions_compared": 0,
+      "questions_exact": 0,
+      "exact_rate": null,
+      "mean_absolute_error": null,
+      "disagreements": []
+    }
+  ]
+}

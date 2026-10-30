@@ -532,6 +532,7 @@ class WorkerPool:
                     max_attempts=job_row["max_attempts"] or 3,
                     cfg_max_retries=get_config().worker.max_retries,
                     waited_seconds=waited_spent,
+                    parks=_parks,
                 )
                 log_event("workers", "dispatch failure classified",
                           level=logging.WARNING, job_id=job_row["id"],
@@ -916,7 +917,16 @@ class WorkerPool:
                 log.exception("poll failed for %s", worker.worker_id)
                 continue
             if result is None:
-                continue
+                # Not finished — but is it still working? A child that has
+                # written nothing at all for WORKER_STALL_SECONDS is wedged:
+                # its request is bounded by the SDK, a deadlock is bounded by
+                # nothing, and every second it hangs it holds a worker slot, a
+                # leased key and a PROCESSING row. Only silence trips this; a
+                # slow provider call still heartbeats.
+                stalled = self._stall_result(worker)
+                if stalled is None:
+                    continue
+                result = stalled
             self._active_stage.pop(worker.state.current_job_id or "", None)
             try:
                 self._handle_result(worker, result)
@@ -931,6 +941,33 @@ class WorkerPool:
                     pass
                 self._cleanup_workspace(worker)
                 worker.mark_idle()
+
+    def _stall_result(self, worker: CorrectionWorker):
+        """Terminate + report a wedged child, or None when it is alive.
+
+        Returns a normal :class:`WorkerResult` so the existing failure path
+        (classification, idempotency guard, park/retry decision, stage events)
+        handles it — a stall is an infrastructure failure, not a new code path.
+        """
+        from .adapter import WORKER_STALL_SECONDS
+        try:
+            silence = worker.seconds_since_signal()
+        except Exception:  # noqa: BLE001 — never let a probe stop collection
+            return None
+        if silence <= WORKER_STALL_SECONDS:
+            return None
+        # Race guard: the child may have exited between this tick's poll and
+        # this check. Its result is the truth and must not be thrown away by
+        # killing something that is already gone.
+        proc = getattr(worker, "_process", None)
+        if proc is not None and proc.poll() is not None:
+            try:
+                return worker.poll_result(timeout=0.0)
+            except Exception:  # noqa: BLE001
+                return None
+        return worker.force_stop(
+            reason=f"no output for {int(silence)}s "
+                   f"(limit {int(WORKER_STALL_SECONDS)}s)")
 
     # -- live progress ------------------------------------------------------
 
@@ -1474,7 +1511,7 @@ class WorkerPool:
         elif failure.park:
             park_hint = self._capacity_delay()
 
-        waited_spent, _parks = self._ledger(job["id"])
+        waited_spent, parks_spent = self._ledger(job["id"])
         decision = retry_policy.decide(
             failure,
             attempts=attempts,
@@ -1482,6 +1519,9 @@ class WorkerPool:
             cfg_max_retries=cfg.worker.max_retries,
             waited_seconds=waited_spent,
             park_hint_delay=park_hint,
+            # Repeated overload waits longer each time (60 s, 120 s, ...): a
+            # fixed minute parks a fleet into the same outage over and over.
+            parks=parks_spent,
         )
 
         # 4. Structured failure log (§14): student, assignment, provider,

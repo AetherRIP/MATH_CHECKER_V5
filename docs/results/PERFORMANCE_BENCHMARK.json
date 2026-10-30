@@ -1,0 +1,862 @@
+{
+  "measured_at": "2026-10-30T19:58:34Z",
+  "model": "gemini-3.6-flash",
+  "certified": false,
+  "certification_note": "No teacher has certified these papers. Marks are compared between configurations on identical input; they are not an accuracy claim against a marking scheme.",
+  "method": {
+    "prompt_version": "0c611c6b6d2c76f5",
+    "sampling": {
+      "temperature": 0.0,
+      "seed": 42
+    },
+    "scheme_pages": 21,
+    "arm_order": "randomised per paper",
+    "seed": 20261030
+  },
+  "arms": [
+    {
+      "arm": "production",
+      "settings": {},
+      "papers_attempted": 4,
+      "papers_ok": 3,
+      "papers_failed": 1,
+      "call_seconds": [
+        59.4,
+        67.5,
+        157.2
+      ],
+      "call_median_s": 67.5,
+      "call_total_s": 284.1,
+      "input_tokens": 52851,
+      "output_tokens": 28922,
+      "thoughts_tokens": 30447,
+      "tokens_measured": 3
+    },
+    {
+      "arm": "no-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 0
+        }
+      },
+      "papers_attempted": 4,
+      "papers_ok": 2,
+      "papers_failed": 2,
+      "call_seconds": [
+        32.7,
+        121.9
+      ],
+      "call_median_s": 77.3,
+      "call_total_s": 154.6,
+      "input_tokens": 42914,
+      "output_tokens": 34352,
+      "thoughts_tokens": 0,
+      "tokens_measured": 2
+    }
+  ],
+  "records": [
+    {
+      "arm": "no-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 0
+        }
+      },
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:46:13Z",
+      "capacity_wait_s": 16.8,
+      "upload_s": 19.2,
+      "call_s": null,
+      "wall_s": 29.2,
+      "status": "error",
+      "error": "ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}",
+      "tokens": null,
+      "questions_detected": 0,
+      "marks_awarded": null,
+      "questions": {},
+      "paper": "paper-1",
+      "paper_class": "short",
+      "paper_pages": 26,
+      "paper_sha256": "f8d88958913e4055c18f5cb76a79e1583219cfc3e219e00f3e7a048e1eaa05d7",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "production",
+      "settings": {},
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:46:43Z",
+      "capacity_wait_s": 0.0,
+      "upload_s": 0.0,
+      "call_s": 59.4,
+      "wall_s": 59.4,
+      "status": "ok",
+      "error": null,
+      "tokens": {
+        "input_tokens": 14752,
+        "output_tokens": 5536,
+        "cached_tokens": 12949,
+        "thoughts_tokens": 7735,
+        "total_tokens": 28023,
+        "estimated": false
+      },
+      "questions_detected": 9,
+      "marks_awarded": 33,
+      "questions": {
+        "47": {
+          "awarded": 4,
+          "max": 4
+        },
+        "48": {
+          "awarded": 3,
+          "max": 3
+        },
+        "49": {
+          "awarded": 3,
+          "max": 3
+        },
+        "50": {
+          "awarded": 3,
+          "max": 3
+        },
+        "51": {
+          "awarded": 5,
+          "max": 5
+        },
+        "52": {
+          "awarded": 3,
+          "max": 3
+        },
+        "53": {
+          "awarded": 3,
+          "max": 3
+        },
+        "54": {
+          "awarded": 4,
+          "max": 4
+        },
+        "55": {
+          "awarded": 5,
+          "max": 5
+        }
+      },
+      "marks_available": 33,
+      "paper": "paper-1",
+      "paper_class": "short",
+      "paper_pages": 26,
+      "paper_sha256": "f8d88958913e4055c18f5cb76a79e1583219cfc3e219e00f3e7a048e1eaa05d7",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "production",
+      "settings": {},
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:48:12Z",
+      "capacity_wait_s": 0.0,
+      "upload_s": 0.8,
+      "call_s": 67.5,
+      "wall_s": 68.3,
+      "status": "ok",
+      "error": null,
+      "tokens": {
+        "input_tokens": 18027,
+        "output_tokens": 7834,
+        "cached_tokens": 16203,
+        "thoughts_tokens": 8621,
+        "total_tokens": 34482,
+        "estimated": false
+      },
+      "questions_detected": 13,
+      "marks_awarded": 40,
+      "questions": {
+        "1": {
+          "awarded": 6,
+          "max": 6
+        },
+        "2": {
+          "awarded": 3,
+          "max": 3
+        },
+        "3": {
+          "awarded": 3,
+          "max": 3
+        },
+        "4": {
+          "awarded": 4,
+          "max": 4
+        },
+        "5": {
+          "awarded": 4,
+          "max": 6
+        },
+        "6": {
+          "awarded": 3,
+          "max": 3
+        },
+        "7": {
+          "awarded": 2,
+          "max": 2
+        },
+        "8": {
+          "awarded": 2,
+          "max": 2
+        },
+        "9": {
+          "awarded": 0,
+          "max": 2
+        },
+        "10": {
+          "awarded": 4,
+          "max": 4
+        },
+        "11": {
+          "awarded": 3,
+          "max": 3
+        },
+        "12": {
+          "awarded": 3,
+          "max": 3
+        },
+        "13": {
+          "awarded": 3,
+          "max": 3
+        }
+      },
+      "marks_available": 44,
+      "paper": "paper-2",
+      "paper_class": "medium",
+      "paper_pages": 32,
+      "paper_sha256": "71570eccf1ac4235046e3698b12c16f2aa51cf9c46971bd02d6fa9f7cf0346c6",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "no-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 0
+        }
+      },
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:49:20Z",
+      "capacity_wait_s": 0.0,
+      "upload_s": 0.0,
+      "call_s": 32.7,
+      "wall_s": 32.7,
+      "status": "ok",
+      "error": null,
+      "tokens": {
+        "input_tokens": 18027,
+        "output_tokens": 4998,
+        "cached_tokens": null,
+        "thoughts_tokens": null,
+        "total_tokens": 23025,
+        "estimated": false
+      },
+      "questions_detected": 17,
+      "marks_awarded": 35,
+      "questions": {
+        "1a": {
+          "awarded": 3,
+          "max": 3
+        },
+        "1b": {
+          "awarded": 3,
+          "max": 3
+        },
+        "2": {
+          "awarded": 0,
+          "max": 3
+        },
+        "3": {
+          "awarded": 3,
+          "max": 3
+        },
+        "4a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "4b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "5a": {
+          "awarded": 3,
+          "max": 3
+        },
+        "5b": {
+          "awarded": 1,
+          "max": 3
+        },
+        "6": {
+          "awarded": 3,
+          "max": 3
+        },
+        "7": {
+          "awarded": 2,
+          "max": 2
+        },
+        "8": {
+          "awarded": 2,
+          "max": 2
+        },
+        "9": {
+          "awarded": 0,
+          "max": 2
+        },
+        "10a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "10b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "11": {
+          "awarded": 3,
+          "max": 3
+        },
+        "12": {
+          "awarded": 3,
+          "max": 3
+        },
+        "13": {
+          "awarded": 1,
+          "max": 3
+        }
+      },
+      "marks_available": 44,
+      "paper": "paper-2",
+      "paper_class": "medium",
+      "paper_pages": 32,
+      "paper_sha256": "71570eccf1ac4235046e3698b12c16f2aa51cf9c46971bd02d6fa9f7cf0346c6",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "production",
+      "settings": {},
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:50:23Z",
+      "capacity_wait_s": 0.0,
+      "upload_s": 0.4,
+      "call_s": 157.2,
+      "wall_s": 157.6,
+      "status": "ok",
+      "error": null,
+      "tokens": {
+        "input_tokens": 20072,
+        "output_tokens": 15552,
+        "cached_tokens": null,
+        "thoughts_tokens": 14091,
+        "total_tokens": 49715,
+        "estimated": false
+      },
+      "questions_detected": 31,
+      "marks_awarded": 74,
+      "questions": {
+        "1": {
+          "awarded": 3,
+          "max": 3
+        },
+        "2": {
+          "awarded": 1,
+          "max": 3
+        },
+        "3": {
+          "awarded": 3,
+          "max": 3
+        },
+        "4": {
+          "awarded": 3,
+          "max": 3
+        },
+        "5": {
+          "awarded": 3,
+          "max": 3
+        },
+        "6": {
+          "awarded": 3,
+          "max": 3
+        },
+        "7": {
+          "awarded": 2,
+          "max": 5
+        },
+        "8": {
+          "awarded": 3,
+          "max": 3
+        },
+        "9": {
+          "awarded": 2,
+          "max": 3
+        },
+        "10": {
+          "awarded": 3,
+          "max": 3
+        },
+        "11": {
+          "awarded": 0,
+          "max": 3
+        },
+        "12": {
+          "awarded": 3,
+          "max": 3
+        },
+        "13": {
+          "awarded": 3,
+          "max": 3
+        },
+        "14": {
+          "awarded": 0,
+          "max": 3
+        },
+        "15": {
+          "awarded": 3,
+          "max": 6
+        },
+        "16": {
+          "awarded": 3,
+          "max": 3
+        },
+        "17": {
+          "awarded": 0,
+          "max": 3
+        },
+        "18": {
+          "awarded": 3,
+          "max": 3
+        },
+        "19": {
+          "awarded": 3,
+          "max": 3
+        },
+        "20": {
+          "awarded": 5,
+          "max": 6
+        },
+        "21": {
+          "awarded": 1,
+          "max": 3
+        },
+        "22": {
+          "awarded": 3,
+          "max": 3
+        },
+        "23": {
+          "awarded": 3,
+          "max": 3
+        },
+        "24": {
+          "awarded": 2,
+          "max": 3
+        },
+        "25": {
+          "awarded": 3,
+          "max": 3
+        },
+        "26": {
+          "awarded": 0,
+          "max": 3
+        },
+        "27": {
+          "awarded": 1,
+          "max": 4
+        },
+        "28": {
+          "awarded": 3,
+          "max": 3
+        },
+        "29": {
+          "awarded": 3,
+          "max": 3
+        },
+        "30": {
+          "awarded": 3,
+          "max": 3
+        },
+        "31": {
+          "awarded": 3,
+          "max": 3
+        }
+      },
+      "marks_available": 102,
+      "paper": "paper-3",
+      "paper_class": "medium",
+      "paper_pages": 36,
+      "paper_sha256": "41725bb709dfb89d06c5ccf2193d8ad50c8cf6a3002f97c121cc251fa71367c0",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "no-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 0
+        }
+      },
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:53:01Z",
+      "capacity_wait_s": 0.0,
+      "upload_s": 0.0,
+      "call_s": null,
+      "wall_s": 40.0,
+      "status": "error",
+      "error": "ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}",
+      "tokens": null,
+      "questions_detected": 0,
+      "marks_awarded": null,
+      "questions": {},
+      "paper": "paper-3",
+      "paper_class": "medium",
+      "paper_pages": 36,
+      "paper_sha256": "41725bb709dfb89d06c5ccf2193d8ad50c8cf6a3002f97c121cc251fa71367c0",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "no-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 0
+        }
+      },
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:54:11Z",
+      "capacity_wait_s": 0.0,
+      "upload_s": 13.5,
+      "call_s": 121.9,
+      "wall_s": 135.4,
+      "status": "ok",
+      "error": null,
+      "tokens": {
+        "input_tokens": 24887,
+        "output_tokens": 29354,
+        "cached_tokens": null,
+        "thoughts_tokens": null,
+        "total_tokens": 54241,
+        "estimated": false
+      },
+      "questions_detected": 63,
+      "marks_awarded": 169,
+      "questions": {
+        "1": {
+          "awarded": 6,
+          "max": 6
+        },
+        "2": {
+          "awarded": 2,
+          "max": 2
+        },
+        "3": {
+          "awarded": 2,
+          "max": 2
+        },
+        "4": {
+          "awarded": 3,
+          "max": 3
+        },
+        "5": {
+          "awarded": 2,
+          "max": 2
+        },
+        "6": {
+          "awarded": 2,
+          "max": 2
+        },
+        "7": {
+          "awarded": 2,
+          "max": 2
+        },
+        "8a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "8b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "9": {
+          "awarded": 3,
+          "max": 3
+        },
+        "10a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "10b": {
+          "awarded": 2,
+          "max": 3
+        },
+        "11": {
+          "awarded": 2,
+          "max": 2
+        },
+        "12": {
+          "awarded": 3,
+          "max": 3
+        },
+        "13a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "13b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "14a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "14b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "15a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "15b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "15c": {
+          "awarded": 2,
+          "max": 2
+        },
+        "16": {
+          "awarded": 2,
+          "max": 2
+        },
+        "17": {
+          "awarded": 4,
+          "max": 4
+        },
+        "18a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "18b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "19": {
+          "awarded": 3,
+          "max": 3
+        },
+        "20a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "20b": {
+          "awarded": 3,
+          "max": 3
+        },
+        "21": {
+          "awarded": 3,
+          "max": 3
+        },
+        "22a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "22b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "22c": {
+          "awarded": 2,
+          "max": 2
+        },
+        "23": {
+          "awarded": 2,
+          "max": 2
+        },
+        "24": {
+          "awarded": 3,
+          "max": 3
+        },
+        "25a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "25b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "25c": {
+          "awarded": 2,
+          "max": 2
+        },
+        "26": {
+          "awarded": 5,
+          "max": 5
+        },
+        "27a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "27b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "28b": {
+          "awarded": 3,
+          "max": 3
+        },
+        "29": {
+          "awarded": 5,
+          "max": 5
+        },
+        "30": {
+          "awarded": 3,
+          "max": 3
+        },
+        "31a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "31b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "32": {
+          "awarded": 4,
+          "max": 4
+        },
+        "33a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "33b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "34": {
+          "awarded": 3,
+          "max": 4
+        },
+        "35": {
+          "awarded": 3,
+          "max": 3
+        },
+        "36": {
+          "awarded": 2,
+          "max": 2
+        },
+        "37": {
+          "awarded": 5,
+          "max": 5
+        },
+        "38a": {
+          "awarded": 2,
+          "max": 2
+        },
+        "38b": {
+          "awarded": 2,
+          "max": 2
+        },
+        "38c": {
+          "awarded": 3,
+          "max": 3
+        },
+        "39": {
+          "awarded": 4,
+          "max": 4
+        },
+        "40": {
+          "awarded": 3,
+          "max": 3
+        },
+        "41": {
+          "awarded": 3,
+          "max": 3
+        },
+        "42": {
+          "awarded": 6,
+          "max": 6
+        },
+        "43": {
+          "awarded": 1,
+          "max": 3
+        },
+        "44": {
+          "awarded": 4,
+          "max": 4
+        },
+        "45": {
+          "awarded": 4,
+          "max": 4
+        },
+        "46": {
+          "awarded": 5,
+          "max": 5
+        }
+      },
+      "marks_available": 173,
+      "paper": "paper-4",
+      "paper_class": "long",
+      "paper_pages": 45,
+      "paper_sha256": "b35f55a208639e08fb0973bcd3edcd883fbcb1d5dd74dcf17cf962acc8dd133a",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    },
+    {
+      "arm": "production",
+      "settings": {},
+      "model": "gemini-3.6-flash",
+      "started_at": "2026-10-30T19:56:26Z",
+      "capacity_wait_s": 0.0,
+      "upload_s": 0.0,
+      "call_s": null,
+      "wall_s": 97.5,
+      "status": "error",
+      "error": "ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}",
+      "tokens": null,
+      "questions_detected": 0,
+      "marks_awarded": null,
+      "questions": {},
+      "paper": "paper-4",
+      "paper_class": "long",
+      "paper_pages": 45,
+      "paper_sha256": "b35f55a208639e08fb0973bcd3edcd883fbcb1d5dd74dcf17cf962acc8dd133a",
+      "requests": 0,
+      "requests_total": 0,
+      "requests_by_kind": {}
+    }
+  ],
+  "comparisons": [
+    {
+      "arm_a": "production",
+      "arm_b": "no-thinking",
+      "questions_compared": 9,
+      "questions_exact": 7,
+      "exact_rate": 0.7778,
+      "mean_absolute_error": 0.5556,
+      "disagreements": [
+        {
+          "paper": "paper-2",
+          "question": "13",
+          "production": 3,
+          "no-thinking": 1,
+          "delta": -2
+        },
+        {
+          "paper": "paper-2",
+          "question": "2",
+          "production": 3,
+          "no-thinking": 0,
+          "delta": -3
+        }
+      ]
+    }
+  ]
+}

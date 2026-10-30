@@ -40,6 +40,17 @@ from pathlib import Path
 from ..gemini.key_manager import KeyManager
 from ..logging_setup import log_event
 
+#: How long a child may be COMPLETELY silent before it is treated as wedged.
+#:
+#: The child emits a heartbeat every few seconds (``child.HEARTBEAT_SECONDS``)
+#: precisely so that this number can be small enough to matter: a legitimate
+#: provider call keeps signalling while it thinks, and is bounded separately by
+#: the SDK request timeout. Five minutes of total silence therefore means the
+#: process is not running our code any more — deadlocked, blocked in a native
+#: call, or stopped by the OS — and it is holding a worker slot, a leased key
+#: and a job row in PROCESSING the whole time.
+WORKER_STALL_SECONDS = 300.0
+
 
 # ---------------------------------------------------------------------------
 # Message contracts (the ONLY things crossing the process boundary)
@@ -154,6 +165,10 @@ class CorrectionWorker:
         self._leased_fp: str | None = None
         self._last_error: Exception | None = None
         self._on_progress = None
+        #: Wall-clock of the last line the child wrote (stage, heartbeat or
+        #: result). Silence is the only evidence available to the parent that a
+        #: child has stopped working without exiting.
+        self._last_signal = 0.0
 
     def workspace_dir(self) -> Path:
         self.workspace.mkdir(parents=True, exist_ok=True)
@@ -243,6 +258,7 @@ class CorrectionWorker:
         # the OS pipe buffer, and a child blocked writing to a full pipe
         # would never exit if stdout were only read after it dies.
         self._stdout_data = ""
+        self._last_signal = time.time()
         self._on_progress = on_progress
         self._reader = threading.Thread(
             target=self._drain_stdout, name=f"{self.worker_id}-stdout", daemon=True)
@@ -290,12 +306,18 @@ class CorrectionWorker:
                 line = raw.strip()
                 if not line:
                     continue
+                # ANY line is proof the child is alive; a heartbeat exists so
+                # that a long provider call (which prints no stage event) is
+                # not mistaken for a hung process.
+                self._last_signal = time.time()
                 event = None
                 if line.startswith("{"):
                     try:
                         event = json.loads(line)
                     except json.JSONDecodeError:
                         event = None
+                if isinstance(event, dict) and event.get("type") == "heartbeat":
+                    continue
                 if isinstance(event, dict) and event.get("type") == "stage":
                     callback = getattr(self, "_on_progress", None)
                     if callback is not None:
@@ -378,6 +400,54 @@ class CorrectionWorker:
         self._close_child_stderr()
         if self.state.status == "PROCESSING":
             self.state.errors += 1
+
+    # -- liveness ----------------------------------------------------------
+
+    def seconds_since_signal(self) -> float:
+        """Seconds since the child last wrote anything (0 when not running)."""
+        if self._process is None or self.state.status != "PROCESSING":
+            return 0.0
+        return max(0.0, time.time() - (self._last_signal or 0.0))
+
+    def force_stop(self, *, reason: str) -> WorkerResult:
+        """Kill a wedged child and return the failure as a normal result.
+
+        A child that has stopped signalling still holds its worker slot, its
+        leased key and its memory; only the SDK's own timeout bounds an
+        in-flight request, and nothing at all bounds a deadlock or a hung
+        native call. This terminates the process, waits for it, escalates to a
+        kill if it will not go, and reaps it so no zombie is left behind.
+        """
+        proc = self._process
+        job_id = self.state.current_job_id or "?"
+        started = self.state.started_at or time.time()
+        silence = self.seconds_since_signal()
+        if proc is not None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=10)
+            except Exception:  # noqa: BLE001 — escalate, never hang here
+                try:
+                    proc.kill()
+                    proc.wait(timeout=10)
+                except Exception:  # noqa: BLE001
+                    pass
+        self._process = None
+        self._reader = None
+        detail = self._child_stderr()
+        self._close_child_stderr()
+        log_event("workers", "worker stalled — child terminated",
+                  level=logging.ERROR, worker_id=self.worker_id,
+                  job_id=job_id, reason=reason,
+                  silence_seconds=round(silence, 1),
+                  stderr=detail[-400:] if detail else None)
+        return WorkerResult(
+            job_id=job_id, worker_id=self.worker_id, status="FAILED", ok=False,
+            error=(f"Worker stopped responding ({reason}) — the process was "
+                   f"terminated. No result was produced by this attempt."),
+            error_kind="worker_stalled",
+            processing_seconds=round(time.time() - started, 2),
+        )
 
     def mark_idle(self) -> None:
         self.state.status = "IDLE"
