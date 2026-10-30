@@ -751,6 +751,16 @@ class KeyAwareClient:
         answer or the key. Fields the provider did not report stay NULL.
         """
         try:
+            from . import model_registry
+            # Only a real request decides operational availability: a model the
+            # listing advertises but this project cannot call stays unverified.
+            model_registry.note_request(
+                model, ok=error is None,
+                error=(str(error) if error is not None else ""))
+        except Exception:  # noqa: BLE001 — statistics are never fatal
+            pass
+
+        try:
             from . import telemetry
             from . import usage as usage_mod
 

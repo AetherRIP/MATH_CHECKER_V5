@@ -80,4 +80,90 @@ public sealed class AiUsageTextTests
         var summary = new AiUsageSummaryDto { Unavailable = true };
         Assert.Contains("No correction has recorded", summary.Text);
     }
+
+    [Fact]
+    public void Measured_tokens_and_latency_read_the_backend_shape()
+    {
+        var summary = JsonSerializer.Deserialize<AiUsageSummaryDto>("""
+            {
+              "unavailable": false, "papers": 3, "requests": 6, "average": 2.0,
+              "ledger": {
+                "available": true, "requests": 7, "ok": 6, "failed": 1,
+                "input_tokens": 41000, "output_tokens": 900, "cached_tokens": 12000,
+                "total_tokens": 41900, "estimated_rows": 0, "cache_hit_rate": 0.2264,
+                "latency": { "p50_ms": 8100, "p95_ms": 24000, "max_ms": 31000 }
+              }
+            }
+            """, Json.Options)!;
+
+        Assert.NotNull(summary.Ledger);
+        Assert.Contains("41,000 in", summary.Ledger!.TokensText);
+        Assert.Contains("1 failed", summary.Ledger.TokensText);
+        Assert.Contains("22.6%", summary.Ledger.CacheText);
+        Assert.Contains("p95 24,000 ms", summary.Ledger.LatencyText);
+        Assert.Contains("reported by the provider", summary.Ledger.EstimatedText);
+    }
+
+    [Fact]
+    public void An_unknown_token_cost_is_stated_not_zeroed()
+    {
+        var summary = JsonSerializer.Deserialize<AiUsageSummaryDto>(
+            """{ "ledger": { "available": false } }""", Json.Options)!;
+        Assert.Contains("Not measured yet", summary.Ledger!.TokensText);
+        Assert.Contains("unavailable", summary.Ledger.CacheText);
+        Assert.Contains("unavailable", summary.Ledger.LatencyText);
+    }
+
+    [Fact]
+    public void Estimated_counts_are_labelled_as_estimates()
+    {
+        var summary = JsonSerializer.Deserialize<AiUsageSummaryDto>("""
+            { "ledger": { "available": true, "requests": 4, "estimated_rows": 2 } }
+            """, Json.Options)!;
+        Assert.Contains("2 of 4 requests carry an ESTIMATE", summary.Ledger!.EstimatedText);
+    }
+
+    [Fact]
+    public void A_listed_model_is_not_presented_as_a_usable_one()
+    {
+        var summary = JsonSerializer.Deserialize<AiUsageSummaryDto>("""
+            {
+              "models": {
+                "configured_models": ["gemini-3.6-flash"],
+                "production_model": "gemini-3.6-flash",
+                "verified_count": 1, "discovered_count": 2,
+                "models": [
+                  { "model_id": "gemini-3.6-flash", "availability": "verified",
+                    "verified": true, "approved_for_production": true },
+                  { "model_id": "gemini-3.8-flash", "availability": "listed_not_verified",
+                    "discovered": true }
+                ]
+              }
+            }
+            """, Json.Options)!;
+
+        var registry = summary.Models!;
+        Assert.Contains("gemini-3.6-flash", registry.ProductionText);
+        Assert.Contains("1 verified", registry.CoverageText);
+        Assert.Equal("verified — this installation has called it successfully",
+            registry.Models[0].AvailabilityText);
+        Assert.Contains("never verified from here", registry.Models[1].AvailabilityText);
+        Assert.Contains("not approved", registry.Models[1].ApprovalText);
+        Assert.Contains("teacher-certified", registry.ApprovalNote);
+    }
+
+    [Fact]
+    public void An_empty_registry_claims_nothing()
+    {
+        var summary = new AiUsageSummaryDto();
+        Assert.Contains("Not measured yet", new UsageViewModelTexts().Tokens);
+        Assert.Contains("No model has been discovered", new UsageViewModelTexts().Coverage);
+    }
+
+    /// <summary>The fallbacks the page shows when the backend sends nothing.</summary>
+    private sealed class UsageViewModelTexts
+    {
+        public string Tokens => new AiTokenLedgerDto { Available = false }.TokensText;
+        public string Coverage => new AiModelRegistryDto().CoverageText;
+    }
 }

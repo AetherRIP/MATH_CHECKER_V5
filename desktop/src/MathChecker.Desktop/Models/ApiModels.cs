@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -1236,6 +1237,120 @@ public sealed class AiUsageSummaryDto
           + (BudgetExceeded > 0
               ? $" · {BudgetExceeded} stopped by the request budget"
               : string.Empty);
+
+    /// <summary>Measured provider tokens and latency (gemini.telemetry).</summary>
+    public AiTokenLedgerDto? Ledger { get; set; }
+
+    /// <summary>Which models this installation has actually been able to use.</summary>
+    public AiModelRegistryDto? Models { get; set; }
+}
+
+/// <summary>
+/// What each provider request cost, as the provider itself reported it.
+/// Every text property says "not measured" rather than showing a confident 0.
+/// </summary>
+public sealed class AiTokenLedgerDto
+{
+    public bool Available { get; set; }
+    public List<string> Unavailable { get; set; } = new();
+    public int Requests { get; set; }
+    public int Ok { get; set; }
+    public int Failed { get; set; }
+    public long InputTokens { get; set; }
+    public long OutputTokens { get; set; }
+    public long CachedTokens { get; set; }
+    public long TotalTokens { get; set; }
+    public int EstimatedRows { get; set; }
+    public double? CacheHitRate { get; set; }
+    public AiLatencyDto Latency { get; set; } = new();
+
+    private static readonly CultureInfo Fixed = CultureInfo.InvariantCulture;
+
+    public string TokensText => Available
+        ? $"{InputTokens.ToString("N0", Fixed)} in · "
+          + $"{OutputTokens.ToString("N0", Fixed)} out · "
+          + $"{CachedTokens.ToString("N0", Fixed)} cached across {Requests} requests "
+          + $"({Failed} failed)"
+        : "Not measured yet — no provider request has reported token counts.";
+
+    public string CacheText => CacheHitRate is null
+        ? "Cache hit rate unavailable (the provider reported no input tokens)."
+        : $"{(CacheHitRate.Value * 100).ToString("0.0", Fixed)}% of billed input "
+          + "tokens came from cache";
+
+    public string LatencyText => Latency.P50Ms is null
+        ? "Request latency unavailable."
+        : $"p50 {Latency.P50Ms.Value.ToString("N0", Fixed)} ms · "
+          + $"p95 {(Latency.P95Ms ?? 0).ToString("N0", Fixed)} ms · "
+          + $"slowest {(Latency.MaxMs ?? 0).ToString("N0", Fixed)} ms";
+
+    public string EstimatedText => EstimatedRows == 0
+        ? "Every count above was reported by the provider."
+        : $"{EstimatedRows} of {Requests} requests carry an ESTIMATE, not a measurement.";
+}
+
+public sealed class AiLatencyDto
+{
+    public int? P50Ms { get; set; }
+    public int? P95Ms { get; set; }
+    public int? MaxMs { get; set; }
+}
+
+/// <summary>
+/// One model as the registry records it. "discovered" and "verified" are
+/// deliberately separate: a listing entry does not prove this project can call
+/// the model.
+/// </summary>
+public sealed class AiModelRecordDto
+{
+    public string ModelId { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public bool Discovered { get; set; }
+    public bool Verified { get; set; }
+    public bool ApprovedForProduction { get; set; }
+    public bool ApprovedForLowRisk { get; set; }
+    public string Availability { get; set; } = "unknown";
+    public int Requests { get; set; }
+    public int Failures { get; set; }
+    public double? ErrorRate { get; set; }
+
+    public string Label => string.IsNullOrWhiteSpace(DisplayName) ? ModelId : DisplayName;
+
+    public string AvailabilityText => Availability switch
+    {
+        "verified" => "verified — this installation has called it successfully",
+        "listed_not_verified" => "listed by the provider, never verified from here",
+        _ => "unknown — no evidence either way",
+    };
+
+    public string ApprovalText => ApprovedForProduction
+        ? "approved for production marking"
+        : ApprovedForLowRisk
+            ? "approved for low-risk tasks only"
+            : "not approved for marking";
+}
+
+public sealed class AiModelRegistryDto
+{
+    public List<string> ConfiguredModels { get; set; } = new();
+    public string? ProductionModel { get; set; }
+    public List<AiModelRecordDto> Models { get; set; } = new();
+    public int VerifiedCount { get; set; }
+    public int DiscoveredCount { get; set; }
+    public List<string> Notes { get; set; } = new();
+
+    public string ProductionText => string.IsNullOrWhiteSpace(ProductionModel)
+        ? "No production model is configured."
+        : $"{ProductionModel} · chain {string.Join(" → ", ConfiguredModels)}";
+
+    public string CoverageText => Models.Count == 0
+        ? "No model has been discovered or verified on this installation yet."
+        : $"{VerifiedCount} verified · {DiscoveredCount} discovered · {Models.Count} known";
+
+    /// <summary>The rule the flags exist to enforce, stated where a teacher sees them.</summary>
+    public string ApprovalNote =>
+        "A model appearing in the provider listing does not prove this project can call it, "
+        + "and nothing is promoted without teacher-certified evidence.";
 }
 
 public sealed class SettingsDto

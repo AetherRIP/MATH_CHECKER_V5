@@ -58,6 +58,45 @@
                 </StackPanel>
             </Border>
 
+            <!-- Measured provider cost and the models this install has actually
+                 used. Both say "not measured" rather than showing a 0. -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="GEMINI TOKENS AND LATENCY" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="{Binding LedgerTokensText}" FontSize="12" Margin="0,6,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.Name="Measured Gemini tokens" />
+                    <TextBlock Text="{Binding LedgerCacheText}" FontSize="12" Margin="0,4,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.Name="Gemini cache hit rate" />
+                    <TextBlock Text="{Binding LedgerLatencyText}" FontSize="12" Margin="0,4,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.Name="Gemini request latency" />
+                    <TextBlock Text="{Binding LedgerEstimatedText}" FontSize="12" Margin="0,4,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.Name="Measured versus estimated counts" />
+
+                    <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,10,0,10" />
+
+                    <TextBlock Text="MODELS" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="{Binding ProductionModelText}" FontSize="12" Margin="0,6,0,0"
+                               TextWrapping="Wrap"
+                               AutomationProperties.Name="Production marking model" />
+                    <TextBlock Text="{Binding ModelCoverageText}" FontSize="12" Margin="0,4,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.Name="Verified and discovered models" />
+                    <TextBlock Text="{Binding ModelApprovalNote}" FontSize="11.5" Margin="0,6,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.Name="Model approval rule" />
+                </StackPanel>
+            </Border>
+
             <Border Style="{StaticResource TableCard}" Height="320">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">

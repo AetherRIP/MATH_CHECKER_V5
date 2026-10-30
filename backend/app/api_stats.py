@@ -168,6 +168,19 @@ def ai_usage_summary(limit: int = 200) -> dict:
     summary: dict = {"papers": 0, "requests": 0, "average": None,
                      "median": None, "max": None, "budget_exceeded": 0,
                      "skipped": 0, "stages": {}, "unavailable": True}
+    # Attached before any early return so the dashboard always sees these two:
+    # what each provider request cost (gemini.telemetry) and which models this
+    # installation has actually been able to use (gemini.model_registry).
+    try:
+        from .gemini import telemetry
+        summary["ledger"] = telemetry.summary(hours=168)
+    except Exception:  # noqa: BLE001 — a dashboard must render without it
+        summary["ledger"] = None
+    try:
+        from .gemini import model_registry
+        summary["models"] = model_registry.snapshot()
+    except Exception:  # noqa: BLE001
+        summary["models"] = None
     try:
         rows = db.query(
             "SELECT ai_attempts, ai_calls_json FROM job_bandwidth "
