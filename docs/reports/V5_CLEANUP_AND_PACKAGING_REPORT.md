@@ -152,5 +152,5 @@ process or listening port was left behind.
 * `desktop/test_release.ps1` — `V5.exe` paths
 * `desktop/installer/MathCheckerDesktop.iss` — `AppExeName V5.exe`
 * `desktop/README.md`, `README.md`, `docs/desktop-migration/03-build-and-release.md`,
-  `docs/development-environments.md` — executable name, paths, measured results
+  `docs/development/DEVELOPMENT_ENVIRONMENTS.md` — executable name, paths, measured results
 * `docs/reports/V5_CLEANUP_AND_PACKAGING_REPORT.md` — this report

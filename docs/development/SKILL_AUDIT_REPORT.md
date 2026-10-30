@@ -107,7 +107,7 @@ survive are three kinds, none of them broken links:
   path that cannot resolve here.
 
 One inaccuracy found in this audit's own edits was fixed: the adaptation note in
-each copied skill pointed at `docs/skill-audit-report.md` in a way that read as
+each copied skill pointed at `docs/development/SKILL_AUDIT_REPORT.md` in a way that read as
 skill-relative; it now says "at the *project* root".
 
 Also verified: every skill directory name matches the `name:` in its

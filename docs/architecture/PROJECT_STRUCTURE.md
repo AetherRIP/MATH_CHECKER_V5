@@ -66,7 +66,7 @@ scripts/
   build_portable.py     legacy portable assembler (not the canonical release path)
   install_autostart.py  installs/refuses machine-local autostart entries
   two_env_e2e.py        two-installation end-to-end harness (writes docs/results/)
-  setup_windows.ps1     prerequisite check + environment/UI setup (docs/WINDOWS_SETUP.md)
+  setup_windows.ps1     prerequisite check + environment/UI setup (docs/development/WINDOWS_SETUP.md)
   verify_windows.ps1    dependency, test, build and launch verification; nonzero on failure
 ```
 
@@ -138,7 +138,7 @@ This folder is excluded from releases. It contains report previews and harness
 runs, but also archived release audit copies (`release_audit_backup/`) and other
 historical data. Do **not** interpret its name or ignore status as permission to
 delete the whole tree; inspect individual contents first. See
-[dev_local/README.md](../dev_local/README.md) where available.
+[dev_local/README.md](../../dev_local/README.md) where available.
 
 ```
 dev_local/reports/        PDF/PNG renders from backend/scripts/pdf_preview.py
@@ -148,7 +148,7 @@ dev_local/archive/        superseded dev data (probe dumps, throwaway test DBs)
 
 ## MathChecker_Distribution/ — packaging workspace
 
-See [MathChecker_Distribution/README.md](../MathChecker_Distribution/README.md).
+See [MathChecker_Distribution/README.md](../../MathChecker_Distribution/README.md).
 `build/`, `release_staging/`, `portable/` and `release/` are live pipeline
 folders; `build_release.py` cleans/replaces staging, portable and release, while
 `build_runtime.py` can replace the bundled runtime under `build/`. `logs/` keeps
@@ -168,7 +168,7 @@ local artifacts need to be retained and the script's backup/retention behavior.
    recent, delete older ones deliberately (they are multi-hundred-MB folders).
 3. **Runtime state → never tidy:** `data/`, `autostart/`, the venvs.
 4. **Uncertain → keep and document,** never delete. Historical material that is
-   still useful is listed in [docs/README.md](README.md) with the reason it was
+   still useful is listed in [docs/README.md](../README.md) with the reason it was
    kept.
 5. **Logs** go to the git-ignored `docs/logs/` (development) or
    `MathChecker_Distribution/logs/` (packaging). The running app's own logs stay

@@ -1,545 +1,459 @@
 # Math Checker V5
 
-Production Edexcel IGCSE 4MA1 homework correction system. **Built around the
-proven correction engine**, preserved verbatim in
-`backend/app/engine/legacy_marking.py`, wrapped in a reliable multi-key,
-job-based, local-first application.
+**An AI-assisted marking application for Edexcel IGCSE Mathematics, built and used for real classroom work.**
 
-> **New in 5.3:** assignments and combined assignments are one workflow, and the
-> mark scheme has its own review page — every question and sub-question, its
-> expected answer, and your handling decision, decidable before the first paper
-> is marked. Demo Mode builds a labelled synthetic scheme so the workflow can be
-> explored without an API key. See [Assignment workflow & mark-scheme
-> review](#assignment-workflow--mark-scheme-review-53) below.
->
-> **New in 5.1 (productisation pass):** first-run setup wizard, configurable
-grade boundaries, deterministic result guard (a valid mark can never be
-silently replaced by a suspicious one), a human review queue with teacher
-overrides, teacher-facing health checks, config/database backup, enforced file
-retention, and a portable distribution builder. The correction engine itself
-is unchanged. See [Productisation](#productisation-51) below.
+A teacher uploads a student's scanned answers and the published mark scheme. The
+application marks the paper question by question, explains every mark, flags what
+it is unsure about, and puts a teacher in control of the result before anything
+is shared with a student.
 
-## What V5 adds around the preserved engine
+It exists because marking 120 handwritten papers a week is not a job anybody
+should do twice. The design goal is not "an AI that marks" — it is **an
+assessment tool a teacher can trust, audit and override**, which is a much
+harder and more interesting engineering problem.
 
-| Area | Implementation |
+| | |
 |---|---|
-| Correction engine | **Verbatim** legacy marking core (`backend/app/engine/legacy_marking.py`) — same prompt, schema, model fallback chain, normalization, totals |
-| Determinism | `temperature: 0` + fixed seed on every marking call; **mark-scheme blueprint** (`engine/blueprint.py`) extracts the official question list/max marks ONCE per mark-scheme file and fixes them for every run; model-chain health + pinned first model persist across worker processes (`engine/model_health_store.py`) |
-| Mark integrity | Post-marking reconciliation against the blueprint (`engine/blueprint.py` + `verify.py`): missing questions become `REVIEW` (never a silent 0), max marks are forced back to the official value, verification reports only — it never rewrites a mark |
-| Gemini keys | Multi-key manager (`gemini/key_manager.py`): fingerprints, round-robin rotation, cooldowns (5s→10m), invalid-key benching, persisted stats. In-job rotation too: a mid-job 429/503/401 switches KEY (not model), re-uploading inputs under the new key because Gemini Files are key-scoped |
-| Students | `api/student_routes.py` + Students page: personal profile with LOCAL nickname, Classroom-verified submission counts, local correction history, every stat source-labelled |
-| Verification | Deterministic post-verification (`engine/verify.py`) replaces the 2×-cost AI audit — question marks stay pure legacy output |
-| Jobs | Persistent SQLite job system (`jobs/manager.py`): staged progress, duplicate prevention, cancellation, retry, crash recovery |
-| Retry / failover | Classified-failure retry architecture (`retry_policy.py`): every failure maps to a policy — rate-limit/high-demand → **park** on cooldown (attempts untouched), timeout/network → 1 bounded retry, auth/invalid/context-too-large → **never resend**. Exponential backoff with jitter + Retry-After, strict per-job retry budget (15 min park budget → clean FAILED, never a loop), key failover vs provider failure distinguished, provider circuit breaker (`gemini/provider_health.py`) pauses whole batches on sustained 503s |
-| Prepared input | Per-job cache (`data/tmp/job-<id>/`, `prepared.json`): Drive download, validation/normalization and mark-scheme resolution happen ONCE; every retry/failover reuses the prepared files (counted as avoided downloads/uploads on the Usage page). Cache deleted at terminal cleanup |
-| Idempotency | Before any retry (dispatch, failure handling, boot recovery) an existing successful result is attached instead of re-running — duplicate AI corrections are never created |
-| Classroom | Existing OAuth client (moved to `data/secrets/`), REST wrappers preserved, DB-cached sync, allow-list, draft-grade attempt with 403 fallback |
-| UI | React + Vite glassmorphism UI (`frontend/`): Dashboard, Classroom, Students, Corrections, Results, **Report**, API Keys, Settings, Developer Diagnostics |
-| Local-first | Courses/assignments/submissions/students cached in SQLite with TTL; no background polling; event-driven SSE updates |
+| **Backend** | Python 3.12+ (3.13 tested) · FastAPI · SQLite · Google Gemini |
+| **Web UI** | React 18 · TypeScript 5.6 · Vite 5 (served by the backend) |
+| **Desktop** | Windows WPF · .NET 10 (`net10.0-windows`) |
+| **Backend tests** | 2 555 passing (1 skipped) — last full run 2026-10-30 |
+| **Desktop tests** | 335 passing — last full run 2026-10-30 |
+| **Marking model** | Gemini 3.6 Flash by default; the model chain is configuration |
 
-## Native Windows desktop client
+---
 
-A C# / WPF client lives in `desktop/` and drives the same backend over its
-existing HTTP API — the correction engine, marking rules, database and
-Classroom integration are untouched. It starts (or attaches to) the Python
-backend itself, so the desktop app is the whole product, not a wrapper around a
-browser page.
+## Contents
 
-```powershell
-dotnet build desktop\src\MathChecker.Desktop\MathChecker.Desktop.csproj
-dotnet run   --project desktop\src\MathChecker.Desktop\MathChecker.Desktop.csproj
-powershell -ExecutionPolicy Bypass -File desktop\build_release.ps1   # bundle + ZIP + installer
+- [What it does](#what-it-does)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Technology stack](#technology-stack)
+- [Project structure](#project-structure)
+- [Getting started](#getting-started)
+- [Testing and quality assurance](#testing-and-quality-assurance)
+- [Performance engineering](#performance-engineering)
+- [Privacy and security](#privacy-and-security)
+- [Roadmap](#roadmap)
+- [Screenshots](#screenshots)
+- [Documentation](#documentation)
+
+---
+
+## What it does
+
+1. **Ingest.** A submission arrives from Google Classroom, a local PDF, or a
+   manual upload. The file is validated (a scan that is not a readable PDF is
+   rejected before it costs an API call) and normalised.
+2. **Mark.** The whole answer scan and the whole mark scheme go to Gemini in one
+   multimodal request. The model returns structured JSON: every question, its
+   available marks, the awarded marks, and feedback.
+3. **Check.** The engine clamps every mark to the scheme's maximum, reconciles
+   question numbering, and flags anything it could not map. A question it cannot
+   find becomes **REVIEW**, never a silent zero.
+4. **Review.** A teacher sees the paper as a marking desk: each question, the
+   awarded and available marks, the model's reasoning, and the option to change
+   any mark with a recorded reason.
+5. **Report.** Assignment and class reports (PDF, Markdown, CSV) are produced
+   from the stored result, not from a re-mark.
+
+Everything runs locally. The only outbound traffic is to the Google APIs a
+teacher configured (Gemini, optionally Classroom).
+
+## Features
+
+Only implemented and verified behaviour is listed. Anything incomplete is in
+[what is not finished](#what-is-not-finished).
+
+**Marking engine**
+- Whole-paper multimodal marking against a mark scheme, with a fixed response
+  schema so a malformed reply is a detectable error rather than a parse crash.
+- Deterministic sampling (`temperature 0`, fixed seed) so the same paper and
+  scheme produce the same marks as far as the provider allows.
+- Per-question mark clamping, totals, percentage bands and grade bands.
+- Mark-scheme analysis: question inventory, subquestion mapping, and a review
+  surface for scheme text the app could not parse with confidence.
+- "Missing question → REVIEW" is enforced structurally, not by prompt wording.
+- Optional second-opinion pass for high-scoring papers.
+
+**Teacher workflow**
+- Marking desk with per-question review, mark editing and recorded overrides.
+- Re-mark and remark requests with their own audit trail.
+- Assignment management, classes, students, and per-student result history.
+- Reports generated from stored results (no re-marking), exportable to PDF,
+  Markdown and CSV.
+- Review reasons surfaced to the teacher: why a question is flagged.
+
+**Classroom and operations**
+- Google Classroom read-only integration: list courses and coursework, download
+  submissions, upload reports. Grade write-back is limited by Google's OAuth
+  policy and is offered as suggested grades (see [roadmap](#roadmap)).
+- A worker pool that runs each correction in its own OS process, with a durable
+  queue, crash recovery on boot, and duplicate-correction prevention.
+- Retry policy with explicit failure classes: retry, park for capacity, or fail
+  fast. Parks do not consume the retry budget.
+- Per-request cost ledger and a Usage page: requests, tokens, retries, key
+  cooldowns, and how much was avoided by reusing prepared input.
+- API key management with rotation, per-key health and staged key testing.
+- Offline demo mode (mock marking) so the UI can be explored without a key.
+
+**What is not finished**
+- **Teacher-certified accuracy does not exist yet.** 0 of 16 reference items have
+  been verified by a teacher; every accuracy figure in this repository is
+  agreement with a scheme-derived answer key. See
+  [results/TEACHER_CERTIFIED_ACCURACY_REPORT.md](docs/results/TEACHER_CERTIFIED_ACCURACY_REPORT.md).
+- **Grade write-back to Classroom** is constrained by Google (an OAuth app may
+  only grade coursework it created), so V5 shows suggested grades for manual
+  entry.
+- **Page batching for very long papers** exists as a planner
+  (`backend/app/engine/batching.py`) with no execution path; it is not enabled.
+- **Multi-machine sync agent** exists in source but is disabled by default and
+  should be treated as experimental.
+
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph clients["Clients"]
+        WPF["Desktop app<br/>WPF · .NET 10"]
+        WEB["Web UI<br/>React · Vite"]
+    end
+
+    subgraph backend["Backend — FastAPI, one process"]
+        API["REST + SSE API<br/>routes_all.py"]
+        QUEUE["Job queue + scheduler<br/>workers/pool.py"]
+        LEDGER["Cost ledger · retry policy<br/>telemetry · call_audit"]
+        DB[("SQLite<br/>app.db")]
+    end
+
+    subgraph workers["Worker processes (isolated)"]
+        CHILD["child.py<br/>one correction per process"]
+        ENGINE["Marking engine<br/>legacy_marking · blueprint<br/>clamp · review guards"]
+    end
+
+    subgraph google["Google APIs"]
+        GEM["Gemini<br/>google-genai"]
+        CLASS["Classroom<br/>read-only"]
+    end
+
+    PDF["Submission PDF<br/>+ mark scheme"]
+
+    WPF -->|HTTP| API
+    WEB -->|HTTP| API
+    API --> QUEUE
+    API --> DB
+    QUEUE -->|claim job| CHILD
+    QUEUE --> DB
+    LEDGER --> DB
+    PDF --> QUEUE
+    CHILD --> ENGINE
+    ENGINE -->|upload + generateContent| GEM
+    ENGINE -->|structured result| QUEUE
+    API -->|sync / download / upload| CLASS
+    CLASS --> PDF
 ```
 
-The packaged product is **`desktop\artifacts\MATH_CHECKER_V5\desktop\V5.exe`**
-(also zipped as `MATH_CHECKER_V5_Portable.zip`, or installed per-user with
-`MATH_CHECKER_V5_Setup.exe` when Inno Setup 6 is available). The package root
-carries `start_desktop.bat`, so a recipient extracts the ZIP and double-clicks
-one file; it starts the client, never a build. Double-click `V5.exe` directly: it finds the
-bundled `runtime\python.exe`, starts the existing `main.py` backend, waits for
-`/api/health` and then opens the window. No .NET or Python install is needed on
-the target machine; API keys and Classroom credentials still have to be
-configured in the app itself and are never bundled. Build, launch and
-troubleshooting details: [desktop/README.md](desktop/README.md).
+**Why a child process per correction.** The marking engine came from a working
+single-user script with module-level state. Running each correction in its own
+OS process means one paper cannot corrupt another, a crash cannot take down the
+scheduler, and a wedged request can be terminated at the OS level. The parent
+talks to it over stdin/stdout JSON — no shared globals, no pickling of live
+objects.
 
-Architecture, feature inventory, verification evidence, packaging and the
-handoff to the UI design phase: [docs/desktop-migration](docs/desktop-migration).
+**Correction pipeline**
 
-## Run
+```
+QUEUED → STARTING → PREPARING → DOWNLOADING → UPLOADING → MARKING → VERIFYING → SAVING → COMPLETED
+```
+
+- A job claim is a single SQL transaction, so the same job cannot run twice.
+- Retries reuse the prepared input (no second download, normalisation or
+  mark-scheme fetch).
+- A retry is only scheduled after the previous attempt's process has exited.
+- Terminal failures keep their evidence (stage history, prepared files) so a
+  teacher can see what happened before deciding to retry.
+
+More detail: [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)
+and [docs/architecture/PROJECT_STRUCTURE.md](docs/architecture/PROJECT_STRUCTURE.md).
+
+## Technology stack
+
+| Layer | Choice | Notes |
+|---|---|---|
+| Language (backend) | Python 3.12+ (3.13.15 tested) | No compiled extensions written in this project |
+| Web framework | FastAPI ≥ 0.115, Uvicorn ≥ 0.30 | REST + Server-Sent Events for live job progress |
+| Persistence | SQLite (stdlib `sqlite3`) | WAL mode, schema migrations in `backend/app/schema.sql` |
+| AI provider | `google-genai` ≥ 1.40 → Gemini 3.6 Flash | Model chain configurable; one provider on purpose |
+| PDF | PyMuPDF 1.x (`<2`), pypdf ≥ 4, Pillow ≥ 10 | Validate, inspect, normalise, render |
+| Reporting | openpyxl ≥ 3.1, reportlab ≥ 4 | XLSX + PDF exports |
+| Auth / Classroom | `google-auth`, `google-auth-oauthlib` ≥ 1.2 | OAuth client supplied by the deployment |
+| Frontend | React 18.3, TypeScript 5.6, Vite 5.4 | Built into `frontend/dist`, served by the backend |
+| Desktop | WPF, `net10.0-windows`, no third-party packages | MVVM, native window and installer |
+| Tests | pytest ≥ 8, httpx ≥ 0.27, xUnit | 2 555 backend + 335 desktop tests |
+
+## Project structure
+
+```
+.
+├── backend/
+│   ├── app/
+│   │   ├── api/            REST + SSE routes, benchmark routes
+│   │   ├── engine/         marking engine, blueprint, scheme analysis, guards
+│   │   ├── gemini/         client proxy, key manager, telemetry, call audit
+│   │   ├── workers/        pool, process adapter, child entry point
+│   │   ├── jobs/           queue manager, recovery, stage events
+│   │   ├── classroom/      OAuth, sync, submissions, report upload
+│   │   ├── benchmark/      reproducible benchmark harness
+│   │   ├── distributed/    multi-machine agent (disabled by default)
+│   │   ├── config.py       configuration + secret store
+│   │   └── schema.sql      database schema
+│   ├── tests/              pytest suite (2 555 tests)
+│   └── scripts/            verification + benchmark scripts
+├── desktop/                WPF client: src/, tests/, installer/, build_release.ps1
+├── frontend/               React + TypeScript UI (src/, scripts/)
+├── docs/
+│   ├── architecture/       how it is built, how the repo is laid out
+│   ├── development/        setup, environments, distribution mode
+│   ├── guides/             feature-level explanations
+│   ├── performance/        quota, retry and compression behaviour
+│   ├── testing/            test strategy and subsystem audits
+│   ├── release/            building and shipping the package
+│   ├── reports/            dated audit and delivery reports
+│   └── results/            machine-readable verification output
+├── scripts/                repository tooling (portable build, link check, E2E)
+├── MathChecker_Distribution/  portable Windows packaging workspace
+├── main.py                 single entry point for the backend
+├── setup.bat / start.bat   Windows setup and launch
+└── start.sh                Linux / macOS launcher
+```
+
+`data/` (database, secrets, logs, student PDFs) is created on first run and is
+never committed.
+
+## Getting started
+
+### Prerequisites
+
+- **Python 3.12 or newer, 64-bit** (`winget install --id Python.Python.3.13 --scope user`)
+- **Node.js 20+** — only to change the web UI
+- **.NET 10 SDK** — only to build the desktop app
+- A Gemini API key (Google AI Studio) to mark real papers; the demo mode needs none
+
+### Backend and web UI
 
 ```bash
-# Linux / macOS
-./start.sh              # serves http://127.0.0.1:8642
-./start.sh 9000         # custom port
-
-# Windows — first time only (creates a native Windows venv + dependencies)
+# Windows — first time only (creates a native venv + installs dependencies)
 setup.bat
-# Windows — start the app
+# Windows — start the app (serves http://127.0.0.1:8642 and opens the UI)
 start.bat
 
-# or directly (Python 3.12+)
-python main.py
+# Linux / macOS
+./start.sh            # or: ./start.sh 9000
+```
 
-# Frontend (only needed when changing UI code)
+Or run it directly:
+
+```bash
+python -m pip install -r backend/requirements-dev.txt
+python main.py                    # serves http://127.0.0.1:8642
+python main.py 9000               # custom port
+```
+
+Changing the UI:
+
+```bash
 cd frontend
-npm ci                  # reproducible install from package-lock.json
-npm run build            # generates frontend/dist for the backend to serve
+npm ci                            # reproducible install from package-lock.json
+npm run build                     # emits frontend/dist, which the backend serves
 ```
 
-On first launch the app opens a **setup wizard** (teacher name, AI keys, Google
-Classroom, network + retention behaviour, health check). A teacher never edits
-a source file to configure it.
+### Desktop application
 
-> **Windows note:** a virtual environment is platform-specific — one created
-> on Linux lives in `.venv/bin` and cannot run on Windows. `setup.bat`
-> detects that, moves it aside to `.venv.foreign` (nothing is deleted) and
-> builds a native `.venv\Scripts` environment with the dependencies.
-
-> **Linux note:** `node_modules` is platform-specific. If the project was
-> prepared on Windows, run `npm install` once on Linux so Rollup/esbuild
-> native binaries match the OS (`npm install @rollup/rollup-linux-x64-gnu
-> --no-save` fixes a rollup error without touching the lockfile).
-
-First run creates `data/` (git-ignored). Then:
-
-1. **Settings → Role → Developer** (for diagnostics; Teacher otherwise)
-2. **API Keys → Add keys** — paste Gemini keys, one per line
-3. (Optional) **Classroom → Connect** — Google sign-in via the existing OAuth client
-4. **Report** — class/assignment reports with PDF export (Assignment + Class report)
-5. **Corrections → Clear Log** — hides finished jobs from the view (never deletes data);
-   **Diagnostics → Logs** — filtered log view (Running/Completed/Failed/Cancelled/Warnings/System)
-   with a confirmed "Clear Log" that truncates only the log file
-
-Demo without a key: **Settings → Offline demo (mock mode)**.
-
-## Where things live
-
-```
-backend/app/
-  config.py  db.py  schema.sql  logging_setup.py  errors.py  main.py
-  engine/    legacy_marking.py (preserved) · blueprint.py (mark-scheme control)
-             model_health_store.py (stable model choice) · service.py · verify.py
-  gemini/    key_manager.py · client_proxy.py (in-job key rotation) · tester.py · mock.py
-  jobs/      manager.py (queue, workers, recovery)
-  workers/   pool.py · adapter.py · child.py (isolated correction process)
-  classroom/ auth.py · client.py · sync.py · submissions.py · tracking_routes.py
-  api/       routes_all.py (REST + SSE) · student_routes.py (profiles/nicknames)
-backend/tests/          pytest regression suite (engine, blueprint, keys, jobs, tracking,
-                        reports, API, retry/failover; provider calls are mocked)
-backend/scripts/        compare_legacy.py · repeatability.py (same PDF, N runs)
-frontend/               React glass UI (built dist served by the backend)
-agent/                  tiny-agent source (shipped, disabled in this version)
-scripts/                build_portable.py · install_autostart.py · two_env_e2e.py
-data/                   git-ignored: app.db, secrets.toml, secrets/, blueprints/, logs/
-docs/                   reports, results, logs and evidence from the build work
-                        (never shipped) — start at docs/README.md
-dev_local/              dev-only scratch: report previews, harness data dirs
-                        (never shipped, delete freely) — see dev_local/README.md
-autostart/              machine-local autostart state written by the app
-MathChecker_Distribution/  the packaging workspace (see below)
+```bash
+cd desktop
+dotnet build src/MathChecker.Desktop/MathChecker.Desktop.csproj -c Release
+dotnet run --project src/MathChecker.Desktop
 ```
 
-The full map — what is shipped, what is disposable, what must never be tidied
-away, and the cleanup policy — is in
-[docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md).
+The desktop client talks to the local backend over HTTP and starts it if needed.
+Packaging (a signed single-file installer plus a portable ZIP) is described in
+[docs/release/RELEASE_INSTALL.md](docs/release/RELEASE_INSTALL.md).
 
-## Correction flow (real stages, never faked)
+### First run
 
-`QUEUED → PREPARING → DOWNLOADING → UPLOADING → MARKING → VERIFYING → SAVING → COMPLETED`
+The app opens a **setup wizard** on first launch (teacher name, API keys,
+optional Classroom connection, retention behaviour, health check). Nothing is
+configured by editing source files.
 
-- Duplicate prevention: one active job per Classroom submission (partial UNIQUE index)
-- Restart safety: in-flight jobs requeued on boot; completed work never redone;
-  an existing result is reused instead of re-marking (no duplicate corrections)
-- All-keys-cooldown: job parks in `WAITING_FOR_API` — parks do NOT consume the
-  retry budget and are bounded by a 15-min wait budget (clean FAILED, no loop)
-- FAILED API REQUEST ≠ RESEND EVERYTHING: failures are classified first; a
-  retry reuses the prepared input (no re-download, no re-normalization, no
-  mark-scheme refetch) and only when the class allows it
-- Usage page shows local API stats: requests/successes/failures, retries,
-  key failovers, cooldowns, and how many downloads/uploads were avoided
-- Storage: student PDFs deleted immediately after Gemini upload; only marks/feedback/metadata persist
+1. **API Keys → Add keys** — paste one Gemini key per line
+2. **Settings → Offline demo (mock mode)** — explore the UI without a key
+3. **Settings → Role → Developer** — extra diagnostics for development
 
-## Regression protection
+### Scan for leaked credentials and broken docs
 
-- `backend/tests/test_legacy_engine.py` locks normalization, clamping, totals,
-  grade bands, JSON extraction, and model-fallback semantics.
-- `backend/tests/test_determinism_blueprint.py` locks the determinism layer:
-  temperature/seed, blueprint caching/reconciliation, "missing question →
-  REVIEW, never a silent 0", and mid-job key rotation with file re-upload.
-- Real-submission comparison:
-  ```bash
-  cd backend
-  python scripts/compare_legacy.py --student work.pdf --scheme scheme.pdf
-  ```
-  When the separate original Streamlit reference app is available, run the same PDFs through it and diff the printed question marks — V5 retains the marking code path in `backend/app/engine/legacy_marking.py`. The reference copy is not part of this checkout.
-- Repeatability (the property V5 exists to guarantee):
-  ```bash
-  cd backend
-  python scripts/repeatability.py --runs 3
-  # runs the SAME student PDF + SAME mark scheme N times and prints a
-  # per-question matrix, totals, models, key fingerprints and a VERDICT.
-  ```
-  Historical measured results on private `data/fixtures/real/` are recorded in the audit reports under `docs/reports/`; those real-student fixtures are intentionally not included in source or release artifacts.
+```bash
+python scripts/check_doc_links.py --strict     # every Markdown link resolves
+```
 
-## Honest limitations
+## Testing and quality assurance
 
-- **Grade write-back**: Google only lets an OAuth app grade coursework it
-  created itself (the legacy app hit 403 here). V5 attempts draft grades when
-  enabled and otherwise shows suggested grades for manual entry.
-- **Provisional grades** are percentage bands, not official Pearson boundaries.
-- **Roles** are local UX gating (single-teacher desktop tool), not multi-user auth.
-- Real-PDF regression requires your sample submissions; the harness above makes
-  it one command.
-- **Residual model variance**: question set, numbering, maximum marks and totals
-  are now stable across runs; an individual question mark can still move by ~1
-  when a run lands on a different model because the pinned one is temporarily
-  quota-blocked. Every result records which model and which key (fingerprint)
-  produced it, so this is visible — and `verification.status = REVIEW` flags
-  structural gaps instead of hiding them.
-- **Classroom OAuth** completes in your browser (loopback flow, up to 5 min);
-  the connected account email appears on the Classroom page after sign-in.
-  Submission statuses come from the Classroom API only — with no sync yet the
-  UI says "unavailable" rather than guessing.
+| Suite | Command | Latest result |
+|---|---|---|
+| Backend (pytest) | `.venv/Scripts/python.exe -m pytest backend/tests -q` | **2 555 passed, 1 skipped** (12 m 11 s) |
+| Desktop (xUnit) | `dotnet test desktop/MathChecker.Desktop.slnx -c Release` | **335 passed, 0 failed** (3 m 36 s) |
+| Frontend build | `cd frontend && npm run build` | TypeScript + Vite build succeeds |
+| Doc links | `python scripts/check_doc_links.py --strict` | 103 files, 253 local links, 0 broken |
 
-## Productisation (5.1)
+Provider calls in the backend suite are mocked; no test needs an API key and no
+test touches the network. The suite covers the marking engine and its guards,
+determinism, key management and rotation, the retry/park taxonomy, the worker
+pool (concurrency, cancellation, duplicate prevention, crash recovery), reports,
+and the HTTP surface.
 
-Everything below is additive; the correction pipeline is untouched.
+Beyond unit tests, the repository has three kinds of evidence:
 
-| Area | What was added |
+- **Reliability tests** for cancellation, timeouts and provider overload:
+  [docs/results/RELIABILITY_TEST_REPORT.md](docs/results/RELIABILITY_TEST_REPORT.md)
+- **Performance benchmarks** run against the live provider:
+  [docs/results/PERFORMANCE_BENCHMARK_REPORT.md](docs/results/PERFORMANCE_BENCHMARK_REPORT.md)
+- **Live integration checks** (Classroom, UI workflows): JSON artifacts in
+  [docs/results/](docs/results/).
+
+Results are dated and labelled. Historical results are kept rather than
+overwritten, and a failed run is never deleted to make a report look better.
+
+## Performance engineering
+
+Marking a paper is one long multimodal request, so the interesting engineering is
+in what happens when the provider is slow, overloaded, or refuses the request.
+
+Measured on this repository's own database (35 recorded corrections):
+
+| Phase | Median | p95 | Share of total time |
+|---|---|---|---|
+| Queue (waiting for a worker) | 1 205 s | 13 585 s | **68 %** |
+| Preparing PDFs | 11 s | 32 s | 1 % |
+| Uploading to provider | 10 s | 28 s | < 1 % |
+| Marking (provider) | 668 s | 8 235 s | **29 %** |
+| Post-processing | 0 s | 481 s | 1 % |
+
+That table is the whole story of the slowdown: a transient `503` used to be
+enough to escalate a paper to a much slower fallback model, and a single
+correction could occupy a worker for hours. Every other paper in the batch then
+waited for that worker — the queue is a FIFO arithmetic consequence of
+`depth × service time ÷ workers`, reproduced by a simulation to within 0.7 %.
+
+What changed, and what it is worth:
+
+| Change | Evidence |
 |---|---|
-| First-run setup | `GET/POST /api/setup/status`, `/api/setup/complete`; React `SetupWizard` shown until complete. Stored in `config.toml [teacher]` |
-| Configurable grades | `engine/grading.py` + `[grades]` config. Grade = deterministic lookup of (marks → % → boundary table). The AI never invents a grade; the legacy percentage bands remain the default until the teacher sets real boundaries |
-| Result guard | `engine/result_guard.py`, applied on BOTH save paths (worker pool + legacy service). Never replaces a valid stored result with a suspicious one (e.g. a valid 67/103 is not overwritten by 0/103); flags for review instead. Confidence: HIGH / MEDIUM / LOW / VALIDATION_FAILED / LARGE_SCORE_CHANGE |
-| Review queue | `GET /api/review`, `POST /api/results/{id}/override` (teacher override is preserved and cannot be silently overwritten), `POST /api/jobs/{id}/reprocess` (the only way to force a replace) |
-| Teacher diagnostics | `GET /api/diagnostics/selfcheck` — plain-language Application / Storage / AI / Classroom / Network checks, each with a status and a fix |
-| Backup / restore | `GET/POST /api/backup/config` (secrets excluded unless explicitly requested), `GET /api/backup/database` (consistent SQLite copy) |
-| Retention (§19) | `[retention]` config actually enforced: `never` / `until_complete` / `days` / `always`; retained originals expire and are reclaimed at startup. Mark schemes are never retained |
-| Network access (§26) | `[network] access_mode = local \| lan`. Local (127.0.0.1) is the default; LAN is an explicit opt-in. Public exposure is deliberately not offered |
-| Versioning (§44/§45) | `app/version.py` is the single source of truth (app + schema version). `db._migrate` records the schema version and refuses to migrate a newer database backwards |
-| Legacy portable helper | `scripts/build_portable.py` is retained for older workflows; the canonical distributable is built by `MathChecker_Distribution/build_release.bat` and its allowlist/privacy scanner. `start.bat`/`start.sh` support portable mode (`portable.flag`) and a bundled `runtime/` |
+| Stop escalating a `503` to a slow fallback model; give any fallback a 4-minute, single-attempt rescue budget | healthy marking is 59–157 s for 26–45 page requests, against a 668 s archive median |
+| Park an overloaded request for 60 s (growing to 10 min, jittered) instead of retrying in 2 s | a shed request now fails in seconds and the job waits for capacity |
+| Allow at most two key attempts for a provider-wide `503` (was eight) | one marking call = ≤ 2 sends of a 45-page request |
+| Terminate a worker that has emitted nothing for 300 s | a wedged process can no longer hold a worker slot, key and job row forever |
+| Pin SDK retries to one attempt | the application, not the SDK, is the only retry owner |
 
-## Teacher experience & Classroom honesty (5.2)
+Limits of these numbers, stated plainly: the live benchmark ran while the
+provider was intermittently refusing large requests, so only 5 of 8 planned runs
+completed; one paper is the only paired comparison; and no teacher has certified
+the reference marks. The repository keeps the outage run instead of hiding it.
 
-The correction engine is untouched. 5.2 is a UI/UX + workflow pass built
-around it, plus the managed-vs-external Classroom architecture.
+Details: [PERFORMANCE_HARDENING_REPORT.md](docs/results/PERFORMANCE_HARDENING_REPORT.md)
+and [CORRECTION_PERFORMANCE_RECOVERY.md](docs/results/CORRECTION_PERFORMANCE_RECOVERY.md).
 
-| Area | What changed |
+## Privacy and security
+
+What the implementation actually does:
+
+- **Secrets stay local.** API keys and the Google OAuth client live in
+  `data/secrets.toml` / `data/secrets/`, both git-ignored, with a secret store
+  that never writes them to logs. Log records carry a key *fingerprint*, never
+  the key.
+- **Student files are transient.** Submission PDFs are deleted after they are
+  uploaded for marking; only marks, feedback and metadata are retained. A
+  retention policy, a purge tool and a data-portability export exist and are
+  covered by tests.
+- **Reports contain student names** (they are reports). Screenshots of live data
+  and raw student fixtures are deliberately **not** committed: `docs/logs/`,
+  `docs/ui-ux-redesign/screenshots/` and `data/` are git-ignored.
+- **The application is local-first.** The backend binds to loopback by default;
+  exposing it on a network is an explicit, documented action with its own
+  authentication gate.
+- **Nothing is graded silently.** A mark a model cannot justify becomes a review
+  item, and every teacher edit records who changed what.
+
+This is not a hardened multi-tenant service. It is a single-teacher desktop
+application, and the security model is sized to that.
+
+## Roadmap
+
+**Completed**
+- Deterministic marking pipeline with structural guards (clamping, missing
+  question → review, duplicate-correction prevention).
+- Teacher review desk, mark editing and override history.
+- Durable job queue, isolated worker processes, crash recovery.
+- Failure taxonomy, retry budgeting, capacity parking, worker watchdog.
+- Per-request cost ledger, usage reporting, key health and rotation.
+- Portable Windows release (installer + ZIP) and a native desktop client.
+- Documentation set with audited internal links.
+
+**In progress**
+- Teacher certification of the reference answer keys (0 of 16 verified today).
+- Re-confirming the performance recovery across a larger set of real papers.
+
+**Planned**
+- Batch planning for very long papers, behind a flag, with a merge layer that
+  attributes marks per page and flags split questions.
+- Let staging (download, normalise) run off the scheduling thread so a large
+  scan cannot delay other workers.
+
+**Under investigation**
+- Multi-machine distribution: an agent exists but is disabled; it needs its own
+  reliability story before it is offered.
+- Estimated cost per paper from provider token counts (measured tokens are
+  recorded; pricing is not asserted).
+
+Nothing in "planned" or "under investigation" is advertised as working.
+
+## Screenshots
+
+No screenshots are committed, on purpose: the application's screens show real
+student names and marks, and the UI changed after the last capture set. A
+screenshot set should be captured from the offline demo mode (mock marking, no
+student data) and stored under `docs/screenshots/`:
+
+1. Dashboard after a batch of corrections
+2. The marking desk, with one question selected and its feedback
+3. Mark editing with the override reason dialog
+4. Usage page: requests, tokens and retries per correction
+5. Worker / queue view during a batch
+6. Assignment report (PDF) with names removed
+
+Until those exist, the architecture diagram above and the documentation are the
+honest representation of the product.
+
+## Documentation
+
+Start at [docs/README.md](docs/README.md). Most useful entry points:
+
+| Document | Why read it |
 |---|---|
-| Design system | Dual light/dark palettes (`frontend/src/theme.tsx`), layered glass surfaces, a real button system (primary/secondary/success/warning/danger/ghost/nav + icon-only, loading, disabled), tooltips, status cards, attention rows, tabs, progress rings, and a dependency-free inline SVG icon set (`frontend/src/Icons.tsx`) |
-| Navigation | Collapsible sidebar (persisted) with grouped IA — Teaching / Insights / Operations / Integrations / System — and a contextual top bar (page title, sync status, global search, notification bell, theme switch, profile menu) |
-| Workflow | Dashboard → Classes → Assignments → Submissions → Correction → Review → Reports → Google Classroom, with new **Classes**, **Assignments** and **Review Queue** pages |
-| Dashboard | Clickable status cards (Not submitted, Submitted/unchecked, Checked, Class average, Needs review, AI keys) + a global **What needs my attention?** panel fed by `/api/attention` |
-| Managed vs External | Assignments created through the app are persisted as **Managed** (`classroom_managed_assignments`); everything else is **External**. The kind is proven from creation metadata, never guessed from a title |
-| Honest publishing | `/api/classroom/assignments/{id}/publish` executes per-student operations (draft grade, final grade + return) and records Google's **real** response in `classroom_publish_ops` — published / failed / not_supported / requires_auth / requires_review. A 403 becomes a plain-language limitation, never a success. Attaching files to a submission is reported as not supported (the Classroom API does not offer it) |
-| Safety gate | Grades for results still flagged for review are blocked server-side and surfaced as `requires_review` — the UI cannot publish what the engine has not accepted |
-| New endpoints | `GET /api/classes`, `GET /api/assignments`, `GET /api/assignments/{id}`, `POST /api/assignments/local`, `POST /api/classroom/courses/{c}/assignments/create`, `POST /api/classroom/assignments/{id}/import`, `GET /api/classroom/assignments/{id}/publish/queue`, `POST .../publish`, `GET /api/attention` |
-| Tests | `backend/tests/test_managed_publishing.py` locks managed detection, capability gating, the publish queue, honest 403/401 mapping, the review safety gate, and the attention feed |
+| [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) | Component map and the flows that matter |
+| [docs/architecture/PROJECT_STRUCTURE.md](docs/architecture/PROJECT_STRUCTURE.md) | What every folder is, and the cleanup policy |
+| [docs/development/WINDOWS_SETUP.md](docs/development/WINDOWS_SETUP.md) | Install, repair and troubleshoot a Windows checkout |
+| [docs/development/DEVELOPMENT_ENVIRONMENTS.md](docs/development/DEVELOPMENT_ENVIRONMENTS.md) | Which backend each shell uses |
+| [docs/performance/API_QUOTA_AND_RETRY.md](docs/performance/API_QUOTA_AND_RETRY.md) | Who retries, when, and what it costs |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to run, test and extend the project |
+| [CHANGELOG.md](CHANGELOG.md) | What changed, in order, with dates |
 
-> Principle: **never sacrifice correctness for appearance, and never report a
-> Classroom operation as successful unless Google confirmed it.**
+## Licence and origins
 
-## Assignment workflow & mark-scheme review (5.3)
+MIT — see [LICENSE](LICENSE).
 
-Assignments and Combined Assignments are one workflow on one record: create the
-assignment, attach the question paper and the mark scheme, review how every
-question will be handled, then correct papers and read the results — all from
-the same assignment. The mark scheme is no longer an implicit side effect of the
-first correction.
-
-| Area | What was added |
-|---|---|
-| Mark scheme page | `desktop/.../Views/MarkSchemeView.xaml` + `MarkSchemeViewModel`: every question and sub-question with its hierarchy (`1`, `1(a)`, `1(b)(ii)`), the expected answer, the marking guidance, its extraction state (`answer extracted` / `guidance only` / `nothing extracted` / `demo structure`), a handling decision, a note and the decision history |
-| Read on demand | `POST /api/scheme/read` reads the attached PDF into the structure when the teacher asks, so the page is usable *before* the first paper of an assignment is corrected. Reading twice reuses the stored structure (`cached: true`) rather than rebuilding it |
-| Decisions | `POST /api/scheme/decision` (AUTO / MANUAL / SKIP), `POST /api/scheme/answer` (replace the expected answer, `null` restores it), `POST /api/scheme/finalize` (sign off before marking). `SKIP` is written through the same exclusion table the worker already reads, so the number on the page and the paper that gets marked cannot disagree |
-| Marking is the default | Every question is proposed for **mark automatically**. An independent check is the teacher's opt-in exception, chosen per row (or per question, in the detail panel) and never imposed on the whole scheme. A row with no explicit decision still shows the proposal and stays in the `undecided` count until it is decided or explicitly acknowledged at sign-off |
-| Nothing hidden | An extraction with no answer still says so on the row (`guidance only` / `nothing extracted`) and is one filter away under *Untrusted extraction*, so the default nothing is checked against is visible rather than assumed. Nothing is skipped or approved silently |
-| Scheme defects | The existing discrepancy review (`/api/scheme/discrepancies`, proposals, approve/reject) still runs underneath: a defective scheme is flagged, never blindly trusted |
-| Demo Mode | With no API key, Demo Mode builds a labelled synthetic structure (`backend/app/engine/demo_scheme.py`): a paper-shaped mix of varied mark totals and multi-level sub-questions, so the review workflow can be explored without marking anything. Every row reports `DEMO`, every answer is a `[demo]` placeholder drawn in italic muted text, every row behaves exactly as on a real scheme (including the automatic default and the independent-check / skip choices), and the page carries a notice saying the structure was not read from the PDF |
-| Never mistaken for real | Demo answers are placeholders in the text and in the styling; typing your own answer turns that styling off and marks the row `(edited)`. Restoring puts the placeholder back and both changes appear in the decision history |
-| Tests | `backend/tests/test_scheme_review_api.py` (read, decisions, nested labels, demo structure shape) and `desktop/tests/MathChecker.Desktop.Tests/MarkSchemePageTests.cs` (listing, decisions, answer edit/restore, history, demo labelling) |
-
-> Principle: **a mark scheme decision is the teacher's, and the page never
-> decides on their behalf or shows a synthetic structure as a real one.**
-
-## Shareable release system (5.2)
-
-The private master project is **never modified** by the release process. A
-separate workspace, `MathChecker_Distribution/`, builds a clean production
-package from it:
-
-```
-MathChecker_Distribution/
-  build_release.bat          one command: runtime -> staging -> scan -> packages
-  scripts/
-    release_allowlist.py     explicit production allowlist (allowlist-first)
-    scan_release.py          blocking secret + privacy scan
-    build_runtime.py         reproducible bundled Python runtime (no prerequisites)
-    build_release.py         pipeline orchestrator
-  installer/                 themed Inno Setup script + brand assets + launcher
-  documentation/             recipient guide + privacy notes + build guide
-  release/                   MathChecker_Setup.exe · MathChecker_Portable.zip
-                             · SHA256SUMS.txt · release_manifest.json
-  logs/                      output of past pipeline runs
-  previous_builds/           superseded packages (retention policy in README)
-```
-
-Neither the master project nor the release system ever writes private material
-into a package. See `MathChecker_Distribution/README.md` for the folder layout
-and the previous-build retention policy.
-
-Pipeline: clean staging → production frontend build → **copy allowlisted
-files only** → secret + privacy scan (BLOCKS the build on any finding) →
-dependency validation → portable package → themed Windows installer → SHA-256
-hashes → release manifest → final validation.
-
-**Zero prerequisites for the recipient.** `build_release.bat` also builds
-`build/runtime/` — a stock CPython embeddable interpreter plus the backend's
-PyPI dependencies — so the installer and portable package run with no Python,
-Node or developer tools on the target machine. It is a distribution-owned
-artifact, verified by construction; the scanner applies a narrow,
-user-data-focused rule set to `runtime/` (library files are legitimately named
-`oauth2.py`/`credentials.py`, and `certifi` ships a real `cacert.pem`).
-
-Building the installer needs Inno Setup 6 on the *build* machine only
-(`winget install JRSoftware.InnoSetup`); the pipeline finds it on `PATH`, in
-`Program Files`, or under `%LOCALAPPDATA%\Programs`.
-
-What is safe to share: `release/MathChecker_Portable.zip` (or the compiled
-`release/MathChecker_Setup.exe`), plus `SHA256SUMS.txt` and
-`release_manifest.json` for the recipient to verify. The pipeline directories
-themselves (`build/`, `release_staging/`, `portable/`) and
-`previous_builds/original_*/` are working copies of one machine, not packages.
-The build refuses to ship a bundled runtime that is missing its compiled
-modules (`*.pyd`) — a runtime like that looks complete but cannot import
-`socket`/`sqlite3`/`ssl`, so it would not start at all on a clean Windows PC.
-See `MathChecker_Distribution/README.md` for the details.
-
-Privacy is solved by **not distributing** private material, never by hiding it:
-`data/`, credentials, tokens, databases, PDFs, logs, `.git/`
-and development caches are refused by both the allowlist and the independent
-scan. See `MathChecker_Distribution/documentation/PRIVACY.md`.
-
-Data separation: installed app files live under `Program Files`; user data
-(config, keys, database, cache, logs, reports) lives under
-`%LOCALAPPDATA%\MathChecker\` and is marked `uninsneveruninstall`, so updates
-and reinstalls never destroy it.
-
-| Feature | Endpoint / entry point |
-|---|---|
-| Factory reset (removes local data, keeps the app) | `POST /api/privacy/factory-reset` (needs `{"confirm":"RESET"}`), UI: **Privacy & Data** |
-| Sanitized diagnostic export | `GET /api/privacy/diagnostic-export` |
-| Data locations | `GET /api/privacy/info` |
-| Demo Mode (synthetic data, Classroom disabled) | `python main.py --demo` / Start-menu shortcut / `MC5_DEMO=1` |
-| Build identity | `app/version.py` `BUILD_NUMBER` / `BUILD_DATE`, surfaced in the app and in the manifest |
-
-## Security
-
-- Keys/secrets only in `data/secrets.toml` + `data/secrets/` (git-ignored, chmod 600)
-- API never returns key material; logs pass a redaction filter
-- Keys are referenced everywhere by SHA-256 fingerprint prefix
-
-## Developer quick reference
-
-### Clean Windows setup and launch
-
-The complete, verified procedure — what to install, what each prerequisite is
-for, what can only be done by hand, and how to repair a failed step — is in
-[docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md). The short version:
-
-1. Install **Python 3.12 or later (64-bit)** and enable **Add Python to PATH**.
-2. Install the **Microsoft Visual C++ 2015-2022 Redistributable (x64)**. A fresh
-   Windows does not include it, and PyMuPDF, cryptography and Pillow are
-   compiled extensions that fail to import without it:
-   `winget install --id Microsoft.VCRedist.2015+.x64` (needs administrator
-   approval).
-3. Optional: **Node.js 20+** to build/develop the React UI, and the **.NET 10
-   SDK** for the WPF desktop client. Neither is needed to run the web app once
-   `frontend/dist` exists.
-4. From the project folder, run `setup.bat` once, or
-   `powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1` (same
-   work, plus prerequisite checks). It creates a native `.venv`, installs
-   `backend/requirements-dev.txt` (the runtime set plus the test tools; the
-   portable release installs `backend/requirements.txt` only) and builds
-   `frontend/dist` when npm is available. It does **not** add anything to
-   Windows startup — the app runs only when you launch `start.bat`. If you
-   do want it to start with Windows, run `setup.bat /autostart` and approve
-   the UAC prompt; undo it later with
-   `python scripts\install_autostart.py service-remove`.
-5. Check the installation with
-   `powershell -ExecutionPolicy Bypass -File scripts\verify_windows.ps1`
-   (dependency imports, backend and frontend suites, desktop build, and a real
-   launch with an HTTP health check). Add `-Quick -SkipDesktop` for a fast pass.
-6. Run `start.bat` from the project folder. It serves the built UI at
-   `http://127.0.0.1:8642`; use `start.bat 9000` to select a port.
-7. Complete the first-run setup in the UI. Add Gemini keys and optionally
-   connect Classroom there; do not put credentials in source or documentation.
-
-For an exact reproduction of the dependency set this repository was verified
-against (instead of the version ranges):
-
-```bat
-.venv\Scripts\python.exe -m pip install -r backend\requirements-lock.txt
-```
-
-For local UI development, install Node.js/npm, then from `frontend/` run
-`npm ci`, `npm run build`, or `npm run dev`. The checked-in package lockfile
-pins the dependency tree. `start.bat` serves `frontend/dist`, not the Vite dev
-server.
-
-The Vite dev server has **no default backend**: `npm run dev` refuses to start
-until `frontend/.env.local` names one (copy `.env.development.example`). It
-never falls back to a port that happens to be listening, and the UI labels the
-backend it reached (`DEMO` / `DEV` / `LIVE` / `No backend`) on every page. See
-[docs/development-environments.md](docs/development-environments.md).
-
-### Tests and diagnostics
-
-From the project root, run every check with one command:
-
-```bat
-.venv\Scripts\python.exe scripts\run_all_tests.py
-```
-
-It builds the frontend, runs the frontend suite (including the headless-browser
-workspace checks), then runs the backend suite, and prints one pass/fail
-summary. The exit status is 0 only when every selected check passed, so it can
-be used in a pre-release script; `--only build|frontend|backend`, `--no-build`
-and `-v` (stream each check's output) narrow a run. Start the app with
-`start.bat` first if the browser checks should drive the live UI — otherwise
-they are reported as skipped rather than passing silently. On macOS/Linux the
-same command is `python scripts/run_all_tests.py`.
-
-The Dashboard card checks are self-contained: they boot their own copy of the
-app on a free port against a seeded throwaway data directory (2 courses, 4
-assignments, 18 students, 14 results over 27 days, 16 finished jobs and 2
-in-flight jobs — see
-[backend/scripts/seed_dashboard_fixture.py](backend/scripts/seed_dashboard_fixture.py)),
-then compare every populated card with the app's own API values. Nothing is
-written to `data/`, and no app has to be running first. To seed and serve that
-directory by hand (it prints the URL to open):
-
-```bat
-.venv\Scripts\python.exe backend\scripts\seed_dashboard_fixture.py --serve
-```
-
-Set `DASHBOARD_FIXTURE_URL` to point the same tests at an app you already run
-against seeded data instead.
-
-To run one suite directly, the backend regression suite is:
-
-```bat
-.venv\Scripts\python.exe -m pytest backend\tests -q
-```
-
-The suite needs the test tools from `backend/requirements-dev.txt` (installed by
-`setup.bat`); `backend/requirements.txt` deliberately contains runtime packages
-only so they are not shipped to teachers.
-
-From `frontend/`, run the TypeScript/production build with `npm run build` and
-the dependency-free frontend regression test with:
-
-```bat
-node --test "tests/*.test.ts"
-```
-
-There is intentionally no `npm test` script. If the UI appears stale after a
-build, restart the existing backend with `start.bat` and confirm the displayed
-port is the one being served.
-
-The desktop client has its own suite, plus a page audit that needs no window and
-takes no keyboard focus (so it can run while you work):
-
-```bat
-dotnet test desktop\tests\MathChecker.Desktop.Tests\MathChecker.Desktop.Tests.csproj
-dotnet run  --project desktop\tools\MathChecker.Desktop.UiAudit\MathChecker.Desktop.UiAudit.csproj -c Release
-```
-
-The audit starts its own backend in Demo Mode against a throwaway data folder,
-drives every page through the real view models, paints each one offscreen at
-three window widths (reporting binding errors and content past the right edge),
-and walks the end-to-end journeys — assignment → mark-scheme review →
-correction → review → report. It exits non-zero on any failed check and writes
-screenshots plus `report.md` under `data\scratch\ui-audit\`. For focused startup, scheme-review, and release
-checks, use the corresponding tests under `backend/tests/`; lifecycle runbook
-and commands are in [docs/SERVER_LIFECYCLE.md](docs/SERVER_LIFECYCLE.md).
-
-### Configuration and generated/runtime files
-
-This app is configured through its first-run wizard and Settings, not `.env`.
-One module decides where the data folder is (`backend/app/data_location.py`),
-and the rule is deliberately short:
-
-1. `MC5_DATA_DIR`, when set — tests, scripts and the relay's child process use
-   it, and nothing ever overrides it;
-2. data beside the app — the portable package's `Data/` folder, or an
-   installation that already has its database there (moving that would look
-   exactly like losing every class);
-3. a source checkout (`.git` next to `main.py`) — the repository's own
-   `data/`;
-4. otherwise an **installed** copy — the per-user folder:
-   `%LOCALAPPDATA%\MathChecker\` on Windows,
-   `~/Library/Application Support/MathChecker` on macOS,
-   `$XDG_DATA_HOME/mathchecker` on Linux.
-
-An installed copy is never given a data folder inside the system temp
-directory: a temp cleanup, Disk Cleanup or "free up space" helper would delete
-a teacher's marks without asking. When an older layout left a database in
-temp (`%TEMP%\mc5_ui`) or beside the app, the next start **adopts** it — the
-database is copied through SQLite's backup API (consistent even while the old
-app is still running), the rest of the folder is copied across, and
-`migration.json` in the new folder records where it came from. The original is
-left byte-for-byte untouched, so a wrong guess costs nothing. Use
-`python main.py --adopt-data <folder> [--into <folder>]` to choose a source
-explicitly; it refuses a destination that already holds data.
-
-The SQLite database, TOML settings/secrets, Classroom OAuth files, blueprints,
-cached mark schemes, retained submissions, logs, and temporary job inputs live
-under the selected root. In particular, runtime logs are under `data/logs/` in
-a source checkout; transient correction inputs are under `data/tmp/` and are
-cleaned as jobs finish. Do not manually remove these directories while the
-application is running or while retaining records is enabled.
-
-| Edit this | For this purpose |
-|---|---|
-| `backend/app/` | FastAPI routes and application services; the subsystems and boundaries are mapped in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| `backend/app/engine/legacy_marking.py` | Preserved mathematical-marking implementation; scoring changes require separate review and regression tests |
-| `backend/app/schema.sql` | SQLite schema and migrations (keep existing data compatibility) |
-| `frontend/src/` | React/TypeScript interface |
-| `backend/tests/`, `frontend/tests/` | Regression tests and fixtures (keep private real records out) |
-| `MathChecker_Distribution/scripts/` and `installer/` | Allowlist, privacy scan, package assembly, and installer inputs |
-
-`frontend/dist/` is built from `frontend/src/`. The distribution's `build/`,
-`release_staging/`, `portable/`, and `release/` are pipeline outputs; do not
-edit them by hand. Older packages in `previous_builds/` are retained rollback
-material. Release builds read source and application data is kept outside the
-release staging tree; the pipeline cleans its generated package folders and
-archives the previous release before replacing it.
-
-### Build a distributable
-
-On Windows, run `MathChecker_Distribution\\build_release.bat` from the project
-root (or change into `MathChecker_Distribution/` and run `build_release.bat`).
-It builds the frontend, assembles from the explicit allowlist, scans for secrets
-and personal data, validates the bundled runtime and writes outputs under
-`MathChecker_Distribution/release/`. Inno Setup 6 is needed on the build
-computer to produce the installer. Check the generated manifest and hashes and
-run `python scripts\\verify_portable.py --zip release\\MathChecker_Portable.zip`
-from `MathChecker_Distribution/` before sharing.
-
-The packaging verifiers run in Demo mode, where the engine is mocked: they prove
-the pipeline, never the marking. Certify live marking accuracy separately and
-deliberately with `python scripts\verify_live_marking.py --live` — opt-in, so it
-sends nothing without the flag; with it, it sends one real correction to Gemini
-using the configured key, works in a throwaway data folder with Testing-only
-mode on, and compares the model's marks with ground truth. Exit 0 only when
-accuracy is certified.
-
-Do not distribute `build/`,
-`release_staging/`, `portable/`, test data, or previous-build folders.
-
-## Architecture overview
-
-Start with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the correction
-pipeline, API/UI boundaries, persistence and integration relationships. The
-full folder and artifact inventory is in
-[docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md).
+The marking engine in `backend/app/engine/legacy_marking.py` is adapted, with a
+documented and semantics-preserving change list, from an earlier single-user
+script written by the teacher using this application. Everything around it —
+the queue, worker isolation, retry policy, review workflow, desktop client and
+reporting — was built for V5. AI-assisted development was used for
+implementation and review; claims in this repository are backed by the tests and
+measurements linked above rather than by assertion.

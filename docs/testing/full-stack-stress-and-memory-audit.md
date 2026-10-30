@@ -308,7 +308,7 @@ Confirmed by instrumenting which threads open connections: one brand-new
 `self._reader = None`, so the reader thread becomes collectable exactly when the
 job finishes — which is why the leak was exactly one connection per job.
 
-**Fix** ([backend/app/db.py](../backend/app/db.py)) — 22 lines: register the
+**Fix** ([backend/app/db.py](../../backend/app/db.py)) — 22 lines: register the
 connection's release on the *thread object* that opened it.
 
 ```python
@@ -321,7 +321,7 @@ thread's connection is never closed early and stays in `_connections` for
 collected. `_release_connection` discards from the registry *and* closes, so
 the two cleanup paths stay consistent and each is idempotent.
 
-**Regression tests** ([backend/tests/test_db_connection_lifecycle.py](../backend/tests/test_db_connection_lifecycle.py), 4 tests):
+**Regression tests** ([backend/tests/test_db_connection_lifecycle.py](../../backend/tests/test_db_connection_lifecycle.py), 4 tests):
 1. a connection is closed when its owning thread is gone;
 2. a **live** thread keeps a usable connection and keeps reusing it;
 3. 20 short-lived threads leave **0** open connections (red: "20 of 20 still hold an open connection");
@@ -344,7 +344,7 @@ pure scanning per request, serialised by the GIL/lock and inflating to ~1 s
 under concurrency. The released app ships a bundled portable Python runtime
 with thousands of directories, so the cost grows with the installation.
 
-**Fix** ([backend/app/config.py](../backend/app/config.py)) — memoize only the
+**Fix** ([backend/app/config.py](../../backend/app/config.py)) — memoize only the
 expensive walk, keyed on `(PROJECT_ROOT, DATA_DIR)`, with a 5 s TTL, behind a
 lock:
 
@@ -355,7 +355,7 @@ lock:
   it, simultaneous clients all missed the cache and all walked (p95 691 ms on
   the refresh tick vs 45 ms warm).
 
-**Regression tests** ([backend/tests/test_oauth_client_lookup.py](../backend/tests/test_oauth_client_lookup.py), 8 tests): scan count stays bounded across repeated calls, the canonical path wins and is re-checked every call, a deleted file is not reported, a newly placed file is picked up after the TTL, the cache is keyed per data dir, concurrent callers trigger one walk, the mutated `OAUTH_CLIENT_PATH` is honoured, and a missing client still returns the configured fallback path.
+**Regression tests** ([backend/tests/test_oauth_client_lookup.py](../../backend/tests/test_oauth_client_lookup.py), 8 tests): scan count stays bounded across repeated calls, the canonical path wins and is re-checked every call, a deleted file is not reported, a newly placed file is picked up after the TTL, the cache is keyed per data dir, concurrent callers trigger one walk, the mutated `OAUTH_CLIENT_PATH` is honoured, and a missing client still returns the configured fallback path.
 
 **Verification.** Red-green (§3 row 5). Live re-measurement: **156 ms → 1.66 ms**
 serial; **972 ms → 7.85 ms** and **6.2 rps → 162.3 rps** with six clients.
@@ -388,7 +388,7 @@ hunks were left untouched.
    because they open `/#/results/r-ui-test` and **no seed, fixture or script in
    the repository creates that result** (it appears only in those two test
    files). This is a **pre-existing, already-documented** gap: see
-   `docs/post-audit-validation-report.md` §F1, which found the same thing and
+   `docs/reports/POST_AUDIT_VALIDATION_REPORT.md` §F1, which found the same thing and
    recommended either seeding the fixture or making "fixture result absent" an
    honest *not run*. It was **not fixed here** because the previous report left
    that decision with the user and changing a skip condition to make a failing

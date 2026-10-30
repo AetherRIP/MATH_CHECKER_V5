@@ -1,15 +1,15 @@
 # docs/ — developer guides, reports, evidence and logs
 
-Start with [WINDOWS_SETUP.md](WINDOWS_SETUP.md) to install, restore or repair a
+Start with [WINDOWS_SETUP.md](development/WINDOWS_SETUP.md) to install, restore or repair a
 Windows checkout (prerequisites, dependency inventory, troubleshooting),
-[ARCHITECTURE.md](ARCHITECTURE.md) for the current component map,
-[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for the repository inventory,
-[development-environments.md](development-environments.md) for which backend the
+[ARCHITECTURE.md](architecture/ARCHITECTURE.md) for the current component map,
+[PROJECT_STRUCTURE.md](architecture/PROJECT_STRUCTURE.md) for the repository inventory,
+[development-environments.md](development/DEVELOPMENT_ENVIRONMENTS.md) for which backend the
 desktop, the browser dev server and a test snapshot use,
-[MARK_SCHEME_SUBQUESTIONS.md](MARK_SCHEME_SUBQUESTIONS.md) for how mark-scheme
-subquestions are detected and mapped, [SERVER_LIFECYCLE.md](SERVER_LIFECYCLE.md)
+[MARK_SCHEME_SUBQUESTIONS.md](guides/MARK_SCHEME_SUBQUESTIONS.md) for how mark-scheme
+subquestions are detected and mapped, [SERVER_LIFECYCLE.md](architecture/SERVER_LIFECYCLE.md)
 for startup/supervision details, and
-[API_QUOTA_AND_RETRY.md](API_QUOTA_AND_RETRY.md) for how Gemini quota is spent,
+[API_QUOTA_AND_RETRY.md](performance/API_QUOTA_AND_RETRY.md) for how Gemini quota is spent,
 who retries, and what the request ledger records.
 Historical reports and evidence below are retained for context; they are not a
 substitute for the current README and architecture guide. Student and account
@@ -23,9 +23,27 @@ Nothing here is imported, served or packaged: the release allowlist
 so keeping reports here also guarantees they cannot leak into a portable build.
 
 The project root holds the app entry points plus documents referenced by the
-application (`README.md`, `DISTRIBUTED_DEPLOYMENT.md`). See
-[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for the whole layout and cleanup
+application (`README.md`, `docs/development/DISTRIBUTED_DEPLOYMENT.md`). See
+[PROJECT_STRUCTURE.md](architecture/PROJECT_STRUCTURE.md) for the whole layout and cleanup
 policy.
+
+## Where to look
+
+| Folder | What lives there | Start with |
+|---|---|---|
+| [`architecture/`](architecture/) | How the system is put together and how the repository is laid out | [ARCHITECTURE.md](architecture/ARCHITECTURE.md), [PROJECT_STRUCTURE.md](architecture/PROJECT_STRUCTURE.md) |
+| [`development/`](development/) | Setting up, running and repairing a checkout; multi-machine setups | [WINDOWS_SETUP.md](development/WINDOWS_SETUP.md), [DEVELOPMENT_ENVIRONMENTS.md](development/DEVELOPMENT_ENVIRONMENTS.md) |
+| [`guides/`](guides/) | Feature-level explanations written for a maintainer or a teacher | [CLASSROOM_SIGNIN.md](guides/CLASSROOM_SIGNIN.md), [MARK_SCHEME_SUBQUESTIONS.md](guides/MARK_SCHEME_SUBQUESTIONS.md) |
+| [`performance/`](performance/) | Where the time and quota go, and how overload is handled | [API_QUOTA_AND_RETRY.md](performance/API_QUOTA_AND_RETRY.md), [PDF_COMPRESSION.md](performance/PDF_COMPRESSION.md) |
+| [`testing/`](testing/) | Test strategy and subsystem audits | [api-subsystem-audit.md](testing/api-subsystem-audit.md) |
+| [`release/`](release/) | Building and shipping the portable Windows package | [RELEASE_INSTALL.md](release/RELEASE_INSTALL.md) |
+| [`reports/`](reports/) | Dated audit, delivery and incident reports (historical record) | [AUDIT_REPORT.md](reports/AUDIT_REPORT.md) |
+| [`results/`](results/) | Machine-readable output of the verification scripts | [PERFORMANCE_BENCHMARK_REPORT.md](results/PERFORMANCE_BENCHMARK_REPORT.md) |
+
+The folders below `reports/`, `results/`, `size_optimization/`, `desktop-migration/`,
+`ui-ux-redesign/` and `reference-marking/` are a historical record. They describe
+what was true when they were written; the README, the architecture guide and the
+code are the current truth.
 
 ## reports/ — audit and delivery reports (markdown)
 
@@ -54,6 +72,13 @@ policy.
 | [TWO_WINDOWS_E2E_REPORT.md](reports/TWO_WINDOWS_E2E_REPORT.md) | Two-environment end-to-end integration test evidence |
 | [UI_ARCHITECTURE_REPORT.md](reports/UI_ARCHITECTURE_REPORT.md) | UI architecture correction: separate pages, Task Manager, AI workers |
 | [V5_CLEANUP_AND_PACKAGING_REPORT.md](reports/V5_CLEANUP_AND_PACKAGING_REPORT.md) | Workspace cleanup, `V5.exe` launcher build and release verification |
+| [V5_END_TO_END_TEST_REPORT.md](reports/V5_END_TO_END_TEST_REPORT.md) | End-to-end test pass across the web, desktop and backend surfaces |
+| [V5_TEST_FINDINGS_RESOLUTION_REPORT.md](reports/V5_TEST_FINDINGS_RESOLUTION_REPORT.md) | Every finding from that pass and how it was closed |
+| [POST_AUDIT_VALIDATION_REPORT.md](reports/POST_AUDIT_VALIDATION_REPORT.md) | Validation performed after the system audit |
+| [LARGE_PDF_AUDIT.md](reports/LARGE_PDF_AUDIT.md) | Why very long papers were batched, what broke and why the batching worker was retired |
+| [ui-improvement-2026-10-24.md](reports/ui-improvement-2026-10-24.md) | UI polish pass (2026-10-24) |
+| [REPOSITORY_AUDIT.md](reports/REPOSITORY_AUDIT.md) | What the 2026-10-30 repository audit found, removed and preserved |
+| [REPOSITORY_CLEANUP_REPORT.md](reports/REPOSITORY_CLEANUP_REPORT.md) | Before/after structure, documentation and validation results for that pass |
 
 ## results/ — machine-readable run results
 
@@ -84,6 +109,17 @@ it by hand.
   ~600 s per paper, the measured cause, and what was changed.
 * `MARKING_CONFIG_BENCHMARK.json` — marking configurations compared on the same
   reference papers (`backend/scripts/benchmark_marking_config.py`).
+* `PERFORMANCE_HARDENING_REPORT.md` — the hardening audit: how a correction
+  executes, every retry/timeout/cancellation boundary, the risks found and what
+  was changed.
+* `PERFORMANCE_BENCHMARK.json`, `PERFORMANCE_BENCHMARK_run1_outage.json` — raw
+  multi-paper benchmark records (`backend/scripts/benchmark_hardening.py`); the
+  `run1_outage` file is kept because deleting an inconvenient run is how a
+  benchmark starts lying.
+* `PERFORMANCE_BENCHMARK_REPORT.md` — multi-paper latency, accuracy and queue
+  analysis, including the FIFO queue model.
+* `RELIABILITY_TEST_REPORT.md` — tests executed, cancellation/retry
+  verification, and the results of the final full-suite runs.
 * `two_env_e2e_results.json` — two-installation end-to-end harness output.
 * `audit/` — re-runnable investigation helpers (`guard_proof.py`, `q9_repro.py`)
   and their recorded outputs.
@@ -108,9 +144,9 @@ its history.
 
 ## Also here
 
-* `ARCHITECTURE.md` — current source/runtime boundaries and subsystem dependencies.
-* `MARK_SCHEME_SUBQUESTIONS.md` — how a mark scheme's subquestions are detected,
+* `architecture/ARCHITECTURE.md` — current source/runtime boundaries and subsystem dependencies.
+* `guides/MARK_SCHEME_SUBQUESTIONS.md` — how a mark scheme's subquestions are detected,
   how answers and marking criteria are mapped to their identifier, and what is
   still left to review.
-* `SERVER_LIFECYCLE.md` — lifecycle guide and a historical verification record; its
+* `architecture/SERVER_LIFECYCLE.md` — lifecycle guide and a historical verification record; its
   test counts and checkout-specific findings may age and should be rechecked.

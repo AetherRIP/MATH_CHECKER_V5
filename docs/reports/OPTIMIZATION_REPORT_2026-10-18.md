@@ -84,7 +84,7 @@ cadences and data sources and were left untouched.
 
 `MathChecker_Distribution/` holds 15,201 tracked files (~1.4 GB), including
 `build/`, `portable/`, `release_staging/`, `release/` and `previous_builds/`.
-`docs/PROJECT_STRUCTURE.md` explicitly classifies `previous_builds/` as
+`docs/architecture/PROJECT_STRUCTURE.md` explicitly classifies `previous_builds/` as
 deliberate rollback material and warns that a release build replaces the live
 pipeline folders. **No distribution artifact was deleted or rebuilt in this
 pass**; this is reported as remaining size debt, not silently "cleaned".
@@ -115,7 +115,7 @@ analysis is never cached. There is no time-based expiry and no cross-file key.
 - `backend/requirements.txt`: runtime only (15 → 13 packages).
 - `backend/requirements-dev.txt`: `-r requirements.txt` + `pytest` + `httpx`.
 - `setup.bat` installs the dev file for a source checkout.
-- README and `docs/PROJECT_STRUCTURE.md` updated; the canonical release path
+- README and `docs/architecture/PROJECT_STRUCTURE.md` updated; the canonical release path
   still installs `requirements.txt` only (`build_runtime.py` unchanged).
 
 ### 3.3 Frontend
@@ -195,7 +195,7 @@ effect is that tests/overrides/reloads cannot write to a stale path.
   errors were the expected `403` responses for developer-only endpoints while
   signed in as a teacher, and the Prompts page correctly said
   "This page is Developer-role only."
-- Portable distribution: **not rebuilt**. `docs/PROJECT_STRUCTURE.md` marks a
+- Portable distribution: **not rebuilt**. `docs/architecture/PROJECT_STRUCTURE.md` marks a
   release build as destructive to live pipeline folders; the release safeguard
   tests (`test_release_*`, `test_portable_launch_and_stop`) are part of the
   backend suite. A full portable build + installer verification remains

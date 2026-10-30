@@ -85,7 +85,7 @@ shows **No backend** and an error banner — never a page of plausible zeroes.
 The desktop's backend is loopback-only by default. Do not expose it with
 `--host 0.0.0.0`, a tunnel, or LAN mode just to open the browser UI: run the
 browser against a backend on the same machine, or use the existing, deliberate
-LAN/public configuration (`docs/SERVER_LIFECYCLE.md`, `remote.py`) and its
+LAN/public configuration (`docs/architecture/SERVER_LIFECYCLE.md`, `remote.py`) and its
 session protections.
 
 ### C. Isolated test environment

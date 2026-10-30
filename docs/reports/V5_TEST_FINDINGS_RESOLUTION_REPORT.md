@@ -430,8 +430,8 @@ weakened; no student data, result or evidence was deleted.
 ```
 
 Pre-existing working-tree changes from earlier work (`README.md`, `backend/requirements.txt`,
-`docs/PROJECT_STRUCTURE.md`, `docs/README.md`, `setup.bat`, `start.bat`, `.env.example`,
-`backend/requirements-lock.txt`, `docs/WINDOWS_SETUP.md`, `docs/reports/V5_END_TO_END_TEST_REPORT.md`,
+`docs/architecture/PROJECT_STRUCTURE.md`, `docs/README.md`, `setup.bat`, `start.bat`, `.env.example`,
+`backend/requirements-lock.txt`, `docs/development/WINDOWS_SETUP.md`, `docs/reports/V5_END_TO_END_TEST_REPORT.md`,
 `scripts/setup_windows.ps1`, `scripts/verify_windows.ps1`) are untouched and preserved.
 
 **No commit and no push was made.** Run artifacts are local evidence in the git-ignored

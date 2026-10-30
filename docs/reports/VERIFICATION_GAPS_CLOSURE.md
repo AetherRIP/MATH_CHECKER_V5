@@ -16,7 +16,7 @@ tested says so plainly — nothing here is inferred from a passing build.
 | `docs/results/UI_WORKFLOW_CHECKS.json` | Browser automation, 66 checks: **65 PASS, 1 SKIP**, 0 page errors |
 | `backend/tests/test_defective_scheme.py` | Engine-layer proof that a defective/contradictory scheme is never markable (25 tests) |
 | `docs/reference-marking/` | The reference set itself + `REVIEW_SHEET.md` for a human |
-| `docs/CLASSROOM_SIGNIN.md` | The exact interactive sign-in procedure |
+| `docs/guides/CLASSROOM_SIGNIN.md` | The exact interactive sign-in procedure |
 | Full backend suite | Run this session, re-run after the engine fix: **1936 passed, exit 0** (`docs/results/audit/final_suite.log` holds the earlier phase's 1911-pass run) |
 
 ---
@@ -26,7 +26,7 @@ tested says so plainly — nothing here is inferred from a passing build.
 **The checkout did have a usable credential**: the installation reports
 `connected: True` for `<redacted-email>` (`client_configured: True`),
 so live reads were verified rather than assumed. No credential value was
-searched for, printed, or invented; `docs/CLASSROOM_SIGNIN.md` records the
+searched for, printed, or invented; `docs/guides/CLASSROOM_SIGNIN.md` records the
 procedure (client JSON location, Desktop-app client type, consent-screen test
 users, 300-second loopback window, the two OAuth flags that a refresh token
 depends on) without any secret in it.

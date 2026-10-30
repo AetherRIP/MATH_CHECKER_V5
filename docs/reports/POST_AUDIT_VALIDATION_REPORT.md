@@ -127,7 +127,7 @@ mock engine, synthetic students), so the real `data/` was never opened.
 ### F4 — the shipped artifacts do not match the current working tree (Medium, confirmed)
 - `release/release_manifest.json`: `builtAt 2026-10-26T21:42:42Z`, version
   `1.0.0`, staged 258.5 MB, built on `ARTHUR_RIP_002`.
-- `docs/RELEASE_REPORT.md` states the desktop suite as "265 passed"; the tree
+- `docs/release/RELEASE_REPORT.md` states the desktop suite as "265 passed"; the tree
   now has **277**.
 - The tree carries 46 modified files plus new untracked features/tests
   (`CreateAssignmentView`, review reasons, scheme exclusions, the D1 budget fix).
@@ -229,7 +229,7 @@ pending your decision because they would be pointless if you move it.
    behaviour change.
 3. **Turn the suite into a reliable gate, then refresh the release** (F3 + F4):
    make the mock-isolation assertion a delta, then rebuild the installer and
-   update `docs/RELEASE_REPORT.md`'s counts (265 → 277 desktop tests) so shipped
+   update `docs/release/RELEASE_REPORT.md`'s counts (265 → 277 desktop tests) so shipped
    artifacts match the tree. The rebuild needs your explicit go-ahead because it
    overwrites `release/`.
 

@@ -45,8 +45,8 @@ ZIPs differ by only a few files, so they collapse dramatically).
 | File | Change | Why |
 |---|---|---|
 | `.gitignore` | Added `.venv.foreign/`; added `MathChecker_Distribution/{portable,release_staging,previous_builds}/` | These are rebuilt by the pipeline and must not re-enter history — that is how `.git` reached 1 GB. The existing `!MathChecker_Distribution/**/*.pyd` negation is untouched (a test asserts its presence and ordering, and it still governs the committed runtime under `build/`). |
-| `docs/ARCHITECTURE.md` | Config-template reference now points at `MathChecker_Distribution/documentation/config.toml.example` | The copy under `portable/` no longer exists; the documentation copy is the maintained one and is shipped in the build. |
-| `docs/PROJECT_STRUCTURE.md` | Same config reference; release-artifact and release-history rows now state that only `release/` and `build/` are tracked, that `release_staging/`/`portable/` are ignored working copies, and that `previous_builds/` is local-only | Keeps the documented structure true after the change. |
+| `docs/architecture/ARCHITECTURE.md` | Config-template reference now points at `MathChecker_Distribution/documentation/config.toml.example` | The copy under `portable/` no longer exists; the documentation copy is the maintained one and is shipped in the build. |
+| `docs/architecture/PROJECT_STRUCTURE.md` | Same config reference; release-artifact and release-history rows now state that only `release/` and `build/` are tracked, that `release_staging/`/`portable/` are ignored working copies, and that `previous_builds/` is local-only | Keeps the documented structure true after the change. |
 
 No file under `backend/app/`, `backend/tests/`, `frontend/src/`, `agent/` or the
 release pipeline scripts was modified. Correction logic, prompts, model choice,

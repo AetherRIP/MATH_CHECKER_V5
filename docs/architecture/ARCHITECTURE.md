@@ -36,7 +36,7 @@ M/A/B marking points, per-subquestion validation); `engine/blueprint.py`,
 `verify.py`, `question_inventory.py`, `result_guard.py` and `scheme_audit.py`
 provide question/max-mark reconciliation at subquestion level, verification,
 overwrite protection and recorded mark-scheme discrepancies. See
-[MARK_SCHEME_SUBQUESTIONS.md](MARK_SCHEME_SUBQUESTIONS.md). Keep scoring-policy changes separate from
+[MARK_SCHEME_SUBQUESTIONS.md](../guides/MARK_SCHEME_SUBQUESTIONS.md). Keep scoring-policy changes separate from
 folder cleanup and preserve their regression tests.
 
 `backend/app/jobs/` stores correction jobs and coordinates retry, recovery,
@@ -194,7 +194,7 @@ legacy assembler, not the canonical release path.
    data, test and generated-artifact locations.
 3. [Main README](../README.md) for Windows setup, configuration, tests and
    developer commands.
-4. [Submission retention](submission-retention.md) for which copy of a paper is
+4. [Submission retention](../guides/SUBMISSION_RETENTION.md) for which copy of a paper is
    kept, where it lives, and what the viewer reports.
 5. [Server lifecycle runbook](SERVER_LIFECYCLE.md) for process supervision and
    lifecycle-specific behavior.

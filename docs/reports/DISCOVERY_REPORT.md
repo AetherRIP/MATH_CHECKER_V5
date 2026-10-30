@@ -141,7 +141,7 @@ now passes **45/45** and the full suite is green.
    artifact will still fail mark-scheme extraction.
 2. **A production backend must be deployed** on an always-on machine — the
    architecture and all endpoints exist; the deployment itself
-   ([DISTRIBUTED_DEPLOYMENT.md](../../DISTRIBUTED_DEPLOYMENT.md)) is an operational
+   ([DISTRIBUTED_DEPLOYMENT.md](../development/DISTRIBUTED_DEPLOYMENT.md)) is an operational
    step, not code.
 3. **No live multi-machine proof in this session** — this workspace has one
    machine. The registration/discovery/sync path was verified against the real

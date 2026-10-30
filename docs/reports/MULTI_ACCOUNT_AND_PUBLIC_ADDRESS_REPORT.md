@@ -121,7 +121,7 @@ the separately configured shared-backend address (Multi-School page).
 | [tests/test_public_access_hardening.py](../../backend/tests/test_public_access_hardening.py) | Added: the SPA shell must never be cached (found in a real browser). |
 | [tests/test_remote_access.py](../../backend/tests/test_remote_access.py), [tests/conftest.py](../../backend/tests/conftest.py) | Status-file/`public_url` behaviour with the switch; the pre-existing suites keep their multi-account default. |
 | [scripts/live_verify_access_switches.py](../../backend/scripts/live_verify_access_switches.py) *(new)* | The live, mock-free end-to-end verification (real app, real tunnel, real HTTP). |
-| [DISTRIBUTED_DEPLOYMENT.md](../../DISTRIBUTED_DEPLOYMENT.md) | New §3.1 (both switches, prerequisites, states, re-enabling), checklist entries and two new known limitations. |
+| [DISTRIBUTED_DEPLOYMENT.md](../development/DISTRIBUTED_DEPLOYMENT.md) | New §3.1 (both switches, prerequisites, states, re-enabling), checklist entries and two new known limitations. |
 | [documentation/README_RECIPIENT.md](../../MathChecker_Distribution/documentation/README_RECIPIENT.md) | Teacher-facing explanation of both switches and the `cloudflared` prerequisite. |
 
 ## 6. Additional infrastructure required

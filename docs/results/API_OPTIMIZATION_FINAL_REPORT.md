@@ -5,7 +5,7 @@ Repository: `AetherRIP/MATH_CHECKER_V5`, branch `main`
 Production model: `gemini-3.6-flash`
 Companion documents: [`API_OPTIMIZATION_BASELINE.md`](API_OPTIMIZATION_BASELINE.md)
 (the definitions every number here uses) and
-[`../API_QUOTA_AND_RETRY.md`](../API_QUOTA_AND_RETRY.md) (the reference for
+[`../API_QUOTA_AND_RETRY.md`](../performance/API_QUOTA_AND_RETRY.md) (the reference for
 quota, retry ownership and the ledger).
 
 This document reports only what was built and what was observed. Where a number

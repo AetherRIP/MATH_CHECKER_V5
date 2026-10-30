@@ -95,8 +95,8 @@ $ git diff --name-only -- backend frontend agent main.py remote.py scripts | wc 
 0
 ```
 
-* The changed tracked files are `.gitignore`, `docs/ARCHITECTURE.md`,
-  `docs/PROJECT_STRUCTURE.md` (+17/−5 lines) plus new files under
+* The changed tracked files are `.gitignore`, `docs/architecture/ARCHITECTURE.md`,
+  `docs/architecture/PROJECT_STRUCTURE.md` (+17/−5 lines) plus new files under
   `docs/size_optimization/`, `scripts/`, `.githooks/`.
 * The 11,488 deletions are all under `MathChecker_Distribution/`; a grep of
   `backend/app`, `frontend/src`, `agent`, `main.py`, `remote.py` finds **no
