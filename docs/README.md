@@ -80,6 +80,10 @@ it by hand.
 * `MODEL_SWEEP_RESULTS.json` — candidate-model sweep output
   (`backend/scripts/sweep_models.py`): access, latency, provider-reported
   tokens and schema validity per model. Carries no accuracy claim.
+* `CORRECTION_PERFORMANCE_RECOVERY.md` — why corrections went from ~130 s to
+  ~600 s per paper, the measured cause, and what was changed.
+* `MARKING_CONFIG_BENCHMARK.json` — marking configurations compared on the same
+  reference papers (`backend/scripts/benchmark_marking_config.py`).
 * `two_env_e2e_results.json` — two-installation end-to-end harness output.
 * `audit/` — re-runnable investigation helpers (`guard_proof.py`, `q9_repro.py`)
   and their recorded outputs.
