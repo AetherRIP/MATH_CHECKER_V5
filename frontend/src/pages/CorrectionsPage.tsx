@@ -177,6 +177,25 @@ export function JobQueue({ activeJobId, compact }: {
                 <span>{job.stage_detail ?? job.status}{job.error ? ` — ${job.error}` : ""}</span>
                 <span className="faint mono">{elapsed(job.created_at, job.finished_at)}</span>
               </div>
+              {/* Why this job is waiting, and what it already spent doing so.
+                  The ledger is persisted on the backend, so this survives a
+                  restart and never reads as "still waiting" with no history. */}
+              {(job.status === "WAITING_FOR_API" || job.status === "RETRYING"
+                || (job.park_count ?? 0) > 0 || (job.manual_retries ?? 0) > 0) && (
+                <div className="faint small">
+                  {[
+                    job.status === "WAITING_FOR_API" ? "Waiting for API capacity" : null,
+                    job.park_count ? `${job.park_count} capacity wait(s)` : null,
+                    job.waited_seconds ? `${Math.round(job.waited_seconds)}s spent waiting` : null,
+                    job.last_failure_class ?? null,
+                    job.retry_due_at ? `next try ${new Date(job.retry_due_at * 1000).toLocaleTimeString()}` : null,
+                    `attempt ${job.attempts}/${job.max_attempts}`,
+                    (job.manual_retries ?? 0) > 0
+                      ? `manual retry ${job.manual_retries}/${job.max_manual_retries ?? 3}`
+                      : null,
+                  ].filter(Boolean).join(" · ")}
+                </div>
+              )}
               {job.bandwidth && (
                 <div className="faint small" title="Per-job network operations — proves retries reuse prepared input">
                   ↓{mb(job.bandwidth.download_bytes)} Drive ({job.bandwidth.download_count} dl)

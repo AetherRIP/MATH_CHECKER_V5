@@ -220,6 +220,23 @@ def _record_scheme_audit(job: dict, result_id: str, result: dict,
 class WorkerPool:
     """Owns the worker set; round-robins QUEUED jobs onto idle workers."""
 
+    #: How many automatic retries a job may make before it is STOPPED for
+    #: diagnosis with its evidence intact. Retrying is not free: every attempt
+    #: is a full request, and a loop of them is how one paper burned 60 starts.
+    AUTO_RETRY_SUSPEND_AFTER = 2
+
+    #: Capacity parks allowed before a job is stopped for diagnosis. Four waits
+    #: for a cooldown that never clears is a provider problem, not patience.
+    MAX_PARKS_BEFORE_SUSPEND = 4
+
+    #: A single paper is a correction, not a batch; only a multi-job start pays
+    #: for the one tiny readiness probe.
+    PREFLIGHT_MIN_QUEUED = 2
+
+    #: How long dispatch waits for that probe. A health check must never
+    #: deadlock marking: after this it fails open and the per-job gates decide.
+    PREFLIGHT_HOLD_SECONDS = 20.0
+
     def __init__(self, worker_count: int, key_manager: KeyManager | None = None):
         self._lock = threading.RLock()
         self._wake = threading.Event()
@@ -232,13 +249,26 @@ class WorkerPool:
         self._retries_total = 0
         self._usage_blocked = False
         self._provider_blocked = False
+        # Key-availability gate state (see _keys_ready).
+        self._keys_blocked = False
+        self._keys_next_check = 0.0
+        self._keys_last_ready = True
         # Parked-wait accounting per job (spec §2/§3): total seconds a job
         # has spent waiting for API capacity. Bounds the WAITING_FOR_API
         # loop so an outage ends in a clean FAILED, never an infinite park.
         self._api_wait_total: dict[str, float] = {}
+        # Capacity parks per job. Parks are cheap now (nothing is sent while
+        # keys cool), but a job that has parked this many times is not waiting
+        # for a cooldown — it is evidence that the provider cannot serve this
+        # paper. Stop and keep the evidence instead of grinding the budget.
+        self._park_counts: dict[str, int] = {}
         # Jobs the teacher explicitly asked to reprocess despite a stored
         # result (§23): the guard honours this as a deliberate override.
         self._force_reprocess: set[str] = set()
+        # Batch-start provider check (see _preflight_ready).
+        self._probe_thread: threading.Thread | None = None
+        self._probe_deadline: float = 0.0
+        self._preflight_note: str | None = None
         # Live stage text and its start time per running job, for the elapsed
         # clock appended while a long AI request is in flight.
         self._active_stage: dict[str, tuple[str, float]] = {}
@@ -277,14 +307,27 @@ class WorkerPool:
         return len(self._workers)
 
     def recommended_workers(self) -> int:
-        """Configured workers, capped by healthy API keys and sane bounds (§6)."""
+        """Configured workers, capped by healthy API keys, bounds and the
+        adaptive limit (§6).
+
+        The configured value is a CEILING. The AIMD controller can only lower
+        the figure while the provider is throttling, so a 429 storm is not
+        amplified by every worker discovering it at once; it recovers one slot
+        at a time afterwards, and its state is persisted so a restart during an
+        outage does not restore full parallelism.
+        """
         cfg = get_config()
         configured = max(1, cfg.worker.concurrency)
         healthy = max(0, self.keys.status()["healthy"])
         cap = max(1, min(8, configured))
         if healthy == 0:
             return cap  # let the WAITING_FOR_API path handle no-keys cleanly
-        return max(1, min(cap, healthy))
+        base = max(1, min(cap, healthy))
+        try:
+            from .concurrency import concurrency_control
+            return max(1, min(base, concurrency_control().limit(base)))
+        except Exception:  # noqa: BLE001 — dispatch must survive a bad stat
+            return base
 
     # -- scheduling loop (§4) ---------------------------------------------------
 
@@ -372,6 +415,20 @@ class WorkerPool:
                 "WHERE status = ?", (time.time(), "QUEUED"))
             log_event("workers", "dispatch resumed (provider healthy)")
 
+        # Key-availability gate (§4): when every key is cooling down there is
+        # nothing a worker can do — but the old behaviour started one anyway,
+        # spawned a child, rebuilt the whole multimodal prompt and took the
+        # refusal. One paper was logged starting 60 times that way. The queue
+        # now stands still until a key is actually usable.
+        if not self._keys_ready():
+            return
+
+        # Provider readiness (§4): a key being present is not proof that
+        # inference works. Before a multi-paper start, one tiny probe (no PDF,
+        # no student data) decides whether the batch should begin at all.
+        if not self._preflight_ready():
+            return
+
         jobs = db.query(
             "SELECT * FROM correction_jobs WHERE status = ? ORDER BY created_at ASC",
             ("QUEUED",),
@@ -419,6 +476,11 @@ class WorkerPool:
                     "updated_at = ? WHERE id = ?",
                     ("STARTING", worker.worker_id, time.time(), time.time(), job_row["id"]),
                 )
+            # Adopt the PERSISTED capacity ledger. This used to be in-memory
+            # only, so a backend restart (or a cancel/re-arm cycle) handed a
+            # stuck job a fresh 15-minute budget and an unlimited number of
+            # parks — the outage could be waited out forever.
+            self._ledger(job_row["id"])
             self._report(job_row["id"], status="PREPARING",
                          stage="Preparing the PDFs", progress=0.0)
             try:
@@ -430,7 +492,8 @@ class WorkerPool:
                 failure = retry_policy.classify_failure(exc)
                 if failure.park:
                     self._park_job(job_row["id"], self._capacity_delay(),
-                                   reason="no key available yet")
+                                   reason="no key available yet",
+                                   failure_class=failure.cls)
                 else:
                     db.execute(
                         "UPDATE correction_jobs SET status = ?, error = ?, stage_detail = NULL, "
@@ -451,8 +514,9 @@ class WorkerPool:
                     db.execute(
                         "UPDATE correction_jobs SET status = ?, error = ?, "
                         "error_code = 'invalid_submission', finished_at = ?, "
-                        "updated_at = ? WHERE id = ?",
-                        ("FAILED", str(exc)[:500], time.time(), time.time(), job_row["id"]),
+                        "retry_due_at = NULL, updated_at = ? WHERE id = ?",
+                        ("FAILED", str(exc)[:500], time.time(), time.time(),
+                         job_row["id"]),
                     )
                     with self._lock:
                         worker.mark_idle()
@@ -461,12 +525,13 @@ class WorkerPool:
                 # problems fail fast; transient download/network errors get
                 # ONE bounded retry with the prepared-input cache.
                 failure = retry_policy.classify_failure(exc)
+                waited_spent, _parks = self._ledger(job_row["id"])
                 decision = retry_policy.decide(
                     failure,
                     attempts=(job_row["attempts"] or 0) + 1,
                     max_attempts=job_row["max_attempts"] or 3,
                     cfg_max_retries=get_config().worker.max_retries,
-                    waited_seconds=self._api_wait_total.get(job_row["id"], 0.0),
+                    waited_seconds=waited_spent,
                 )
                 log_event("workers", "dispatch failure classified",
                           level=logging.WARNING, job_id=job_row["id"],
@@ -477,7 +542,8 @@ class WorkerPool:
                           error=str(exc)[:200])
                 if decision.action == "park":
                     self._park_job(job_row["id"], decision.delay,
-                                   reason=decision.reason)
+                                   reason=decision.reason,
+                                   failure_class=failure.cls)
                 elif decision.action == "retry":
                     with self._metrics_lock:
                         self._retries_total += 1
@@ -489,11 +555,13 @@ class WorkerPool:
                     delay = max(1.0, decision.delay)
                     db.execute(
                         "UPDATE correction_jobs SET status = ?, stage_detail = ?, "
-                        "error = ?, updated_at = ? WHERE id = ?",
+                        "error = ?, last_failure_class = ?, retry_due_at = ?, "
+                        "updated_at = ? WHERE id = ?",
                         ("RETRYING",
                          f"{failure.cls} — retrying in {int(delay)}s "
                          f"(prepared input reused)",
-                         str(exc)[:500], time.time(), job_row["id"]),
+                         str(exc)[:500], failure.cls, time.time() + delay,
+                         time.time(), job_row["id"]),
                     )
                     threading.Timer(
                         delay,
@@ -502,10 +570,12 @@ class WorkerPool:
                 else:
                     db.execute(
                         "UPDATE correction_jobs SET status = ?, error = ?, "
-                        "error_code = ?, finished_at = ?, updated_at = ? WHERE id = ?",
+                        "error_code = ?, last_failure_class = ?, "
+                        "retry_due_at = NULL, finished_at = ?, updated_at = ? "
+                        "WHERE id = ?",
                         ("FAILED", str(exc)[:500],
                          decision.error_code or failure.error_code,
-                         time.time(), time.time(), job_row["id"]),
+                         failure.cls, time.time(), time.time(), job_row["id"]),
                     )
                     cleanup_job_files(job_row["id"])
                     self._api_wait_total.pop(job_row["id"], None)
@@ -1083,6 +1153,31 @@ class WorkerPool:
                     verification = dc["verification"]
                 earned, available, percentage = dc["final"]
             final_result = dc["final_result"] if dc["triggered"] else result.result
+            # A high score whose INDEPENDENT second correction could not run is
+            # not "double-checked". The result row already carries the status;
+            # record the reason in the verification report too, so the review
+            # screen can explain the flag instead of only showing that it exists.
+            if (dc["triggered"] and dc.get("review_required")
+                    and dc.get("reason")):
+                verification = dict(verification)
+                reasons = list(verification.get("review_reasons") or [])
+                if not any(r.get("code") == "DOUBLE_CHECK_UNAVAILABLE"
+                           for r in reasons):
+                    reasons.append({
+                        "code": "DOUBLE_CHECK_UNAVAILABLE",
+                        "stage": "validation",
+                        "severity": "review",
+                        "question": None,
+                        "detail": (f"The independent high-score double-check "
+                                   f"{dc['status'].replace('_', ' ').lower()}: "
+                                   f"{dc['reason']}"),
+                        "action": ("Re-run the paper once the provider is "
+                                   "healthy, or check the high marks by hand."),
+                    })
+                    verification["review_reasons"] = reasons
+                    verification["review_reason_codes"] = [
+                        r.get("code") for r in reasons]
+                    verification["review_required"] = True
             # Submission-quality validation (§9): blank / unreadable / wrong-
             # assignment submissions must never become a trusted score. The
             # AI cannot reliably self-report these — a near-blank scan marked
@@ -1294,7 +1389,9 @@ class WorkerPool:
                                   f"final {_fmt_pct(percentage)})")
                     conn.execute(
                         "UPDATE correction_jobs SET status = ?, result_id = ?, "
-                        "stage_detail = ?, finished_at = ?, updated_at = ? WHERE id = ?",
+                        "stage_detail = ?, retry_due_at = NULL, "
+                        "last_failure_class = NULL, finished_at = ?, "
+                        "updated_at = ? WHERE id = ?",
                         ("COMPLETED", result_id, detail, now_ts, now_ts, job_id),
                     )
             _record_scheme_audit(job, result_id, final_result, now_ts)
@@ -1377,12 +1474,13 @@ class WorkerPool:
         elif failure.park:
             park_hint = self._capacity_delay()
 
+        waited_spent, _parks = self._ledger(job["id"])
         decision = retry_policy.decide(
             failure,
             attempts=attempts,
             max_attempts=job["max_attempts"] or 3,
             cfg_max_retries=cfg.worker.max_retries,
-            waited_seconds=self._api_wait_total.get(job["id"], 0.0),
+            waited_seconds=waited_spent,
             park_hint_delay=park_hint,
         )
 
@@ -1399,8 +1497,45 @@ class WorkerPool:
             delay=round(decision.delay, 1),
         )
 
+        # Stop-on-retry: every retry condition is recorded as a diagnosis BEFORE
+        # another attempt may be scheduled, and a job that has already spent its
+        # automatic retries is stopped with its evidence intact instead of being
+        # sent again. The teacher resumes it deliberately from Corrections.
+        from ..jobs.manager import record_stage_event
+        record_stage_event(
+            job["id"], status=job["status"],
+            stage=(f"Diagnosed {failure.cls} (attempt {attempts}/"
+                   f"{job['max_attempts']}): {decision.reason[:90]}"),
+            progress=None)
+        if (decision.action == "retry"
+                and decision.retries_used >= self.AUTO_RETRY_SUSPEND_AFTER):
+            record_stage_event(
+                job["id"], status="FAILED",
+                stage=f"Stopped for diagnosis after {decision.retries_used} retries",
+                progress=None)
+            db.execute(
+                "UPDATE correction_jobs SET status = ?, stage_detail = ?, "
+                "error_code = 'retry_suspended', finished_at = ?, updated_at = ? "
+                "WHERE id = ?",
+                ("FAILED",
+                 f"Stopped for diagnosis after {decision.retries_used} automatic "
+                 f"retries ({failure.cls}) — evidence kept; retry when you have "
+                 f"checked why it failed",
+                 time.time(), time.time(), job["id"]),
+            )
+            # The prepared input and stage history are NOT cleaned up: they are
+            # the evidence.
+            self._api_wait_total.pop(job["id"], None)
+            log_event("workers", "job stopped for diagnosis (no further retries)",
+                      level=logging.ERROR, worker_id=worker.worker_id,
+                      job_id=job["id"], student=job.get("student_name"),
+                      error_class=failure.cls, retries=decision.retries_used,
+                      error=(result.error or "")[:300])
+            return
+
         if decision.action == "park":
-            self._park_job(job["id"], decision.delay, reason=decision.reason)
+            self._park_job(job["id"], decision.delay, reason=decision.reason,
+                          failure_class=failure.cls)
             return
 
         if decision.action == "retry":
@@ -1415,12 +1550,15 @@ class WorkerPool:
                 pass
             delay = max(1.0, decision.delay)
             db.execute(
-                "UPDATE correction_jobs SET status = ?, stage_detail = ?, error = ?, updated_at = ? WHERE id = ?",
+                "UPDATE correction_jobs SET status = ?, stage_detail = ?, "
+                "error = ?, last_failure_class = ?, retry_due_at = ?, "
+                "updated_at = ? WHERE id = ?",
                 ("RETRYING",
                  f"{failure.cls} — retry {decision.retries_used + 1}/"
                  f"{decision.allowed_retries} in {int(delay)}s "
                  f"(prepared input reused)",
-                 (result.error or "")[:500], time.time(), job["id"]),
+                 (result.error or "")[:500], failure.cls,
+                 time.time() + delay, time.time(), job["id"]),
             )
             threading.Timer(delay, lambda: self._requeue(job["id"])).start()
             log_event("workers", "job scheduled for retry",
@@ -1432,10 +1570,11 @@ class WorkerPool:
         # 5. FAIL permanently — never loop (spec §2).
         db.execute(
             "UPDATE correction_jobs SET status = ?, stage_detail = NULL, error = ?, "
-            "error_code = ?, finished_at = ?, updated_at = ? WHERE id = ?",
+            "error_code = ?, last_failure_class = ?, retry_due_at = NULL, "
+            "finished_at = ?, updated_at = ? WHERE id = ?",
             ("FAILED", (result.error or "Unknown worker failure")[:500],
-             decision.error_code or failure.error_code, time.time(), time.time(),
-             job["id"]),
+             decision.error_code or failure.error_code, failure.cls,
+             time.time(), time.time(), job["id"]),
         )
         cleanup_job_files(job["id"])
         self._api_wait_total.pop(job["id"], None)
@@ -1456,14 +1595,174 @@ class WorkerPool:
 
     # -- retry architecture helpers (§2/§3/§5/§9/§11) -------------------------
 
+    # -- provider preflight (§4) ---------------------------------------------
+
+    def _preflight_ready(self) -> bool:
+        """Should an expensive multi-paper batch start right now?
+
+        Reads a CACHED verdict whenever one is fresh (no request per tick). If
+        there is none, runs ONE probe in the background and holds dispatch for
+        at most :data:`PREFLIGHT_HOLD_SECONDS`. The hold fails open: a
+        diagnostic must never be able to stop marking forever.
+        """
+        from ..gemini import preflight
+        if preflight.disabled():
+            return True
+        try:
+            row = db.query_one(
+                "SELECT COUNT(*) AS n FROM correction_jobs WHERE status = ?",
+                ("QUEUED",))
+            queued = int(row["n"] or 0) if row else 0
+        except Exception:  # noqa: BLE001 - the gate is advisory
+            return True
+        if queued < self.PREFLIGHT_MIN_QUEUED:
+            return True
+
+        state = preflight.cached_state(max_age=preflight.CACHE_SECONDS)
+        if state is not None:
+            code = str(state.get("state") or "")
+            if code in preflight.READY_STATES or code not in preflight.BLOCKING_STATES:
+                self._clear_preflight_note()
+                return True
+            self._note_preflight(
+                f"AI provider unavailable — batch paused: "
+                f"{state.get('detail') or code}", code)
+            return False
+
+        now_ts = time.time()
+        alive = bool(self._probe_thread and self._probe_thread.is_alive())
+        if not alive and now_ts >= self._probe_deadline:
+            self._probe_deadline = now_ts + self.PREFLIGHT_HOLD_SECONDS
+            self._probe_thread = threading.Thread(
+                target=self._run_preflight, name="gemini-preflight",
+                daemon=True)
+            self._probe_thread.start()
+        if now_ts < self._probe_deadline:
+            self._note_preflight(
+                "Checking the AI provider before starting the batch…",
+                "CHECKING")
+            return False
+        # The probe is taking too long: fail open. The per-job provider and key
+        # gates still apply, and a dead provider fails those cleanly.
+        self._clear_preflight_note()
+        return True
+
+    def _run_preflight(self) -> None:
+        try:
+            from ..gemini import preflight
+            preflight.probe()
+        except Exception:  # noqa: BLE001 - never surface as a job failure
+            log.exception("provider preflight failed")
+        finally:
+            self._probe_deadline = 0.0
+            self._wake.set()
+
+    def _note_preflight(self, detail: str, code: str) -> None:
+        """Show WHY a batch is paused on every queued job (once per change)."""
+        if self._preflight_note == f"{code}:{detail}":
+            return
+        self._preflight_note = f"{code}:{detail}"
+        try:
+            db.execute(
+                "UPDATE correction_jobs SET stage_detail = ?, updated_at = ? "
+                "WHERE status = ?", (detail[:300], time.time(), "QUEUED"))
+            log_event("workers", "dispatch paused (provider preflight)",
+                      level=logging.WARNING, state=code, detail=detail[:200])
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _clear_preflight_note(self) -> None:
+        if self._preflight_note is None:
+            return
+        self._preflight_note = None
+        try:
+            db.execute(
+                "UPDATE correction_jobs SET stage_detail = NULL, updated_at = ? "
+                "WHERE status = ?", (time.time(), "QUEUED"))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _ledger(self, job_id: str) -> tuple[float, int]:
+        """(capacity seconds spent, parks) from the PERSISTED retry ledger.
+
+        The in-memory dicts are only a cache: the columns on the job row are
+        authoritative, so a restart, a second pool instance or a cancelled/
+        re-armed job cannot invent a fresh budget.
+        """
+        row = db.query_one(
+            "SELECT waited_seconds, park_count FROM correction_jobs WHERE id = ?",
+            (job_id,))
+        if row is None:
+            return self._api_wait_total.get(job_id, 0.0), self._park_counts.get(
+                job_id, 0)
+        waited = float(row["waited_seconds"] or 0.0)
+        parks = int(row["park_count"] or 0)
+        self._api_wait_total[job_id] = waited
+        self._park_counts[job_id] = parks
+        return waited, parks
+
+    def _keys_ready(self) -> bool:
+        """True when at least one key can serve a request right now.
+
+        Deliberately NOT about having no keys at all: that is a configuration
+        problem, and the dispatch path already fails it fast with a message the
+        teacher can act on. This gate only covers "all of them are cooling".
+        """
+        now_ts = time.time()
+        if now_ts < self._keys_next_check:
+            return self._keys_last_ready
+        # Re-reading key health touches the secret store; twice a second on a
+        # 0.5s wake loop is pointless, so the answer is good for two seconds.
+        self._keys_next_check = now_ts + 2.0
+        ready = True
+        detail = ""
+        try:
+            state = self.keys.status()
+            if state.get("has_keys") and int(state.get("healthy", 0)) == 0:
+                ready = False
+                remaining = min((int(k.get("cooldown_remaining") or 0)
+                                 for k in state.get("keys") or []
+                                 if int(k.get("cooldown_remaining") or 0) > 0),
+                                default=0)
+                detail = (f"Waiting for an API key — every key is cooling down "
+                          f"(~{remaining}s)" if remaining > 0
+                          else "Waiting for an API key — none is usable right now")
+        except Exception:
+            ready = True
+        self._keys_last_ready = ready
+
+        if ready:
+            if self._keys_blocked:
+                self._keys_blocked = False
+                db.execute(
+                    "UPDATE correction_jobs SET stage_detail = NULL, updated_at = ? "
+                    "WHERE status = ?", (time.time(), "QUEUED"))
+                log_event("workers", "dispatch resumed (API key available)")
+            return True
+
+        if not self._keys_blocked:
+            self._keys_blocked = True
+            db.execute(
+                "UPDATE correction_jobs SET stage_detail = ?, updated_at = ? "
+                "WHERE status = ?", (detail, time.time(), "QUEUED"))
+            log_event("workers", "dispatch paused (no usable API key)",
+                      level=logging.WARNING, detail=detail)
+        return False
+
     def _capacity_delay(self) -> float:
-        """How long until some key likely becomes usable (cooldown + buffer)."""
+        """How long until a key becomes usable again (the FIRST one to free up).
+
+        The earliest cooldown is the right wait: the maximum would sleep through
+        the window in which most keys are already back, and a fixed 15s ignored
+        a 5s cooldown that had already expired.
+        """
         try:
             status = self.keys.status()
-            remaining = max((int(k["cooldown_remaining"])
-                             for k in status["keys"]), default=0)
-            if remaining > 0:
-                return float(remaining + 5.0)
+            waiting = [int(k["cooldown_remaining"])
+                       for k in status["keys"]
+                       if int(k.get("cooldown_remaining") or 0) > 0]
+            if waiting:
+                return float(min(waiting) + 2.0)
         except Exception:
             pass
         return 15.0
@@ -1472,13 +1771,15 @@ class WorkerPool:
         """Timer target: put a backoff-waited job back on the queue."""
         try:
             db.execute(
-                "UPDATE correction_jobs SET status = ?, stage_detail = NULL, updated_at = ? WHERE id = ?",
+                "UPDATE correction_jobs SET status = ?, stage_detail = NULL, "
+                "retry_due_at = NULL, updated_at = ? WHERE id = ?",
                 ("QUEUED", time.time(), job_id),
             )
         finally:
             self._wake.set()
 
-    def _park_job(self, job_id: str, delay: float, *, reason: str = "") -> None:
+    def _park_job(self, job_id: str, delay: float, *, reason: str = "",
+                  failure_class: str | None = None) -> None:
         """Park a job waiting for API capacity (WAITING_FOR_API).
 
         Parks do NOT consume the job's attempt budget (the claim increment is
@@ -1487,47 +1788,84 @@ class WorkerPool:
         API_WAIT_BUDGET_SECONDS, so an outage ends in a clean FAILED instead
         of an infinite park/requeue loop (spec §2 — no infinite retries).
         """
-        from ..jobs.manager import API_WAIT_BUDGET_SECONDS
+        from ..jobs.manager import API_WAIT_BUDGET_SECONDS, record_stage_event
         delay = max(1.0, float(delay))
-        waited = self._api_wait_total.get(job_id, 0.0)
+
+        # Read the PERSISTED ledger, not a dict that a restart empties.
+        waited, previous_parks = self._ledger(job_id)
+        parks = previous_parks + 1
+        now_ts = time.time()
+        if parks > self.MAX_PARKS_BEFORE_SUSPEND:
+            record_stage_event(job_id, status="FAILED",
+                               stage=f"Stopped for diagnosis after {parks - 1} "
+                                     f"capacity waits", progress=None)
+            db.execute(
+                "UPDATE correction_jobs SET status = ?, stage_detail = ?, "
+                "error_code = 'retry_suspended', last_failure_class = ?, "
+                "park_count = ?, retry_due_at = NULL, finished_at = ?, "
+                "updated_at = ? WHERE id = ?",
+                ("FAILED",
+                 f"Stopped for diagnosis: the provider could not serve this paper "
+                 f"after {parks - 1} capacity waits ({reason[:80]}). Evidence and "
+                 f"prepared files kept — retry once the provider is healthy",
+                 failure_class or retry_policy.HIGH_DEMAND, parks,
+                 now_ts, now_ts, job_id),
+            )
+            self._park_counts.pop(job_id, None)
+            self._api_wait_total.pop(job_id, None)
+            log_event("workers", "job stopped for diagnosis (capacity never returned)",
+                      level=logging.ERROR, job_id=job_id, parks=parks - 1,
+                      reason=reason[:160])
+            return
         if waited + delay > API_WAIT_BUDGET_SECONDS:
             db.execute(
                 "UPDATE correction_jobs SET status = ?, stage_detail = NULL, "
                 "error = ?, error_code = 'all_keys_unavailable', "
-                "finished_at = ?, updated_at = ? WHERE id = ?",
+                "last_failure_class = ?, waited_seconds = ?, park_count = ?, "
+                "retry_due_at = NULL, finished_at = ?, updated_at = ? "
+                "WHERE id = ?",
                 ("FAILED",
                  "No Gemini API capacity became available within the waiting "
                  "budget (15 min). The job is kept so you can retry it once "
                  "the provider recovers.",
-                 time.time(), time.time(), job_id),
+                 failure_class or retry_policy.HIGH_DEMAND,
+                 round(waited + delay, 1), parks,
+                 now_ts, now_ts, job_id),
             )
             cleanup_job_files(job_id)
             self._api_wait_total.pop(job_id, None)
+            self._park_counts.pop(job_id, None)
             log_event("workers", "park budget exhausted — job failed",
                       level=logging.ERROR, job_id=job_id,
-                      waited_seconds=round(waited), reason=reason)
+                      waited_seconds=round(waited), parks=parks, reason=reason)
             return
-        self._api_wait_total[job_id] = waited + delay
         db.execute(
-            "UPDATE correction_jobs SET status = ?, stage_detail = ?, updated_at = ? WHERE id = ?",
+            "UPDATE correction_jobs SET status = ?, stage_detail = ?, "
+            "waited_seconds = ?, park_count = ?, last_failure_class = ?, "
+            "retry_due_at = ?, updated_at = ? WHERE id = ?",
             ("WAITING_FOR_API",
              f"Waiting for API capacity — retrying in ~{int(delay)}s "
              f"(no request sent meanwhile)",
-             time.time(), job_id),
+             round(waited + delay, 1), parks,
+             failure_class or retry_policy.HIGH_DEMAND,
+             now_ts + delay, now_ts, job_id),
         )
+        self._api_wait_total[job_id] = waited + delay
+        self._park_counts[job_id] = parks
         log_event("workers", "job parked for API capacity",
                   level=logging.WARNING, job_id=job_id,
-                  delay=round(delay, 1),
+                  delay=round(delay, 1), parks=parks,
                   waited_total=round(waited + delay), reason=reason)
 
         def _requeue_after_park():
             try:
                 # Give back the claim's attempt increment: waiting for an
-                # API key is not a failed correction attempt.
+                # API key is not a failed correction attempt. The persisted
+                # ledger keeps the time already spent parked.
                 db.execute(
                     "UPDATE correction_jobs SET status = ?, "
                     "attempts = MAX(0, attempts - 1), stage_detail = ?, "
-                    "updated_at = ? WHERE id = ?",
+                    "retry_due_at = NULL, updated_at = ? WHERE id = ?",
                     ("QUEUED", "Retrying after API cooldown",
                      time.time(), job_id),
                 )
@@ -1553,7 +1891,7 @@ class WorkerPool:
         now_ts = time.time()
         db.execute(
             "UPDATE correction_jobs SET status = ?, result_id = ?, stage_detail = ?, "
-            "finished_at = ?, updated_at = ? WHERE id = ?",
+            "retry_due_at = NULL, finished_at = ?, updated_at = ? WHERE id = ?",
             ("COMPLETED", result_id,
              "Reused existing correction result — no duplicate request sent",
              now_ts, now_ts, job["id"]),

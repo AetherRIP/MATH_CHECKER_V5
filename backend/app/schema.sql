@@ -74,6 +74,15 @@ CREATE TABLE IF NOT EXISTS correction_jobs (
     progress REAL NOT NULL DEFAULT 0,
     attempts INTEGER NOT NULL DEFAULT 0,
     max_attempts INTEGER NOT NULL DEFAULT 3,
+    -- Retry ledger (persisted so a restart cannot silently hand a stuck job a
+    -- fresh budget). ``waited_seconds`` is capacity waiting actually slept,
+    -- ``park_count`` the number of separate parks, and ``manual_retries`` the
+    -- explicit teacher re-queues already granted.
+    waited_seconds REAL NOT NULL DEFAULT 0,
+    park_count INTEGER NOT NULL DEFAULT 0,
+    manual_retries INTEGER NOT NULL DEFAULT 0,
+    last_failure_class TEXT,
+    retry_due_at REAL,
     worker_id TEXT,                -- which pool worker ran/is running this job
     -- Remark (re-mark) jobs: their attempt is recorded as PENDING and never
     -- auto-applied, so a re-mark can never destroy a valid correction.
@@ -391,8 +400,53 @@ CREATE TABLE IF NOT EXISTS job_bandwidth (
     -- Last attempt's provider-request ledger (gemini.call_audit): totals by
     -- stage, kind and model, plus the budget verdict. JSON, never queried.
     ai_calls_json TEXT,
+    -- Measured token totals for this job's attempts (gemini.telemetry). 0 is
+    -- ambiguous (provider reported nothing vs genuinely zero), so the ledger
+    -- rows are the authority; these columns keep the job list cheap.
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cached_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
     updated_at REAL NOT NULL
 );
+
+-- Per-request provider accounting (gemini.telemetry): ONE row per HTTP request
+-- the application sent to Gemini, including the ones that failed. Holds
+-- identifiers, counts, a model name, a duration and an outcome label — never
+-- prompt text, student answers or credentials. Bounded by retention pruning,
+-- so it can be queried on every dashboard refresh without growing forever.
+CREATE TABLE IF NOT EXISTS ai_request_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL DEFAULT 'generate',   -- generate | upload
+    request_id TEXT NOT NULL,
+    job_id TEXT,                             -- NULL for backend-owned requests
+    model TEXT,
+    endpoint TEXT,                           -- generateContent | interactions
+    stage TEXT,                              -- call_audit stage, when known
+    purpose TEXT,                            -- marking | scheme_extraction | probe…
+    prompt_version TEXT,                     -- SHA-256 prefix of the prompt text
+    scheme_version TEXT,                     -- SHA-256 prefix of the scheme input
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cached_tokens INTEGER,
+    thoughts_tokens INTEGER,
+    total_tokens INTEGER,
+    duration_ms INTEGER,
+    attempt INTEGER,
+    error_class TEXT,
+    http_status INTEGER,
+    upload_count INTEGER,
+    reused INTEGER NOT NULL DEFAULT 0,
+    outcome TEXT,                            -- accepted | repaired | escalated | rejected
+    estimated INTEGER NOT NULL DEFAULT 0,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_request_log_created
+    ON ai_request_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_request_log_job
+    ON ai_request_log(job_id);
+CREATE INDEX IF NOT EXISTS idx_ai_request_log_model
+    ON ai_request_log(model, created_at);
 
 -- Per-student correction REPORT attachment to the Google Classroom
 -- StudentSubmission. One row per RESULT (not per attempt), so a failed

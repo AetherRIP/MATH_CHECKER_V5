@@ -40,6 +40,12 @@ log = logging.getLogger("gemini.proxy")
 #: pure overhead: one paper with 20 prepared pages paid 20 lookups per job.
 REMOTE_VERIFY_TTL_SECONDS = 900.0
 
+#: How long a pre-flight probe verdict is trusted. A key that answered is
+#: trusted for an hour; a refusal only until a cooldown could have expired,
+#: so a recovered key is never sidelined by a stale verdict.
+PROBE_SUCCESS_TTL_SECONDS = 3600.0
+PROBE_FAILURE_TTL_SECONDS = 30.0
+
 # Errors that justify trying ANOTHER KEY within the same request:
 # invalid_key (this credential is dead) and rate_limited (this key's quota is
 # exhausted). "temporary" (503 high demand) is included as well: free-tier
@@ -69,6 +75,23 @@ FIXED_REQUEST_TIMEOUT_MS = 120_000
 #: Never wait longer than this however many pages arrive: a wedged request has
 #: to release its worker eventually.
 MAX_REQUEST_TIMEOUT_MS = 1_800_000  # 30 minutes
+
+
+#: The proxy's own attempt loop (``_MAX_ATTEMPTS``) is the ONE retry owner.
+#: google-genai retries inside the HTTP layer when it is given retry options,
+#: and its own default is a policy we do not control: a future SDK bump that
+#: defaulted to 3 attempts would silently multiply every 503 by the proxy's 8
+#: attempts — 24 provider requests, and 24 charges against the quota, for one
+#: logical retry. Pinning it to a single attempt also disables the SDK's
+#: implicit aiohttp retry path, so "how many times was this sent" is answerable
+#: from this file alone.
+SDK_RETRY_ATTEMPTS = 1
+
+
+def _http_options(types, timeout_ms: int):
+    """HTTP options that make this proxy the only thing that retries."""
+    retry = types.HttpRetryOptions(attempts=SDK_RETRY_ATTEMPTS)
+    return types.HttpOptions(timeout=timeout_ms, retry_options=retry)
 
 
 def timeout_for_pages(pages: int | None, configured_ms: int | None = None) -> int:
@@ -161,7 +184,12 @@ class KeyAwareClient:
         # token. A quota-exhausted key answers 429 in a few KB, so a dead key
         # never costs 15 MB of uploads (§5/§6 — observed: 4 quota-dead keys
         # cost ~58 MB of pointless re-uploads for one student).
-        self._probe_cache: dict[tuple[str, str], bool] = {}
+        # (key, model) -> (usable, expires_at). A PASS is kept: re-probing a key
+        # that just answered spends a request to learn nothing. A REFUSAL is
+        # kept only briefly — a cooldown that has expired must be re-probed, or
+        # the key is quietly sidelined for the life of the process and its jobs
+        # wait on a verdict that is no longer true.
+        self._probe_cache: dict[tuple[str, str], tuple[bool, float]] = {}
         self._client_lock = threading.Lock()
         self._sdk_clients: dict[str, object] = {}
         self._current_fp: str | None = None
@@ -228,19 +256,14 @@ class KeyAwareClient:
         # Scale with the paper, not just the configured floor: a 70-page
         # booklet must not inherit the budget that fits 15 pages.
         cfg = timeout_for_pages(self.pages)
-        return genai.Client(
-            api_key=key,
-            http_options=types.HttpOptions(timeout=cfg),
-        )
+        return genai.Client(api_key=key, http_options=_http_options(types, cfg))
 
     def _sdk_client_for_current_key(self):
         from google.genai import types
         import google.genai as genai
         cfg = timeout_for_pages(self.pages)
-        return genai.Client(
-            api_key=self._current_key(),
-            http_options=types.HttpOptions(timeout=cfg),
-        )
+        return genai.Client(api_key=self._current_key(),
+                            http_options=_http_options(types, cfg))
 
     def _current_key(self) -> str:
         from ..config import get_secrets
@@ -323,6 +346,10 @@ class KeyAwareClient:
 
             transient: list = []
             original_contents = contents   # pre-re-upload form (rotation policy)
+            # When THIS provider request started, for the usage ledger. Stays
+            # None until the send is imminent, so a failure during key
+            # selection is not recorded as a provider request.
+            request_started: float | None = None
             try:
                 sdk_client = self._sdk_clients.get(fp)
                 if sdk_client is None:
@@ -359,6 +386,7 @@ class KeyAwareClient:
                 contents, transient = self._reupload_for_key(contents, fp)
 
                 started = time.time()
+                request_started = started
                 # A referenced provider file can disappear mid-job (an expired
                 # upload, or a sibling job's terminal cleanup of the shared
                 # submission before this guard existed). Gemini answers 403
@@ -409,6 +437,8 @@ class KeyAwareClient:
                     elapsed_ms=int((time.time() - started) * 1000),
                     reuploaded=len(transient),
                 )
+                self._record_generate(model, request_started, response=response,
+                                      attempt=attempt + 1)
                 return response
 
             except Exception as exc:
@@ -441,6 +471,12 @@ class KeyAwareClient:
                     level=logging.WARNING, fingerprint=fp, model=model,
                     kind=kind, error_class=error_class, status=http_status_of(exc),
                 )
+                # A failed request is a ledger row too: without it the failure
+                # rate and the retry overhead are invisible, and a provider
+                # storm looks like an idle system.
+                self._record_generate(model, request_started, error=exc,
+                                      error_class=error_class,
+                                      attempt=attempt + 1)
                 if kind not in _KEY_LEVEL_KINDS:
                     # Model-level, invalid-request, timeout or unknown error:
                     # do not burn another key on the same failing request —
@@ -557,8 +593,11 @@ class KeyAwareClient:
         cache_key = (fp, model)
         with self._client_lock:
             cached = self._probe_cache.get(cache_key)
+        if cached is not None and cached[1] > time.time():
+            return cached[0]
         if cached is not None:
-            return cached
+            with self._client_lock:
+                self._probe_cache.pop(cache_key, None)
         try:
             client = self._client_for_fp(fp)
             client.models.generate_content(
@@ -584,8 +623,12 @@ class KeyAwareClient:
             log_event("gemini.proxy", "key pre-flight probe",
                       level=logging.WARNING, fingerprint=fp, model=model,
                       kind=kind, reupload_allowed=ok)
+        # A usable key stays usable for a long time; a refusal is provisional
+        # and re-tested once the key could plausibly have recovered.
+        expiry = time.time() + (PROBE_SUCCESS_TTL_SECONDS if ok
+                                else PROBE_FAILURE_TTL_SECONDS)
         with self._client_lock:
-            self._probe_cache[cache_key] = ok
+            self._probe_cache[cache_key] = (ok, expiry)
         return ok
 
     def _reupload_for_key(self, contents, fp: str):
@@ -661,12 +704,15 @@ class KeyAwareClient:
 
         from . import call_audit as _audit
         _audit.note_send(_audit.KIND_UPLOAD, job_id=self.job_id)
+        upload_started = time.time()
         try:
             remote = client.files.upload(file=path)
         except Exception as exc:
             _audit.note_result(ok=False, error=str(exc))
+            self._record_upload(upload_started, error=exc)
             raise
         _audit.note_result(ok=True)
+        self._record_upload(upload_started)
         self._wait_active(client, remote, source=path)
         with self._client_lock:
             self._file_owner[remote.name] = fp
@@ -702,6 +748,84 @@ class KeyAwareClient:
         except Exception:
             pass
         return remote
+
+    # -- usage ledger -------------------------------------------------------
+
+    def _record_generate(self, model: str, started: float | None, *,
+                         response=None, error: BaseException | None = None,
+                         error_class: str | None = None,
+                         attempt: int | None = None) -> None:
+        """Append one usage-ledger row for this provider request.
+
+        Best effort by construction: a statistics failure must never turn a
+        correction into a failure. The row carries identifiers, counts, a model
+        name, a duration and an outcome label — never the prompt, the student
+        answer or the key. Fields the provider did not report stay NULL.
+        """
+        try:
+            from . import model_registry
+            # Only a real request decides operational availability: a model the
+            # listing advertises but this project cannot call stays unverified.
+            model_registry.note_request(
+                model, ok=error is None,
+                error=(str(error) if error is not None else ""))
+        except Exception:  # noqa: BLE001 — statistics are never fatal
+            pass
+
+        try:
+            # A correction runs in a worker child process, so THIS is the
+            # process that sees a 429/503 first. The AIMD controller persists
+            # its decision, which is how the parent pool learns to slow down.
+            from ..workers.concurrency import concurrency_control
+            concurrency_control().note_outcome(ok=error is None,
+                                               error_class=error_class)
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            from . import telemetry
+            from . import usage as usage_mod
+
+            telemetry.record(
+                kind=telemetry.KIND_GENERATE,
+                model=model,
+                ok=error is None,
+                error_class=error_class,
+                http_status=(http_status_of(error)
+                             if error is not None else None),
+                duration_ms=(int((time.time() - started) * 1000)
+                             if started is not None else None),
+                usage=(usage_mod.from_response(response)
+                       if response is not None else None),
+                job_id=self.job_id,
+                attempt=attempt,
+            )
+        except Exception:  # noqa: BLE001 — statistics are never fatal
+            pass
+
+    def _record_upload(self, started: float | None, *,
+                       error: BaseException | None = None) -> None:
+        """Append one ledger row for an upload that actually left the process.
+
+        A REUSED upload sends nothing, so it writes no row here; the reuse rate
+        stays on the per-job bandwidth counters that already measure it.
+        """
+        try:
+            from . import telemetry
+
+            telemetry.record(
+                kind=telemetry.KIND_UPLOAD,
+                ok=error is None,
+                error_class=(type(error).__name__ if error is not None else None),
+                http_status=(http_status_of(error)
+                             if error is not None else None),
+                duration_ms=(int((time.time() - started) * 1000)
+                             if started is not None else None),
+                upload_count=1,
+                job_id=self.job_id,
+            )
+        except Exception:  # noqa: BLE001 — statistics are never fatal
+            pass
 
     def _client_for_fp(self, fp: str):
         client = self._sdk_clients.get(fp)

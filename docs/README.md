@@ -7,8 +7,10 @@ Windows checkout (prerequisites, dependency inventory, troubleshooting),
 [development-environments.md](development-environments.md) for which backend the
 desktop, the browser dev server and a test snapshot use,
 [MARK_SCHEME_SUBQUESTIONS.md](MARK_SCHEME_SUBQUESTIONS.md) for how mark-scheme
-subquestions are detected and mapped, and [SERVER_LIFECYCLE.md](SERVER_LIFECYCLE.md)
-for startup/supervision details.
+subquestions are detected and mapped, [SERVER_LIFECYCLE.md](SERVER_LIFECYCLE.md)
+for startup/supervision details, and
+[API_QUOTA_AND_RETRY.md](API_QUOTA_AND_RETRY.md) for how Gemini quota is spent,
+who retries, and what the request ledger records.
 Historical reports and evidence below are retained for context; they are not a
 substitute for the current README and architecture guide. Student and account
 identifiers in those reports have been replaced with stable labels such as
@@ -70,6 +72,14 @@ it by hand.
   reference-marking harness (`backend/scripts/verify_marking_reference.py`).
 * `UI_WORKFLOW_CHECKS.json` and `final_ui_checks.json` — browser workflow/layout
   checks (`backend/scripts/verify_ui_workflows.py`, `release_ui_check.py`).
+* `API_OPTIMIZATION_BASELINE.md` — what the application measured (and could not
+  measure) before the API-efficiency work; the definitions every later number
+  uses.
+* `API_OPTIMIZATION_FINAL_REPORT.md` — what was implemented, what the live
+  measurements showed, and what is still unavailable or deferred.
+* `MODEL_SWEEP_RESULTS.json` — candidate-model sweep output
+  (`backend/scripts/sweep_models.py`): access, latency, provider-reported
+  tokens and schema validity per model. Carries no accuracy claim.
 * `two_env_e2e_results.json` — two-installation end-to-end harness output.
 * `audit/` — re-runnable investigation helpers (`guard_proof.py`, `q9_repro.py`)
   and their recorded outputs.

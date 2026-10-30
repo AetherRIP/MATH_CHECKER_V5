@@ -165,22 +165,34 @@ internal static class Journeys
                             string.Join(", ", scheme.Questions.Select(q => q.StatusText).Distinct()));
 
                         var decided = scheme.Questions[0];
+                        var decidedLabel = decided.Label;
                         scheme.Selected = decided;
                         scheme.SelectDecisionCommand.Execute("MANUAL");
-                        await UiHost.WaitUntilAsync(() => decided.Decision == "MANUAL",
+                        // Read the row BACK from the page after the save: the object
+                        // above belongs to the list the page replaces when it redraws,
+                        // so waiting on it would only ever confirm the value it was
+                        // already showing.
+                        await UiHost.WaitUntilAsync(
+                            () => scheme.Questions.FirstOrDefault(q => q.Label == decidedLabel)
+                                ?.Decision == "MANUAL",
                             TimeSpan.FromSeconds(30), 400);
+                        var reloaded = scheme.Questions.FirstOrDefault(q => q.Label == decidedLabel);
                         Check("a decision can be made on the structure the read produced",
-                            decided.Decision == "MANUAL", $"{decided.Label} → {decided.Decision}");
+                            reloaded is not null && reloaded.Decided
+                            && reloaded.Decision == "MANUAL",
+                            $"{decidedLabel} → {reloaded?.Decision ?? "(gone)"}"
+                            + (reloaded?.Decided == true ? " (saved)" : " (not saved)"));
 
                         // The demo answers must read as placeholders, and the edit
                         // and restore they invite must actually work.
+                        var current = reloaded ?? decided;
                         Check("a demo answer reads as a placeholder, not as the scheme's answer",
-                            decided.AnswerIsPlaceholder
-                            && decided.AnswerSummary.StartsWith("[demo]",
+                            current.AnswerIsPlaceholder
+                            && current.AnswerSummary.StartsWith("[demo]",
                                 StringComparison.OrdinalIgnoreCase),
-                            decided.AnswerSummary);
+                            current.AnswerSummary);
 
-                        scheme.Selected = decided;
+                        scheme.Selected = current;
                         scheme.AnswerDraft = "typed by the audit — not a real answer";
                         scheme.SaveAnswerCommand.Execute(null);
                         await UiHost.WaitUntilAsync(() => !scheme.IsBusy

@@ -439,6 +439,9 @@ public sealed class MainViewModel : ObservableObject
 
         Add(new ReviewViewModel(_session) { Group = "Review" });
         Add(new SchemeReviewViewModel(_session) { Group = "Review" });
+        // The certified benchmark belongs beside the two review queues: all
+        // three ask a teacher to inspect evidence before a mark is trusted.
+        Add(new BenchmarkAccuracyViewModel(_session) { Group = "Review" });
         Add(new MarkingDeskViewModel(_session) { Group = "Review" });
 
         Add(new ResultsViewModel(_session) { Group = "Results" });

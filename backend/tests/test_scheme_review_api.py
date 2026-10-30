@@ -331,11 +331,14 @@ def test_demo_mode_builds_a_labelled_structure_to_review(fresh_state, monkeypatc
         assert body["scheme"]["demo"] is True
         assert body["questions"], "the review page has rows to show"
 
-        # Every row is labelled, none is trusted, none is auto-marked.
+        # Every row is labelled, none is trusted — and every row carries the
+        # ordinary proposal (mark automatically), so the demo practising the
+        # workflow behaves like the workflow, not like a special case.
         for row in body["questions"]:
             assert row["extraction_status"] == "DEMO"
             assert row["reliable"] is False
-            assert row["decision"] != "AUTO"
+            assert row["decision"] == "AUTO"
+            assert row["decided"] is False, "a synthetic row is not a decision"
             # The placeholder announces itself in the first word, so it reads as
             # fake at a glance in a narrow table cell.
             assert row["effective_answer"].startswith("[demo]"), row["effective_answer"]

@@ -41,10 +41,13 @@ public class MarkSchemePageTests
         Assert.Contains("1(a)", part.DisplayLabel);
         Assert.StartsWith("↳", part.DisplayLabel.TrimStart());
 
-        // A question with no answer is flagged, not filled in.
+        // A question with no answer is flagged, not filled in — and it is still
+        // proposed for automatic marking like every other row, because marking
+        // is the default and an independent check is the teacher's exception.
         var missing = page.Questions.First(q => q.Label == "3");
         Assert.Equal("Marking guidance only — no answer to check", missing.AnswerSummary);
-        Assert.Equal("Manual check", missing.StateText);
+        Assert.Equal("Automatic", missing.StateText);
+        Assert.False(missing.Decided);
         Assert.True(missing.NeedsAttention);
     }
 
@@ -502,7 +505,7 @@ public class MarkSchemePageTests
             Row("1(a)", "1a", 1, 1, new[] { "24 - 18y" }, "RELIABLE", "AUTO", decided: false),
             Row("1(b)", "1b", 1, 2, new[] { "y^2 + 8y - 20" }, "RELIABLE", "AUTO", decided: false),
             Row("2", "2", 0, 1, new[] { "10p - 15" }, "RELIABLE", "AUTO", decided: false),
-            Row("3", "3", 0, 4, Array.Empty<string>(), "CRITERIA_ONLY", "MANUAL", decided: false,
+            Row("3", "3", 0, 4, Array.Empty<string>(), "CRITERIA_ONLY", "AUTO", decided: false,
                 criteria: "M1 A1 cao"),
         };
 

@@ -289,6 +289,16 @@ def test_pool_failed_check_preserves_first_result(pool):
     assert row["second_earned"] is None
     assert row["review_required"] == 1
     assert "failed" in (row["double_check_reason"] or "").lower()
+    # The review screen must be able to say WHY, not just that a flag exists.
+    import json as _json
+    verification = _json.loads(row["verification_json"] or "{}")
+    codes = [r.get("code") for r in (verification.get("review_reasons") or [])]
+    assert "DOUBLE_CHECK_UNAVAILABLE" in codes
+    reason = next(r for r in verification["review_reasons"]
+                  if r["code"] == "DOUBLE_CHECK_UNAVAILABLE")
+    assert reason["severity"] == "review"
+    assert "double check failed" in reason["detail"].lower()
+    assert verification.get("review_required") is True
 
 
 def test_pool_grade_is_deterministic_from_final_marks(pool):

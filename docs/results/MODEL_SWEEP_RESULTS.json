@@ -1,0 +1,323 @@
+{
+  "swept_at": "2026-10-30T17:37:16Z",
+  "probe_timeout_ms": 90000,
+  "requests_if_both_probes_ran": 2,
+  "models_swept": 8,
+  "models_verified": 4,
+  "production_model": "gemini-3.6-flash",
+  "environment": {
+    "python": "3.13.15",
+    "repo": "C:\\Projects\\MATH_CHECKER_V5"
+  },
+  "results": [
+    {
+      "model": "gemini-3.6-flash",
+      "why_candidate": "current production baseline",
+      "access": "verified",
+      "error": "",
+      "plain_probe": {
+        "ok": true,
+        "error": "",
+        "latency_ms": 3877,
+        "tokens": {
+          "input_tokens": 12,
+          "output_tokens": 1,
+          "cached_tokens": null,
+          "thoughts_tokens": 100,
+          "total_tokens": 113,
+          "estimated": false
+        },
+        "schema_valid": null,
+        "schema_note": "",
+        "reply_chars": 2
+      },
+      "schema_probe": {
+        "ok": true,
+        "error": "",
+        "latency_ms": 10815,
+        "tokens": {
+          "input_tokens": 52,
+          "output_tokens": 30,
+          "cached_tokens": null,
+          "thoughts_tokens": 540,
+          "total_tokens": 622,
+          "estimated": false
+        },
+        "schema_valid": true,
+        "schema_note": "valid",
+        "reply_chars": 125
+      },
+      "ledger": {
+        "rows": 4,
+        "ok": 2,
+        "failed": 2,
+        "rows_without_tokens": 2
+      },
+      "accuracy": "not measured (no teacher-certified references)"
+    },
+    {
+      "model": "gemini-3.7-flash",
+      "why_candidate": "next flash in the same family",
+      "access": "failed",
+      "error": "ServerError: 504 DEADLINE_EXCEEDED. {'error': {'code': 504, 'message': 'Deadline expired before operation could complete.', 'status': 'DEADLINE_EXCEEDED'}}",
+      "plain_probe": {
+        "ok": false,
+        "error": "ServerError: 504 DEADLINE_EXCEEDED. {'error': {'code': 504, 'message': 'Deadline expired before operation could complete.', 'status': 'DEADLINE_EXCEEDED'}}",
+        "latency_ms": 88738,
+        "tokens": null,
+        "schema_valid": null,
+        "schema_note": "",
+        "reply_chars": 0
+      },
+      "schema_probe": {
+        "ok": false,
+        "error": "not attempted: the plain probe failed",
+        "latency_ms": null,
+        "tokens": null,
+        "schema_valid": null,
+        "schema_note": "not tested (no reply)",
+        "reply_chars": 0
+      },
+      "ledger": {
+        "rows": 1,
+        "ok": 0,
+        "failed": 1,
+        "rows_without_tokens": 1
+      },
+      "accuracy": "not measured (no teacher-certified references)"
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "why_candidate": "latest flash in the same family",
+      "access": "failed",
+      "error": "ServerError: 504 DEADLINE_EXCEEDED. {'error': {'code': 504, 'message': 'Deadline expired before operation could complete.', 'status': 'DEADLINE_EXCEEDED'}}",
+      "plain_probe": {
+        "ok": false,
+        "error": "ServerError: 504 DEADLINE_EXCEEDED. {'error': {'code': 504, 'message': 'Deadline expired before operation could complete.', 'status': 'DEADLINE_EXCEEDED'}}",
+        "latency_ms": 110393,
+        "tokens": null,
+        "schema_valid": null,
+        "schema_note": "",
+        "reply_chars": 0
+      },
+      "schema_probe": {
+        "ok": false,
+        "error": "not attempted: the plain probe failed",
+        "latency_ms": null,
+        "tokens": null,
+        "schema_valid": null,
+        "schema_note": "not tested (no reply)",
+        "reply_chars": 0
+      },
+      "ledger": {
+        "rows": 3,
+        "ok": 0,
+        "failed": 3,
+        "rows_without_tokens": 3
+      },
+      "accuracy": "not measured (no teacher-certified references)"
+    },
+    {
+      "model": "gemini-4-argon",
+      "why_candidate": "newest general model in the listing",
+      "access": "failed",
+      "error": "ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev",
+      "plain_probe": {
+        "ok": false,
+        "error": "ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev",
+        "latency_ms": 337,
+        "tokens": null,
+        "schema_valid": null,
+        "schema_note": "",
+        "reply_chars": 0
+      },
+      "schema_probe": {
+        "ok": false,
+        "error": "not attempted: the plain probe failed",
+        "latency_ms": null,
+        "tokens": null,
+        "schema_valid": null,
+        "schema_note": "not tested (no reply)",
+        "reply_chars": 0
+      },
+      "ledger": {
+        "rows": 1,
+        "ok": 0,
+        "failed": 1,
+        "rows_without_tokens": 1
+      },
+      "accuracy": "not measured (no teacher-certified references)"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "why_candidate": "one generation behind the baseline",
+      "access": "verified",
+      "error": "",
+      "plain_probe": {
+        "ok": true,
+        "error": "",
+        "latency_ms": 2086,
+        "tokens": {
+          "input_tokens": 12,
+          "output_tokens": 1,
+          "cached_tokens": null,
+          "thoughts_tokens": 169,
+          "total_tokens": 182,
+          "estimated": false
+        },
+        "schema_valid": null,
+        "schema_note": "",
+        "reply_chars": 2
+      },
+      "schema_probe": {
+        "ok": true,
+        "error": "",
+        "latency_ms": 3054,
+        "tokens": {
+          "input_tokens": 52,
+          "output_tokens": 37,
+          "cached_tokens": null,
+          "thoughts_tokens": 350,
+          "total_tokens": 439,
+          "estimated": false
+        },
+        "schema_valid": true,
+        "schema_note": "valid",
+        "reply_chars": 135
+      },
+      "ledger": {
+        "rows": 2,
+        "ok": 2,
+        "failed": 0,
+        "rows_without_tokens": 0
+      },
+      "accuracy": "not measured (no teacher-certified references)"
+    },
+    {
+      "model": "gemini-3.5-flash-lite",
+      "why_candidate": "lighter flash: candidate for cheap stages",
+      "access": "verified",
+      "error": "",
+      "plain_probe": {
+        "ok": true,
+        "error": "",
+        "latency_ms": 5309,
+        "tokens": {
+          "input_tokens": 12,
+          "output_tokens": 1,
+          "cached_tokens": null,
+          "thoughts_tokens": null,
+          "total_tokens": 13,
+          "estimated": false
+        },
+        "schema_valid": null,
+        "schema_note": "",
+        "reply_chars": 2
+      },
+      "schema_probe": {
+        "ok": true,
+        "error": "",
+        "latency_ms": 6803,
+        "tokens": {
+          "input_tokens": 52,
+          "output_tokens": 53,
+          "cached_tokens": null,
+          "thoughts_tokens": null,
+          "total_tokens": 105,
+          "estimated": false
+        },
+        "schema_valid": true,
+        "schema_note": "valid",
+        "reply_chars": 191
+      },
+      "ledger": {
+        "rows": 2,
+        "ok": 2,
+        "failed": 0,
+        "rows_without_tokens": 0
+      },
+      "accuracy": "not measured (no teacher-certified references)"
+    },
+    {
+      "model": "gemini-3.1-flash-lite",
+      "why_candidate": "oldest lite model still listed",
+      "access": "verified",
+      "error": "",
+      "plain_probe": {
+        "ok": true,
+        "error": "",
+        "latency_ms": 1242,
+        "tokens": {
+          "input_tokens": 12,
+          "output_tokens": 1,
+          "cached_tokens": null,
+          "thoughts_tokens": null,
+          "total_tokens": 13,
+          "estimated": false
+        },
+        "schema_valid": null,
+        "schema_note": "",
+        "reply_chars": 2
+      },
+      "schema_probe": {
+        "ok": true,
+        "error": "",
+        "latency_ms": 1142,
+        "tokens": {
+          "input_tokens": 52,
+          "output_tokens": 38,
+          "cached_tokens": null,
+          "thoughts_tokens": null,
+          "total_tokens": 90,
+          "estimated": false
+        },
+        "schema_valid": true,
+        "schema_note": "valid",
+        "reply_chars": 99
+      },
+      "ledger": {
+        "rows": 2,
+        "ok": 2,
+        "failed": 0,
+        "rows_without_tokens": 0
+      },
+      "accuracy": "not measured (no teacher-certified references)"
+    },
+    {
+      "model": "gemini-3.1-pro-preview",
+      "why_candidate": "pro comparator: accuracy ceiling, higher cost",
+      "access": "failed",
+      "error": "ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev",
+      "plain_probe": {
+        "ok": false,
+        "error": "ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev",
+        "latency_ms": 264,
+        "tokens": null,
+        "schema_valid": null,
+        "schema_note": "",
+        "reply_chars": 0
+      },
+      "schema_probe": {
+        "ok": false,
+        "error": "not attempted: the plain probe failed",
+        "latency_ms": null,
+        "tokens": null,
+        "schema_valid": null,
+        "schema_note": "not tested (no reply)",
+        "reply_chars": 0
+      },
+      "ledger": {
+        "rows": 1,
+        "ok": 0,
+        "failed": 1,
+        "rows_without_tokens": 1
+      },
+      "accuracy": "not measured (no teacher-certified references)"
+    }
+  ],
+  "not_measured": [
+    "Marking accuracy: no teacher-certified references are available, so no model can be compared on accuracy. See docs/results/TEACHER_CERTIFIED_ACCURACY_REPORT.md.",
+    "Multi-page behaviour: the probes are one line of text, not a 15-page script plus a 26-page scheme, so per-page latency and long-context handling are not covered.",
+    "Cost: token counts are reported, prices are not, so no currency figure is implied."
+  ]
+}

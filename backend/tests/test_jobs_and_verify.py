@@ -6,6 +6,7 @@ import time
 import pytest
 
 import app.jobs.manager as jm
+from app import db
 from app.jobs.manager import (
     JobManager, DuplicateJobError, CancelledError, WaitForApiRetry,
 )
@@ -31,15 +32,56 @@ class TestEnqueue:
             manager.enqueue(submission_id="s1", coursework_id="w1",
                             course_id="c1", student_id="u1", student_name="Alice")
 
-    def test_new_job_allowed_after_completion(self, fresh_state):
+    def test_a_completed_submission_is_not_queued_twice(self, fresh_state):
+        """Re-running a batch must not re-mark a paper that already has a result."""
         manager = JobManager()
         job = manager.enqueue(submission_id="s1", coursework_id="w1",
                               course_id="c1", student_id="u1", student_name="Alice")
         manager._claim_next()
         manager._set_status(job["id"], "COMPLETED", finish=True)
+        db.execute("UPDATE correction_jobs SET result_id = 'r1' WHERE id = ?", (job["id"],))
+
         second = manager.enqueue(submission_id="s1", coursework_id="w1",
                                  course_id="c1", student_id="u1", student_name="Alice")
-        assert second["id"] != job["id"]
+
+        assert second["id"] == job["id"], "the existing correction is reused"
+        assert len(manager.list()) == 1, "no second job row for one paper"
+
+    @pytest.mark.parametrize("terminal", ["FAILED", "CANCELLED"])
+    def test_a_terminal_unmarked_submission_is_re_armed_not_duplicated(
+            self, fresh_state, terminal):
+        """The 20 duplicate pairs: a failed/cancelled job got a SECOND row on
+        re-run, so one paper was paid for twice."""
+        manager = JobManager()
+        job = manager.enqueue(submission_id="s2", coursework_id="w1",
+                              course_id="c1", student_id="u2", student_name="Bob")
+        manager._claim_next()
+        manager._set_status(job["id"], terminal, finish=True, error="quota",
+                            error_code="all_keys_unavailable")
+
+        again = manager.enqueue(submission_id="s2", coursework_id="w1",
+                                course_id="c1", student_id="u2", student_name="Bob")
+
+        assert again["id"] == job["id"]
+        assert again["status"] == "QUEUED"
+        assert again["attempts"] == 0, "the retry gets a fresh attempt budget"
+        assert again["error"] in (None, "")
+        assert len(manager.list()) == 1
+
+    def test_a_remark_may_still_create_its_own_job(self, fresh_state):
+        """A remark is a deliberate second marking, not a duplicate."""
+        manager = JobManager()
+        job = manager.enqueue(submission_id="s3", coursework_id="w1",
+                              course_id="c1", student_id="u3", student_name="Cara")
+        manager._claim_next()
+        manager._set_status(job["id"], "COMPLETED", finish=True)
+
+        remark = manager.enqueue(submission_id="s3", coursework_id="w1",
+                                 course_id="c1", student_id="u3",
+                                 student_name="Cara", is_remark=True)
+
+        assert remark["id"] != job["id"]
+        assert len(manager.list()) == 2
 
     def test_manual_jobs_allow_duplicates(self, fresh_state):
         manager = JobManager()
@@ -520,3 +562,78 @@ class TestStageMessages:
         assert event == {"type": "stage",
                          "message": "Marking with gemini-3.8-flash",
                          "progress": 0.35}
+
+
+class TestCoverageIsNotAScore:
+    """A missing question is UNMARKED, never a confirmed 0 or a full paper."""
+
+    @staticmethod
+    def _result():
+        return {
+            "questions": [
+                {"question_number": "1", "max_marks": 3, "awarded_marks": 2},
+            ],
+            "totals": {"earned": 2},
+        }
+
+    def test_a_missing_question_makes_the_score_partial(self):
+        result = self._result()
+        verification = verify_result(result, {
+            "blueprint_total": 10,
+            "missing_questions": ["2", "3"],
+            "missing_subquestions": [],
+            "still_unresolved": [],
+        })
+
+        assert verification["partial"] is True
+        assert verification["score_basis"] == "MARKED_ONLY"
+        assert verification["paper_total_marks"] == 10
+        assert verification["unresolved_marks"] == 7
+        assert verification["coverage"] == {
+            "marked": 1, "expected": 3, "requires_review": 2,
+            "marked_marks": 3, "paper_marks": 10,
+        }
+        assert verification["status"] == "REVIEW"
+        # The marks themselves are untouched: verification reports, never rewrites.
+        assert result["questions"][0]["awarded_marks"] == 2
+        assert verification["earned"] == 2
+
+    def test_a_fully_covered_paper_is_complete(self):
+        verification = verify_result(self._result(), {
+            "blueprint_total": 3,
+            "missing_questions": [],
+            "missing_subquestions": [],
+            "still_unresolved": [],
+        })
+        assert verification["partial"] is False
+        assert verification["score_basis"] == "COMPLETE"
+        assert verification["unresolved_marks"] == 0
+        assert verification["coverage"] is None
+        assert verification["status"] == "VALID"
+
+    def test_a_partial_summary_names_the_gap(self):
+        from app.engine.verify import partial_summary
+        verification = verify_result(self._result(), {
+            "blueprint_total": 10,
+            "missing_questions": ["2"],
+            "missing_subquestions": [],
+            "still_unresolved": [],
+        })
+        summary = partial_summary(verification)
+        assert summary["expected_questions"] == 2
+        assert summary["marked_questions"] == 1
+        assert summary["unresolved_questions"] == 1
+        assert summary["paper_marks"] == 10
+        assert summary["unresolved_marks"] == 7
+
+    def test_a_missing_question_without_a_declared_total_still_reports(self):
+        verification = verify_result(self._result(), {
+            "missing_questions": ["2"],
+            "missing_subquestions": [],
+            "still_unresolved": [],
+        })
+        assert verification["partial"] is True
+        assert verification["paper_total_marks"] is None
+        assert verification["status"] == "REVIEW"
+        codes = [r["code"] for r in verification["review_reasons"]]
+        assert "QUESTION_UNMARKED" in codes

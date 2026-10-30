@@ -6,9 +6,10 @@ teacher decides, per question and per sub-question, one of three things:
 ``AUTO``
     Mark it from the extracted scheme, under the normal marking safeguards.
 ``MANUAL``
-    Do not trust it — a human checks this question independently. This is the
-    default wherever the extraction cannot be trusted (no answer, criteria
-    only), because an unresolved question must never be silently approved.
+    Do not trust it — a human checks this question independently. Chosen by the
+    teacher, never imposed: marking is the proposed handling for every question,
+    because an independent check is the exception the teacher asks for, not the
+    state a scheme starts in.
 ``SKIP``
     Do not mark it at all.
 
@@ -64,8 +65,8 @@ CRITERIA_ONLY = "CRITERIA_ONLY"
 MISSING = "MISSING"
 
 #: A structure Demo Mode built for exploration. It is NOT a read of the scheme:
-#: it is labelled as such, counted as unreliable, and defaults to a manual check
-#: so a synthetic answer can never be marked against automatically.
+#: it is labelled as such and counted as unreliable, so no row built from it can
+#: pass for an extraction — including the rows proposed for automatic marking.
 DEMO = "DEMO"
 
 
@@ -214,7 +215,13 @@ def _row(label: str, key: str, source: dict, stored: dict, ignored: dict,
         # A row created only by an answer edit is NOT a decision.
         decided = record.get("decided", True)
     else:
-        decision = AUTO if status == RELIABLE else MANUAL
+        # Marking is the job, so every question is proposed for automatic
+        # marking. An independent check is opt-in: defaulting to it turned a
+        # whole scheme into dozens of manual checks nobody chose, which is not a
+        # review — it is a wall, and a wall gets clicked past. What the
+        # extraction could not support is still on the page as its status, so a
+        # teacher can filter "Untrusted extraction" and pick the rows to check.
+        decision = AUTO
         decided = False
 
     try:
@@ -409,8 +416,9 @@ def set_answer(coursework_id: str, question_number: str, answer: str, *,
             "INSERT INTO scheme_question_decisions(coursework_id, question_key, "
             "question_label, decision, decided, answer_text, note, source, updated_by, "
             "updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-            # decided=0: an edited answer is not a handling decision.
-            (coursework_id, key, label, MANUAL, 0, new_value, "", "HUMAN", actor,
+            # decided=0: an edited answer is not a handling decision, and the
+            # row keeps the same proposed default it had before the edit.
+            (coursework_id, key, label, AUTO, 0, new_value, "", "HUMAN", actor,
              time.time()))
 
     _record(coursework_id, key, (before or {}).get("question_label") or label,
@@ -457,10 +465,12 @@ def manual_keys(coursework_id: str | None,
                 blueprint: dict | None = None) -> set[str]:
     """Questions that must be checked by a human rather than trusted.
 
-    With a blueprint this includes the PROPOSED default for an entry the
-    extraction could not be trusted for: an undecided question with no answer
-    is not silently approved, it is flagged. SKIP is never included — those
-    questions are not marked at all.
+    With a blueprint this is every row the teacher set to MANUAL, plus any
+    stored decision whose question the scheme no longer contains. The proposed
+    default is automatic, so an untouched row is not flagged: whether an answer
+    could be extracted is reported on the row itself, where it is visible
+    without pretending the question has been checked. SKIP is never included —
+    those questions are not marked at all.
     """
     if blueprint is not None:
         rows, _orphans = rows_for(blueprint, coursework_id)

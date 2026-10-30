@@ -237,11 +237,24 @@ def classify_message(message: str) -> str | None:
     return None
 
 
+#: A joined failure across every model and key. It says nothing about the
+#: credential this job happened to lease, so it can never be a verdict on it.
+_AGGREGATE_MARKER = "all configured gemini models failed"
+
+
 def classify_kind(kind: str | None, message: str = "") -> str:
     """Map a ``classify_gemini_error`` kind (child worker payload) to a class."""
     kind = kind or "unknown"
     m = (message or "").lower()
     if kind == "invalid_key" or kind == "forbidden":
+        # AUTHENTICATION_ERROR is permanent by policy (retryable=False), so it
+        # must only ever be won by a verdict on ONE credential. An aggregate
+        # "all configured models failed" that carries a 429 from one key was
+        # recorded as an auth failure and ended the job on the spot, while
+        # every other key was merely exhausted — a transient quota storm
+        # turned into "this correction can never run". Capacity dominates.
+        if _AGGREGATE_MARKER in m:
+            return classify_message(message) or RATE_LIMIT
         return AUTHENTICATION_ERROR
     if kind == "rate_limited":
         return RATE_LIMIT

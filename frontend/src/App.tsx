@@ -79,11 +79,12 @@ const PromptsPage = lazyRoute(() => import("./pages/PromptsPage"));
 const DistributedPage = lazyRoute(() => import("./distributed/DistributedPage"));
 const UpdatesPage = lazyRoute(() => import("./distributed/UpdatesPage"));
 const SchemeReviewPage = lazyRoute(() => import("./pages/SchemeReviewPage"));
+const AccuracyPage = lazyRoute(() => import("./pages/AccuracyPage"));
 
 export type Route =
   | "dashboard" | "classes" | "assignments" | "students" | "reports" | "results" | "corrections" | "review" | "automation" | "classroom" | "ai" | "settings" | "storage"
   | "privacy" | "diagnostics" | "prompts" | "distributed" | "audit" | "updates"
-  | "tasks" | "correct" | "usage" | "scheme-review"
+  | "tasks" | "correct" | "usage" | "scheme-review" | "accuracy"
   // legacy aliases kept so old deep links (search, bookmarks) still resolve
   | "report" | "keys" | "workers" | "resultsPage";
 
@@ -131,6 +132,7 @@ const DESTINATIONS: Destination[] = [
   { id: "review", icon: "review", label: "Review", home: "review", pages: [
     { id: "review", icon: "review", label: "Queue" },
     { id: "scheme-review", icon: "alert", label: "Scheme mismatches" },
+    { id: "accuracy", icon: "check-circle", label: "Accuracy benchmark" },
   ] },
   { id: "results", icon: "chart", label: "Results", home: "results", pages: [
     { id: "results", icon: "chart", label: "Results" },
@@ -181,6 +183,7 @@ const ROUTE_TITLES: Partial<Record<Route, string>> = {
   corrections: "Queue a correction",
   review: "Review Queue",
   "scheme-review": "Mark-Scheme Review",
+  accuracy: "Marking Accuracy Benchmark",
   automation: "Automation",
   classroom: "Google Classroom",
   ai: "AI",
@@ -209,7 +212,7 @@ const ALIASES: Record<string, Route> = {
 
 const VALID_ROUTES = new Set<Route>([
   "dashboard", "classes", "assignments", "students", "reports",
-  "results", "corrections", "review", "scheme-review", "automation", "classroom", "ai", "settings", "storage",
+  "results", "corrections", "review", "scheme-review", "accuracy", "automation", "classroom", "ai", "settings", "storage",
   "privacy", "diagnostics", "prompts", "distributed", "audit", "updates", "tasks", "correct", "usage",
   "report", "keys", "workers", "resultsPage",
 ]);
@@ -520,7 +523,7 @@ function Shell() {
                   shows, always visible so work is never hidden behind
                   navigation. Opens the attention drawer. */}
               <button
-                className={`activity-pill ${dash && (dash.processing > 0 || dash.pending > 0) ? "busy" : ""}`}
+                className={`activity-pill ${dash && (dash.processing > 0 || (dash.queued ?? 0) > 0) ? "busy" : ""}`}
                 onClick={() => setAttentionOpen(true)}
                 data-tooltip="Background jobs — click for what needs attention"
                 aria-label={dash && dash.processing > 0
@@ -528,7 +531,9 @@ function Shell() {
                   : "No corrections running"}>
                 <span className="led-dot" aria-hidden="true" />
                 {dash && dash.processing > 0 ? `${dash.processing} correcting`
-                  : dash && dash.pending > 0 ? `${dash.pending} queued`
+                  : dash && (dash.queued ?? 0) > 0 ? `${dash.queued} queued`
+                  : dash && (dash.pending_submissions ?? 0) > 0
+                    ? `${dash.pending_submissions} to correct`
                   : "Idle"}
               </button>
               <div className="topbar-chips chip-hide-sm">
@@ -695,6 +700,7 @@ function Shell() {
               {route === "usage" && <UsagePage />}
               {route === "automation" && <AutomationPage />}
               {route === "review" && <ReviewPage onNavigate={navigate} />}
+              {route === "accuracy" && <AccuracyPage />}
               {route === "scheme-review" && (
                 <SchemeReviewPage
                   key={`sr:${nav.params[0] ?? ""}`}

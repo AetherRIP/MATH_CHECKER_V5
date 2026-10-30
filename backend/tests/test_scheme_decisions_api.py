@@ -72,7 +72,11 @@ def test_the_page_lists_every_question_with_answer_marks_and_state(client):
 
     missing = next(q for q in body["questions"] if q["question_label"] == "3")
     assert missing["extraction_status"] == "CRITERIA_ONLY"
-    assert missing["decision"] == "MANUAL"
+    # Guidance without an answer is still proposed for automatic marking: the
+    # independent check is the teacher's exception, and the row says what the
+    # extraction could not do so they can choose it.
+    assert missing["decision"] == "AUTO"
+    assert missing["decided"] is False
 
     assert body["labels"]["SKIP"] == "Skip question"
 
@@ -99,7 +103,8 @@ def test_deciding_a_question_updates_the_summary(client):
 
     body = response.json()
     assert body["decision"]["decision"] == "MANUAL"
-    assert body["summary"]["manual"] == 2          # 1(a) plus the proposal on 3
+    assert body["summary"]["manual"] == 1          # 1(a); no other row was changed
+    assert body["summary"]["automatic"] == 4
     assert body["summary"]["unresolved"] == 4
 
     stored = next(q for q in _decisions(client, cw)["questions"]

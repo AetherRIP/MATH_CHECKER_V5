@@ -97,7 +97,13 @@ class TestClassificationTable:
         """
         for message in ("429 RESOURCE_EXHAUSTED: quotaValue 0 (limit: 0)",
                         "400 INVALID_ARGUMENT: model has limit:0 for this project",
-                        "404 NOT_FOUND: model gemini-9.9-flash is not supported"):
+                        "404 NOT_FOUND: model gemini-9.9-flash is not supported",
+                        # The exact body the real provider returned for a model
+                        # that does not exist (observed in the V5 failover run).
+                        "404 NOT_FOUND. {'error': {'code': 404, 'message': "
+                        "'models/gemini-9.9-nonexistent is not found for API "
+                        "version v1beta, or is not supported for generateContent. '"
+                        ", 'status': 'NOT_FOUND'}}"):
             assert classify_gemini_error(Exception(message))["kind"] == "model_no_access", \
                 message
 

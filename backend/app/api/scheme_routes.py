@@ -325,8 +325,8 @@ def read_mark_scheme(coursework_id: str):
         # Demo Mode has no model to read a scheme with, so it builds a LABELLED
         # synthetic structure instead. That is what makes the review page and its
         # per-question decisions explorable without an API key; every row is
-        # reported as DEMO, counted as unreliable, and defaults to a manual check
-        # so a synthetic answer is never marked against automatically.
+        # reported as DEMO and counted as unreliable, so a synthetic answer is
+        # never presented as a real extraction.
         from ..engine import demo_scheme
 
         blueprint = demo_scheme.build(str(path))

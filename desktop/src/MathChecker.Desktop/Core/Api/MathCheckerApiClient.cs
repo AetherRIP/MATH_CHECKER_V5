@@ -151,7 +151,32 @@ public sealed partial class MathCheckerApiClient : IDisposable
 
                 if (document.RootElement.TryGetProperty("detail", out var detail))
                 {
-                    message = detail.ValueKind == JsonValueKind.String ? detail.GetString() ?? message : detail.ToString();
+                    if (detail.ValueKind == JsonValueKind.String)
+                    {
+                        message = detail.GetString() ?? message;
+                    }
+                    else if (detail.ValueKind == JsonValueKind.Object)
+                    {
+                        // FastAPI's benchmark routes explain a refusal with
+                        // {"code": ..., "message": ...} inside detail. Showing
+                        // that raw object made the page read like a JSON dump.
+                        if (detail.TryGetProperty("message", out var detailMessage)
+                            && detailMessage.ValueKind == JsonValueKind.String)
+                        {
+                            message = detailMessage.GetString() ?? message;
+                        }
+
+                        if (detail.TryGetProperty("code", out var detailCode))
+                        {
+                            code = detailCode.ValueKind == JsonValueKind.String
+                                ? detailCode.GetString()
+                                : detailCode.ToString();
+                        }
+                    }
+                    else
+                    {
+                        message = detail.ToString();
+                    }
                 }
             }
         }

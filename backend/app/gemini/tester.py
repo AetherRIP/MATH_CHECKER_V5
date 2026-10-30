@@ -116,6 +116,16 @@ def test_key(index: int, key: str, fp: str) -> KeyTestState:
     try:
         models = list(client.models.list())
         state.auth_ok = True
+        # Discovery rides on the listing this test already paid for: it marks
+        # which models the provider advertises, and nothing else. A model is
+        # only VERIFIED by a real request succeeding (model_registry
+        # .note_request in the client proxy). Best effort — a registry write
+        # must never turn a healthy key into a failed test.
+        try:
+            from . import model_registry
+            model_registry.discover(models)
+        except Exception:  # noqa: BLE001
+            pass
         record("gemini_health", 1_000, 4_000)  # tiny fixed estimate for models.list
         _stage_event(state, "auth", f"Authentication: PASS ({len(models)} models visible)")
     except Exception as exc:

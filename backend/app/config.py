@@ -325,6 +325,34 @@ class GeminiConfig:
     system_prompt_override: str | None = None
     user_prompt_override: str | None = None
 
+    # -- API efficiency controls ------------------------------------------
+    # See docs/gemini-api-architecture.md and docs/quota-and-retries.md.
+    #
+    # Per-request provider accounting (gemini.telemetry). ON by default: it
+    # writes only counts and identifiers, never prompt text or student work,
+    # and without it no token/latency/cache claim can be measured. A teacher
+    # can switch it off; marking is unaffected either way.
+    usage_telemetry: bool = True
+    # Bounded retention: the ledger is pruned by age AND by row count, so it
+    # cannot grow without limit on a school machine.
+    usage_retention_days: int = 30
+    usage_retention_rows: int = 20_000
+    # AIMD worker-concurrency controller. The configured worker.concurrency is
+    # a ceiling; this only ever REDUCES parallelism while the provider is
+    # throttling and recovers gradually afterwards. Persisted, so a restart
+    # does not reset to maximum during an outage. Implemented in
+    # app/workers/concurrency.py.
+    adaptive_concurrency: bool = True
+    # DELIBERATELY NOT CONFIGURABLE (they existed once and did nothing):
+    #   endpoint             — no Interactions adapter exists yet
+    #   cache_prefix_order    — never implemented; it reorders what the model reads
+    #   reuse_identical_marking — no inference cache exists yet
+    #   math_equiv_enabled    — app/engine/math_equiv.py does not exist yet
+    #   media_resolution      — never applied to any part
+    # A switch that silently does nothing is worse than a missing feature: a
+    # reader concludes the behaviour is available. They are removed until the
+    # implementation lands (see docs/API_OPTIMIZATION_GUIDE.md).
+
 
 @dataclass
 class PdfCompressionConfig:
@@ -944,6 +972,22 @@ def get_config(reload: bool = False) -> AppConfig:
                             0, int(gemini["max_requests_per_job"]))
                     except (TypeError, ValueError):
                         pass
+                # -- API efficiency controls (all optional, all reversible) --
+                for flag in ("usage_telemetry", "adaptive_concurrency"):
+                    if flag in gemini:
+                        setattr(cfg.gemini, flag, bool(gemini[flag]))
+                if "usage_retention_days" in gemini:
+                    try:
+                        cfg.gemini.usage_retention_days = max(
+                            1, int(gemini["usage_retention_days"]))
+                    except (TypeError, ValueError):
+                        pass
+                if "usage_retention_rows" in gemini:
+                    try:
+                        cfg.gemini.usage_retention_rows = max(
+                            100, int(gemini["usage_retention_rows"]))
+                    except (TypeError, ValueError):
+                        pass
                 # Prompt overrides: a missing/empty value means "built-in
                 # prompt" — never the literal string "None".
                 if gemini.get("system_prompt_override"):
@@ -1226,6 +1270,10 @@ def save_config(cfg: AppConfig) -> None:
             "audit_models": normalize_model_chain(cfg.gemini.audit_models),
             "request_timeout_ms": cfg.gemini.request_timeout_ms,
             "max_requests_per_job": cfg.gemini.max_requests_per_job,
+            "usage_telemetry": cfg.gemini.usage_telemetry,
+            "usage_retention_days": cfg.gemini.usage_retention_days,
+            "usage_retention_rows": cfg.gemini.usage_retention_rows,
+            "adaptive_concurrency": cfg.gemini.adaptive_concurrency,
             # Prompt overrides (Developer prompt page). Omitted entirely when
             # unset: _write_toml would stringify None, and the engine must
             # fall back to the built-in legacy prompts.

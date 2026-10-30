@@ -49,6 +49,11 @@
             <DataTemplate DataType="{x:Type vm:SchemeReviewViewModel}">
                 <views:SchemeReviewView />
             </DataTemplate>
+            <!-- The teacher-certified benchmark: the native counterpart of
+                 the web Accuracy page, fed by the same /api/benchmark routes. -->
+            <DataTemplate DataType="{x:Type vm:BenchmarkAccuracyViewModel}">
+                <views:AccuracyBenchmarkView />
+            </DataTemplate>
             <!-- The per-assignment Mark scheme page: every question and
                  sub-question with its answer, extracted state and handling
                  decision, reached from the assignment it belongs to. -->

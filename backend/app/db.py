@@ -226,6 +226,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
     bw_cols = {row[1] for row in conn.execute("PRAGMA table_info(job_bandwidth)")}
     if bw_cols and "ai_calls_json" not in bw_cols:
         conn.execute("ALTER TABLE job_bandwidth ADD COLUMN ai_calls_json TEXT")
+    # Measured token totals (gemini.telemetry). Additive: an existing install
+    # keeps every counter it already holds, and 0 means "not recorded yet"
+    # rather than "this paper cost nothing" — the ledger rows are the authority.
+    for col in ("input_tokens", "output_tokens", "cached_tokens",
+                "total_tokens"):
+        if bw_cols and col not in bw_cols:
+            conn.execute(
+                f"ALTER TABLE job_bandwidth ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
 
     # Classroom assignment lifecycle (§ deletion sync). When an assignment is
     # deleted in Google Classroom it is ARCHIVED here, never hard-deleted, so
@@ -333,6 +341,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # only show "Student" and a status: the uploaded filename and page count
     # lived in pending_manual_files, which terminal cleanup deletes.
     for col, ddl in (("paper_name", "TEXT"), ("page_count", "INTEGER")):
+        if job_cols and col not in job_cols:
+            conn.execute(f"ALTER TABLE correction_jobs ADD COLUMN {col} {ddl}")
+    # Retry ledger. Before this, capacity waiting was counted only in the
+    # scheduler's memory: restarting the backend (or cancelling and re-arming)
+    # reset the 15-minute park budget, so an outage could be waited out forever.
+    for col, ddl in (
+            ("waited_seconds", "REAL NOT NULL DEFAULT 0"),
+            ("park_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("manual_retries", "INTEGER NOT NULL DEFAULT 0"),
+            ("last_failure_class", "TEXT"),
+            ("retry_due_at", "REAL")):
         if job_cols and col not in job_cols:
             conn.execute(f"ALTER TABLE correction_jobs ADD COLUMN {col} {ddl}")
 

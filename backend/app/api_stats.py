@@ -168,6 +168,19 @@ def ai_usage_summary(limit: int = 200) -> dict:
     summary: dict = {"papers": 0, "requests": 0, "average": None,
                      "median": None, "max": None, "budget_exceeded": 0,
                      "skipped": 0, "stages": {}, "unavailable": True}
+    # Attached before any early return so the dashboard always sees these two:
+    # what each provider request cost (gemini.telemetry) and which models this
+    # installation has actually been able to use (gemini.model_registry).
+    try:
+        from .gemini import telemetry
+        summary["ledger"] = telemetry.summary(hours=168)
+    except Exception:  # noqa: BLE001 — a dashboard must render without it
+        summary["ledger"] = None
+    try:
+        from .gemini import model_registry
+        summary["models"] = model_registry.snapshot()
+    except Exception:  # noqa: BLE001
+        summary["models"] = None
     try:
         rows = db.query(
             "SELECT ai_attempts, ai_calls_json FROM job_bandwidth "
@@ -269,6 +282,18 @@ def record_ai_usage(job_id: str | None, usage: dict | None) -> None:
             "ai_calls_json = excluded.ai_calls_json, "
             "updated_at = excluded.updated_at",
             (job_id, requests, payload, time.time()),
+        )
+        # Measured token totals for the whole job. SET, not added: the ledger
+        # already accumulates every attempt, so re-reading it here keeps the
+        # columns equal to the sum of the rows instead of double-counting a
+        # retried attempt. A provider that reported nothing leaves them 0.
+        from .gemini import telemetry
+        totals = telemetry.job_totals(job_id)
+        db.execute(
+            "UPDATE job_bandwidth SET input_tokens = ?, output_tokens = ?, "
+            "cached_tokens = ?, total_tokens = ? WHERE job_id = ?",
+            (totals["input_tokens"], totals["output_tokens"],
+             totals["cached_tokens"], totals["total_tokens"], job_id),
         )
     except Exception:
         pass

@@ -97,6 +97,30 @@ public class ApiClientTests
     }
 
     [Fact]
+    public async Task A_nested_benchmark_refusal_keeps_its_sentence_and_code()
+    {
+        const string body = """
+            {"detail":{"code":"confirmation_required",
+                        "message":"A benchmark mark must be explicitly confirmed."}}
+            """;
+        var handler = new StubHttpHandler().Respond(HttpStatusCode.BadRequest, body);
+        using var client = Client(handler);
+
+        var error = await Assert.ThrowsAsync<ApiException>(() =>
+            client.VerifyBenchmarkReferenceAsync("paper-a.q1", 2, "verified", "A. Teacher",
+                "", "", Array.Empty<string>(), confirmed: false));
+
+        Assert.Equal(400, error.Status);
+        Assert.Equal("confirmation_required", error.Code);
+        Assert.Equal("A benchmark mark must be explicitly confirmed.", error.Message);
+        Assert.Equal("A benchmark mark must be explicitly confirmed.", error.Display);
+
+        using var sent = System.Text.Json.JsonDocument.Parse(handler.Requests[0].Body!);
+        Assert.False(sent.RootElement.GetProperty("confirm").GetBoolean());
+        Assert.True(sent.RootElement.TryGetProperty("alternative_methods", out _));
+    }
+
+    [Fact]
     public async Task Forbidden_is_recognised_for_developer_only_endpoints()
     {
         var handler = new StubHttpHandler().Respond(HttpStatusCode.Forbidden,
