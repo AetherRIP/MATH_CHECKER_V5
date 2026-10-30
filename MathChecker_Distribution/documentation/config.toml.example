@@ -95,9 +95,23 @@ document_label = "TEACHER COPY"
 #   deliberately absent here (an alias would retry a model that just failed).
 #   On load, any deprecated ID is replaced by the model that actually serves
 #   it and duplicates are removed.
-primary_models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
+#
+# ONE model by default, chosen by measurement (2026-10-30): gemini-3.8-flash
+# needed 720-8400 s for single marking calls in the recorded archive and
+# 53-240 s even for a one-line prompt, so as a fallback it turned one transient
+# 503 into a 10-140 minute job. If you name a fallback, it gets a 4-minute
+# single-attempt rescue budget instead of the primary's page-scaled patience.
+primary_models = ["gemini-3.6-flash"]
 # The second-opinion model used by the double-check pass.
-audit_models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
+audit_models = ["gemini-3.6-flash"]
+# Reasoning ("thinking") budget for the marking call. Leave it unset to keep the
+# provider default, which is what the application has always sent.
+#   0     disables thinking
+#   1024  caps it (measured: lost one reference item, so not the safe middle)
+# Measured effect: on the reference papers no mark changed either way; on a real
+# 41-page paper turning it off halved the call (139 s -> 64 s) but moved the
+# total by one mark. Enable it only after a teacher has checked real scripts.
+# thinking_budget = 0
 # Per-request timeout in milliseconds (600000 = 10 minutes).
 # A marking request sends the whole answer scan AND the whole mark scheme in
 # one call; on a 15-page scan against a 26-page scheme that takes 4-8 minutes,

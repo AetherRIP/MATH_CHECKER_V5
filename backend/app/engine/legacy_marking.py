@@ -408,6 +408,23 @@ def percentage_band_grade(percentage: float) -> str:
 # (normalisation, clamping, totals) was already deterministic.
 DETERMINISTIC_SAMPLING: dict[str, Any] = {"temperature": 0.0, "seed": 42}
 
+#: A fallback model is a RESCUE, not a second primary, so its request gets a
+#: short deadline regardless of page count.
+#:
+#: Why: the page-scaled budget in ``client_proxy.timeout_for_pages`` (120 s +
+#: 15 s/page = ~12 min for a 41-page paper) is right for the model that is
+#: supposed to mark the paper, but as a *fallback* it let a pathologically slow
+#: model run: the 35 recorded jobs contain single ``gemini-3.8-flash`` marking
+#: calls of 720 s, 1 129 s, 2 451 s and 8 400 s, each entered because a
+#: transient 503 hit the primary. Two attempts per model and three attempts per
+#: job multiply that into hours (measured: docs/results/
+#: CORRECTION_PERFORMANCE_RECOVERY.md).
+#:
+#: Four minutes is far above a healthy marking call (measured: 97 s for a
+#: 15-page scan plus a 26-page scheme), so a working fallback is unaffected,
+#: while a model that cannot answer is abandoned instead of holding the job.
+FALLBACK_MODEL_DEADLINE_MS = 240_000
+
 GROUP_SIZE = 5
 
 
@@ -804,6 +821,14 @@ def audit_prompt(result: dict) -> str:
 # the generate_content call signature and fallback loop are verbatim.)
 # ============================================================
 
+def _configured_thinking_budget() -> int | None:
+    """The teacher's reasoning budget for marking, or None (provider default)."""
+    try:
+        return get_config().gemini.thinking_budget
+    except Exception:  # noqa: BLE001 — a missing config keeps the default
+        return None
+
+
 def grade_with_model(
     client: KeyAwareClient,
     model_names: list[str],
@@ -879,7 +904,7 @@ def grade_with_model(
             "⏭️ Skipping models that recently failed: " + ", ".join(skipped)
         )
 
-    for model_name in model_names:
+    for model_index, model_name in enumerate(model_names):
         # A model the shared gate has parked sends NOTHING: the cooldown was
         # established by an earlier request (possibly another worker's), so
         # asking again is a guaranteed failure that still costs a request.
@@ -898,23 +923,50 @@ def grade_with_model(
             except Exception:
                 pass
             continue
-        for attempt in range(2):
+        # The primary gets a second attempt; a rescue model gets ONE. Measured:
+        # a provider 504 is classed as "temporary", so a fallback used to spend
+        # its whole deadline twice (2 x 240 s = 8 min) on a model that had
+        # already proved it could not answer in time.
+        attempts = 2 if model_index == 0 else 1
+        for attempt in range(attempts):
             try:
                 if status_callback:
                     status_callback(
                         f"🧠 Marking with {model_name}"
-                        + (f" (attempt {attempt + 1}/2)" if attempt else "")
+                        + (f" (attempt {attempt + 1}/{attempts})" if attempt else "")
                     )
+
+                generation_config: dict[str, Any] = {
+                    "system_instruction": system_instruction,
+                    "response_mime_type": "application/json",
+                    "response_schema": OUTPUT_SCHEMA,
+                    **(sampling or DETERMINISTIC_SAMPLING),
+                }
+                if model_index > 0:
+                    # A rescue model must not inherit the primary's page-scaled
+                    # patience — see FALLBACK_MODEL_DEADLINE_MS. The attempt
+                    # count is re-pinned here because a request-level
+                    # http_options override does not inherit the client's retry
+                    # policy, and the proxy must stay the only retry owner.
+                    generation_config["http_options"] = {
+                        "timeout": FALLBACK_MODEL_DEADLINE_MS,
+                        "retry_options": {"attempts": 1},
+                    }
+
+                # ``gemini.thinking_budget`` (None = provider default).
+                # Measured: disabling thinking kept every reference-set mark but
+                # halved a real 41-page call (139 s -> 64 s) while moving its
+                # total by one mark, so it is opt-in, never automatic.
+                if "thinking_config" not in generation_config:
+                    budget = _configured_thinking_budget()
+                    if budget is not None:
+                        generation_config["thinking_config"] = {
+                            "thinking_budget": budget}
 
                 response = client.models.generate_content(
                     model=model_name,
                     contents=contents_base,
-                    config={
-                        "system_instruction": system_instruction,
-                        "response_mime_type": "application/json",
-                        "response_schema": OUTPUT_SCHEMA,
-                        **(sampling or DETERMINISTIC_SAMPLING),
-                    },
+                    config=generation_config,
                 )
 
                 if response and response.text:

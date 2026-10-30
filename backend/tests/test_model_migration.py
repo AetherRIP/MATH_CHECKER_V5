@@ -24,10 +24,13 @@ DEPRECATED = ("gemini-3.5-flash", "gemini-3.7-flash")
 def test_default_chain_uses_only_models_google_currently_serves():
     from app import config as cfg
 
-    assert cfg.DEFAULT_PRIMARY_MODELS == (
-        "gemini-3.8-flash", "gemini-3.6-flash")
-    assert cfg.DEFAULT_AUDIT_MODELS == (
-        "gemini-3.8-flash", "gemini-3.6-flash")
+    # 3.8 Flash is still *served*, but it is no longer a DEFAULT: measured on
+    # 2026-10-30 it needed 53.6 s for a one-line prompt and 720-8 400 s for a
+    # real paper, so as a fallback it turned one 503 into an hour per job (see
+    # test_marking_chain_budget.py and the recovery report). The chain may name
+    # it explicitly; it must not be what an unconfigured install picks.
+    assert cfg.DEFAULT_PRIMARY_MODELS == ("gemini-3.6-flash",)
+    assert cfg.DEFAULT_AUDIT_MODELS == ("gemini-3.6-flash",)
     # A lightweight model is not a trustworthy marking model.
     assert not cfg.is_trusted_marking_model("gemini-3.5-flash-lite")
     assert cfg.is_trusted_marking_model("gemini-3.6-flash")

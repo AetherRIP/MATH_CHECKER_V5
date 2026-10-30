@@ -207,25 +207,43 @@ def resolve_oauth_client_path() -> Path:
     return OAUTH_CLIENT_PATH
 
 
-#: The model chain Google currently serves for correction, most capable first.
-#: Verified against https://ai.google.dev/gemini-api/docs/deprecations and
-#: .../docs/pricing on 2026-10-24: Gemini 3.8 Flash is the current Flash model,
-#: 3.6 Flash is the previous generation, and 3.5 Flash-Lite is the cheap
-#: fallback. None of the three has a shutdown date announced.
+#: The marking chain. ONE model, chosen by measurement rather than by version
+#: number.
+#:
+#: ``gemini-3.8-flash`` is the newest Flash model and was previously the first
+#: entry here, but it is not usable as a marking model on this account: measured
+#: 2026-10-30, it did not answer a one-line prompt at all inside 90 s, answered
+#: another in 53.6 s, and needed 238 s on a third attempt, where 3.6 Flash
+#: answered the same prompt in 1.5-3.9 s. In production it is far worse: the 35
+#: recorded jobs show single 3.8 Flash marking calls taking 720 s, 1 129 s,
+#: 2 451 s and 8 400 s (see docs/results/CORRECTION_PERFORMANCE_RECOVERY.md).
+#:
+#: As a FALLBACK that is actively harmful. A transient 503 on 3.6 Flash meant
+#: the whole 41-page request was re-sent to a model that needs minutes per
+#: attempt, twice per model and again per job attempt — which is where the
+#: measured 10- to 140-minute corrections came from. Waiting for the primary to
+#: recover (park semantics, ``retry_policy.HIGH_DEMAND``) keeps the marks
+#: reproducible and is far cheaper than marking the paper 20x slower with a
+#: different model.
+#:
+#: ``gemini-3.7-flash`` is not an alternative: it is an alias Google routes to
+#: 3.8 Flash, and ``gemini-3.5-flash`` routes to 3.6 Flash (see
+#: ``DEPRECATED_MODEL_ROUTES``), so neither adds a distinct fallback. Lite
+#: models are excluded for accuracy reasons documented below.
 #:
 #: These are DEFAULTS only: ``[gemini] primary_models`` in data/config.toml
-#: overrides them, and that file is what a deployment should edit. No model ID
-#: is hardcoded anywhere else (the engine, worker pool, double-check pass and
-#: diagnostics all read this chain), so switching models never needs a code
-#: change.
+#: overrides them, and that file is what a deployment should edit. A deployment
+#: that wants a second opinion may name one explicitly — fallback models are
+#: given a short rescue deadline (see ``legacy_marking``), so a slow model can
+#: no longer hold a job for the length of a lesson.
 DEFAULT_PRIMARY_MODELS = (
-    "gemini-3.8-flash",
     "gemini-3.6-flash",
 )
 
-#: Second-opinion chain for the (off-by-default) audit pass.
+#: Second-opinion chain for the (off-by-default) audit pass. It must not be the
+#: slow model either: an audit pass that takes minutes per paper is not a check
+#: a teacher will wait for.
 DEFAULT_AUDIT_MODELS = (
-    "gemini-3.8-flash",
     "gemini-3.6-flash",
 )
 
@@ -318,6 +336,28 @@ class GeminiConfig:
     # check), or up to 4 with both targeted recovery rounds. Anything beyond
     # that is the same failing request being resent. 0 disables the cap.
     max_requests_per_job: int = 12
+    # Reasoning ("thinking") budget for the MARKING call.
+    #
+    # ``None`` keeps the provider default, which is what the application has
+    # always sent. ``0`` disables thinking; any positive value caps it.
+    #
+    # Measured 2026-10-30 (backend/scripts/benchmark_marking_config.py, artefact
+    # docs/results/MARKING_CONFIG_BENCHMARK.json and
+    # docs/results/CORRECTION_PERFORMANCE_RECOVERY.md):
+    #
+    # * Marks did not move: thinking on and ``0`` each matched all 16 reference
+    #   items in every run. A bounded budget of 1 024 lost one item, so a
+    #   "small" budget is not automatically the safe middle ground.
+    # * Speed could NOT be attributed from that benchmark: the provider was
+    #   shedding requests during one run, which inverted the result. The one
+    #   same-input measurement on a real 41-page paper went 139.3 s -> 63.8 s
+    #   with thinking off, and the total moved by one mark.
+    #
+    # So it defaults to None (provider default, i.e. exactly what the
+    # application has always sent). Turn it to 0 only after a teacher has
+    # checked real scripts marked under it — the setting is measured, reversible
+    # and deliberately not automatic.
+    thinking_budget: int | None = None
     # Developer prompt editor (prompt-inspection page): optional overrides
     # stored in config.toml so EVERY process (parent, worker child, automation
     # scheduler) reads the same text. None = the built-in legacy prompts are
@@ -972,6 +1012,17 @@ def get_config(reload: bool = False) -> AppConfig:
                             0, int(gemini["max_requests_per_job"]))
                     except (TypeError, ValueError):
                         pass
+                if "thinking_budget" in gemini:
+                    # None/absent keeps the provider default; -1 is the
+                    # provider's "automatic"; 0 disables thinking.
+                    raw_budget = gemini["thinking_budget"]
+                    if raw_budget is None or raw_budget == "":
+                        cfg.gemini.thinking_budget = None
+                    else:
+                        try:
+                            cfg.gemini.thinking_budget = int(raw_budget)
+                        except (TypeError, ValueError):
+                            pass
                 # -- API efficiency controls (all optional, all reversible) --
                 for flag in ("usage_telemetry", "adaptive_concurrency"):
                     if flag in gemini:
@@ -1270,6 +1321,7 @@ def save_config(cfg: AppConfig) -> None:
             "audit_models": normalize_model_chain(cfg.gemini.audit_models),
             "request_timeout_ms": cfg.gemini.request_timeout_ms,
             "max_requests_per_job": cfg.gemini.max_requests_per_job,
+            "thinking_budget": cfg.gemini.thinking_budget,
             "usage_telemetry": cfg.gemini.usage_telemetry,
             "usage_retention_days": cfg.gemini.usage_retention_days,
             "usage_retention_rows": cfg.gemini.usage_retention_rows,
