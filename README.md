@@ -1,5 +1,7 @@
 # Math Checker V5
 
+[![CI](https://github.com/AetherRIP/MATH_CHECKER_V5/actions/workflows/ci.yml/badge.svg)](https://github.com/AetherRIP/MATH_CHECKER_V5/actions/workflows/ci.yml)
+
 **An AI-assisted marking application for Edexcel IGCSE Mathematics, built and used for real classroom work.**
 
 A teacher uploads a student's scanned answers and the published mark scheme. The
