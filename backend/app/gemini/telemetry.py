@@ -307,7 +307,7 @@ def summary(hours: int = 168, limit: int = 50_000) -> dict:
         "unavailable": [],
         "requests": 0, "ok": 0, "failed": 0,
         "input_tokens": 0, "output_tokens": 0, "cached_tokens": 0,
-        "total_tokens": 0, "estimated_rows": 0,
+        "thoughts_tokens": 0, "total_tokens": 0, "estimated_rows": 0,
         "cache_hit_rate": None,
         "latency": {"p50_ms": None, "p95_ms": None, "max_ms": None},
         "by_model": {}, "by_stage": {}, "by_outcome": {},
@@ -420,6 +420,34 @@ def summary(hours: int = 168, limit: int = 50_000) -> dict:
     return result
 
 
+def job_totals(job_id: str | None) -> dict:
+    """Summed token counts for one job, taken from the ledger.
+
+    The ledger is the authority: these are ADDED from the rows the provider
+    actually reported, so a retried job cannot double-count and a job whose
+    provider reported nothing stays 0 ("not recorded") rather than being
+    filled with an estimate.
+    """
+    empty = {"input_tokens": 0, "output_tokens": 0, "cached_tokens": 0,
+             "total_tokens": 0}
+    if not job_id:
+        return empty
+    try:
+        from .. import db
+        row = db.query_one(
+            "SELECT COALESCE(SUM(input_tokens), 0) AS input_tokens, "
+            "COALESCE(SUM(output_tokens), 0) AS output_tokens, "
+            "COALESCE(SUM(cached_tokens), 0) AS cached_tokens, "
+            "COALESCE(SUM(total_tokens), 0) AS total_tokens "
+            "FROM ai_request_log WHERE job_id = ?", (job_id,))
+    except Exception:  # noqa: BLE001 — statistics are never fatal
+        return empty
+    if not row:
+        return empty
+    values = {key: int(row[key] or 0) for key in empty}
+    return values
+
+
 def for_job(job_id: str) -> list[dict]:
     """Rows for one correction, newest last (diagnostics, never bulk lists)."""
     if not job_id:
@@ -427,9 +455,10 @@ def for_job(job_id: str) -> list[dict]:
     try:
         from .. import db
         rows = db.query(
-            "SELECT kind, model, endpoint, stage, purpose, input_tokens, "
-            "output_tokens, cached_tokens, total_tokens, duration_ms, "
-            "error_class, http_status, outcome, estimated, created_at "
+            "SELECT kind, request_id, job_id, model, endpoint, stage, purpose, "
+            "input_tokens, output_tokens, cached_tokens, total_tokens, "
+            "duration_ms, attempt, error_class, http_status, upload_count, "
+            "reused, outcome, estimated, created_at "
             "FROM ai_request_log WHERE job_id = ? ORDER BY id ASC", (job_id,))
         return [dict(row) for row in rows]
     except Exception:  # noqa: BLE001

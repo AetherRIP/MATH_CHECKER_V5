@@ -270,6 +270,18 @@ def record_ai_usage(job_id: str | None, usage: dict | None) -> None:
             "updated_at = excluded.updated_at",
             (job_id, requests, payload, time.time()),
         )
+        # Measured token totals for the whole job. SET, not added: the ledger
+        # already accumulates every attempt, so re-reading it here keeps the
+        # columns equal to the sum of the rows instead of double-counting a
+        # retried attempt. A provider that reported nothing leaves them 0.
+        from .gemini import telemetry
+        totals = telemetry.job_totals(job_id)
+        db.execute(
+            "UPDATE job_bandwidth SET input_tokens = ?, output_tokens = ?, "
+            "cached_tokens = ?, total_tokens = ? WHERE job_id = ?",
+            (totals["input_tokens"], totals["output_tokens"],
+             totals["cached_tokens"], totals["total_tokens"], job_id),
+        )
     except Exception:
         pass
 

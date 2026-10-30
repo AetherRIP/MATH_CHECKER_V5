@@ -334,6 +334,10 @@ class KeyAwareClient:
 
             transient: list = []
             original_contents = contents   # pre-re-upload form (rotation policy)
+            # When THIS provider request started, for the usage ledger. Stays
+            # None until the send is imminent, so a failure during key
+            # selection is not recorded as a provider request.
+            request_started: float | None = None
             try:
                 sdk_client = self._sdk_clients.get(fp)
                 if sdk_client is None:
@@ -370,6 +374,7 @@ class KeyAwareClient:
                 contents, transient = self._reupload_for_key(contents, fp)
 
                 started = time.time()
+                request_started = started
                 # A referenced provider file can disappear mid-job (an expired
                 # upload, or a sibling job's terminal cleanup of the shared
                 # submission before this guard existed). Gemini answers 403
@@ -420,6 +425,8 @@ class KeyAwareClient:
                     elapsed_ms=int((time.time() - started) * 1000),
                     reuploaded=len(transient),
                 )
+                self._record_generate(model, request_started, response=response,
+                                      attempt=attempt + 1)
                 return response
 
             except Exception as exc:
@@ -452,6 +459,12 @@ class KeyAwareClient:
                     level=logging.WARNING, fingerprint=fp, model=model,
                     kind=kind, error_class=error_class, status=http_status_of(exc),
                 )
+                # A failed request is a ledger row too: without it the failure
+                # rate and the retry overhead are invisible, and a provider
+                # storm looks like an idle system.
+                self._record_generate(model, request_started, error=exc,
+                                      error_class=error_class,
+                                      attempt=attempt + 1)
                 if kind not in _KEY_LEVEL_KINDS:
                     # Model-level, invalid-request, timeout or unknown error:
                     # do not burn another key on the same failing request —
@@ -679,12 +692,15 @@ class KeyAwareClient:
 
         from . import call_audit as _audit
         _audit.note_send(_audit.KIND_UPLOAD, job_id=self.job_id)
+        upload_started = time.time()
         try:
             remote = client.files.upload(file=path)
         except Exception as exc:
             _audit.note_result(ok=False, error=str(exc))
+            self._record_upload(upload_started, error=exc)
             raise
         _audit.note_result(ok=True)
+        self._record_upload(upload_started)
         self._wait_active(client, remote, source=path)
         with self._client_lock:
             self._file_owner[remote.name] = fp
@@ -720,6 +736,64 @@ class KeyAwareClient:
         except Exception:
             pass
         return remote
+
+    # -- usage ledger -------------------------------------------------------
+
+    def _record_generate(self, model: str, started: float | None, *,
+                         response=None, error: BaseException | None = None,
+                         error_class: str | None = None,
+                         attempt: int | None = None) -> None:
+        """Append one usage-ledger row for this provider request.
+
+        Best effort by construction: a statistics failure must never turn a
+        correction into a failure. The row carries identifiers, counts, a model
+        name, a duration and an outcome label — never the prompt, the student
+        answer or the key. Fields the provider did not report stay NULL.
+        """
+        try:
+            from . import telemetry
+            from . import usage as usage_mod
+
+            telemetry.record(
+                kind=telemetry.KIND_GENERATE,
+                model=model,
+                ok=error is None,
+                error_class=error_class,
+                http_status=(http_status_of(error)
+                             if error is not None else None),
+                duration_ms=(int((time.time() - started) * 1000)
+                             if started is not None else None),
+                usage=(usage_mod.from_response(response)
+                       if response is not None else None),
+                job_id=self.job_id,
+                attempt=attempt,
+            )
+        except Exception:  # noqa: BLE001 — statistics are never fatal
+            pass
+
+    def _record_upload(self, started: float | None, *,
+                       error: BaseException | None = None) -> None:
+        """Append one ledger row for an upload that actually left the process.
+
+        A REUSED upload sends nothing, so it writes no row here; the reuse rate
+        stays on the per-job bandwidth counters that already measure it.
+        """
+        try:
+            from . import telemetry
+
+            telemetry.record(
+                kind=telemetry.KIND_UPLOAD,
+                ok=error is None,
+                error_class=(type(error).__name__ if error is not None else None),
+                http_status=(http_status_of(error)
+                             if error is not None else None),
+                duration_ms=(int((time.time() - started) * 1000)
+                             if started is not None else None),
+                upload_count=1,
+                job_id=self.job_id,
+            )
+        except Exception:  # noqa: BLE001 — statistics are never fatal
+            pass
 
     def _client_for_fp(self, fp: str):
         client = self._sdk_clients.get(fp)
