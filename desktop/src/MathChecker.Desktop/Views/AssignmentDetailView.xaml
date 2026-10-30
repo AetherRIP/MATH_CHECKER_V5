@@ -148,26 +148,26 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel>
-                        <TextBlock Text="EXPECTED" Style="{StaticResource CounterLabel}" />
+                        <TextBlock Text="Expected" Style="{StaticResource CounterLabel}" />
                         <TextBlock Text="{Binding ExpectedText}" Style="{StaticResource CounterValue}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1">
-                        <TextBlock Text="COMPLETED" Style="{StaticResource CounterLabel}" />
+                        <TextBlock Text="Completed" Style="{StaticResource CounterLabel}" />
                         <TextBlock Text="{Binding CompletedText}" Style="{StaticResource CounterValue}"
                                    Foreground="{DynamicResource SuccessTextBrush}" />
                     </StackPanel>
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="NOT COMPLETED" Style="{StaticResource CounterLabel}" />
+                        <TextBlock Text="Not completed" Style="{StaticResource CounterLabel}" />
                         <TextBlock Text="{Binding NotCompletedText}" Style="{StaticResource CounterValue}"
                                    Foreground="{DynamicResource WarningTextBrush}" />
                     </StackPanel>
                     <StackPanel Grid.Column="3">
-                        <TextBlock Text="MISSING" Style="{StaticResource CounterLabel}" />
+                        <TextBlock Text="Missing" Style="{StaticResource CounterLabel}" />
                         <TextBlock Text="{Binding MissingText}" Style="{StaticResource CounterValue}"
                                    Foreground="{DynamicResource DangerTextBrush}" />
                     </StackPanel>
                     <StackPanel Grid.Column="4">
-                        <TextBlock Text="UNKNOWN" Style="{StaticResource CounterLabel}" />
+                        <TextBlock Text="Unknown" Style="{StaticResource CounterLabel}" />
                         <TextBlock Text="{Binding UnknownText}" Style="{StaticResource CounterValue}" />
                     </StackPanel>
 
@@ -177,14 +177,14 @@
                                    HorizontalAlignment="Right" TextWrapping="NoWrap"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Text="{Binding CorrectedText, StringFormat={}{0} corrected}"
-                                   FontSize="10.5" HorizontalAlignment="Right" Margin="0,3,0,0"
+                                   FontSize="11" HorizontalAlignment="Right" Margin="0,3,0,0"
                                    TextWrapping="NoWrap"
                                    Foreground="{DynamicResource TextMutedBrush}" />
-                        <TextBlock Text="{Binding CorrectionDetailText}" FontSize="10.5"
+                        <TextBlock Text="{Binding CorrectionDetailText}" FontSize="11"
                                    HorizontalAlignment="Right" Margin="0,2,0,0"
                                    TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource TextMutedBrush}" />
-                        <TextBlock Text="{Binding SyncText}" FontSize="10.5"
+                        <TextBlock Text="{Binding SyncText}" FontSize="11"
                                    HorizontalAlignment="Right" Margin="0,2,0,0"
                                    TextWrapping="NoWrap"
                                    Foreground="{DynamicResource TextMutedBrush}" />
@@ -220,26 +220,26 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel>
-                        <TextBlock Text="MARK SCHEME AND SETUP" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="Mark scheme and setup" Style="{StaticResource SectionLabel}" />
 
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <Border Style="{StaticResource AccentChip}" Padding="9,3"
                                     Visibility="{Binding SchemeAttached, Converter={StaticResource BoolToVis}}">
-                                <TextBlock Text="Attached" FontSize="10.5" FontWeight="SemiBold"
+                                <TextBlock Text="Attached" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{DynamicResource CanvasDeepBrush}" />
                             </Border>
                             <Border Style="{StaticResource WarningChip}" Padding="9,3"
                                     Visibility="{Binding SchemeMissing, Converter={StaticResource BoolToVis}}">
-                                <TextBlock Text="Not attached" FontSize="10.5" FontWeight="SemiBold"
+                                <TextBlock Text="Not attached" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{DynamicResource WarningTextBrush}" />
                             </Border>
                             <Border Style="{StaticResource Chip}" Padding="9,3"
                                     Visibility="{Binding SchemeChecking, Converter={StaticResource BoolToVis}}">
-                                <TextBlock Text="Checking…" FontSize="10.5"
+                                <TextBlock Text="Checking…" FontSize="11"
                                            Foreground="{DynamicResource TextMutedBrush}" />
                             </Border>
                             <Border Style="{StaticResource Chip}" Padding="9,3" Margin="8,0,0,0">
-                                <TextBlock Text="{Binding AllowlistText}" FontSize="10.5"
+                                <TextBlock Text="{Binding AllowlistText}" FontSize="11"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
                         </StackPanel>
@@ -252,7 +252,7 @@
                                    Visibility="{Binding HasSchemeDetail, Converter={StaticResource BoolToVis}}"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Text="Only this assignment's questions are marked against this file. Uploading again replaces it."
-                                   FontSize="10.5" Margin="0,6,0,0" TextWrapping="Wrap"
+                                   FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"
                                    Foreground="{DynamicResource TextMutedBrush}" />
                     </StackPanel>
 
@@ -333,7 +333,7 @@
 
                     <Border Style="{StaticResource Chip}" Padding="9,3"
                             VerticalAlignment="Center" Margin="12,0,0,0">
-                        <TextBlock Text="{Binding ShownText}" FontSize="10.5" TextWrapping="NoWrap"
+                        <TextBlock Text="{Binding ShownText}" FontSize="11" TextWrapping="NoWrap"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                 </WrapPanel>
@@ -385,9 +385,9 @@
                                             <TextBlock Text="{Binding StudentIdText}"
                                                        Style="{StaticResource CellLine}" Margin="0,2,0,0"
                                                        FontFamily="{StaticResource MonoFont}"
-                                                       FontSize="10" ToolTip="{Binding StudentIdText}" />
+                                                       FontSize="11" ToolTip="{Binding StudentIdText}" />
                                             <TextBlock Text="{Binding EmailText}" Style="{StaticResource CellLine}"
-                                                       Margin="0,1,0,0" FontSize="10.5"
+                                                       Margin="0,1,0,0" FontSize="11"
                                                        Foreground="{DynamicResource TextMutedBrush}"
                                                        ToolTip="{Binding EmailText}" />
                                         </StackPanel>
@@ -401,11 +401,11 @@
                                                        Foreground="{DynamicResource TextBrush}" />
                                             <TextBlock Text="{Binding StatusLabel}"
                                                        Style="{StaticResource CellLine}" Margin="0,3,0,0"
-                                                       FontSize="10.5"
+                                                       FontSize="11"
                                                        Foreground="{DynamicResource TextMutedBrush}" />
                                             <TextBlock Text="{Binding AttachmentText}"
                                                        Style="{StaticResource CellLine}" Margin="0,1,0,0"
-                                                       FontSize="10.5"
+                                                       FontSize="11"
                                                        Foreground="{DynamicResource TextMutedBrush}"
                                                        ToolTip="{Binding AttachmentText}" />
                                         </StackPanel>
@@ -419,11 +419,11 @@
                                                        Foreground="{DynamicResource TextBrush}" />
                                             <TextBlock Text="{Binding MarksText}"
                                                        Style="{StaticResource CellLine}" Margin="0,3,0,0"
-                                                       FontSize="10.5"
+                                                       FontSize="11"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                             <TextBlock Text="{Binding GradeText, StringFormat=Classroom grade: {0}}"
                                                        Style="{StaticResource CellLine}" Margin="0,1,0,0"
-                                                       FontSize="10.5"
+                                                       FontSize="11"
                                                        Foreground="{DynamicResource TextMutedBrush}" />
                                         </StackPanel>
 
@@ -435,14 +435,14 @@
                                             </Border>
                                             <TextBlock Text="{Binding CompletionReason}"
                                                        Style="{StaticResource CellLine}" Margin="0,4,0,0"
-                                                       FontSize="10" MaxHeight="26"
+                                                       FontSize="11" MaxHeight="26"
                                                        TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
                                                        Foreground="{DynamicResource TextMutedBrush}"
                                                        Visibility="{Binding CompletionReason,
                                                            Converter={StaticResource NullToVisibility}}" />
                                             <TextBlock Text="{Binding Warning}"
                                                        Style="{StaticResource CellLine}" Margin="0,3,0,0"
-                                                       FontSize="10" TextWrapping="Wrap"
+                                                       FontSize="11" TextWrapping="Wrap"
                                                        Foreground="{DynamicResource DangerTextBrush}"
                                                        Visibility="{Binding HasWarning,
                                                            Converter={StaticResource BoolToVis}}" />

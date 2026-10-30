@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -274,6 +275,9 @@ internal sealed class PageRender
     public int Images { get; init; }
     public bool Focusable { get; init; }
     public List<string> HeaderLayout { get; init; } = new();
+    public List<string> CapsLabels { get; init; } = new();
+    public List<string> TrimmedNumbers { get; init; } = new();
+    public List<string> RepeatedText { get; init; } = new();
 }
 
 /// <summary>
@@ -312,6 +316,12 @@ internal static class PagePainter
 
         var clipped = Visuals.ClippedText(host);
         var overflow = Visuals.PastRightEdge(host, width);
+        // The eyebrow a page paints is its own (the frame binds HeaderEyebrow on
+        // some pages), so read it from the frame rather than the view model.
+        var frame = Visuals.Descendants(host).OfType<Core.UI.PageFrame>().FirstOrDefault();
+        var caps = Visuals.CapsLabels(host, frame?.Eyebrow ?? page.Eyebrow);
+        var numbers = Visuals.TrimmedNumbers(host);
+        var repeated = Visuals.RepeatedText(host);
         var buttons = Visuals.Descendants(host).OfType<ButtonBase>().ToList();
         var commandless = new List<string>();
         var canExecute = new List<string>();
@@ -374,6 +384,9 @@ internal static class PagePainter
             Lists = Visuals.Descendants(host)
                 .Count(element => element is DataGrid or ListBox or ItemsControl),
             HeaderLayout = Visuals.HeaderLayout(host),
+            CapsLabels = caps,
+            TrimmedNumbers = numbers,
+            RepeatedText = repeated,
             Images = Visuals.Descendants(host).OfType<Image>().Count(image =>
                 image.Source is not null),
             Focusable = KeyboardNavigation.GetIsTabStop(host)
@@ -450,6 +463,118 @@ internal static class Visuals
         TextBlock block => block.Text,
         _ => control.Name,
     };
+
+    /// <summary>
+    /// All-caps labels. The design keeps exactly one caps voice — the eyebrow that
+    /// says which space you are in — and every other label is a sentence, because
+    /// every other label is read.
+    /// </summary>
+    public static List<string> CapsLabels(DependencyObject root, string eyebrow)
+    {
+        var found = new List<string>();
+        var allowed = (eyebrow ?? string.Empty).Trim().ToUpperInvariant();
+        foreach (var block in Descendants(root).OfType<TextBlock>())
+        {
+            // IsVisible, not Visibility: a child of a collapsed panel still
+            // reports Visible, and a duplicate in an unused layout is not painted.
+            if (!block.IsVisible)
+            {
+                continue;
+            }
+
+            var text = block.Text?.Trim() ?? string.Empty;
+            if (text.Length < 3
+                || block.FontSize > 10.5
+                || !text.Any(char.IsLetter)
+                || text == allowed
+                || text.Any(char.IsLower))
+            {
+                continue;
+            }
+
+            found.Add($"'{Shorten(text)}' at {block.FontSize:0.#} DIP");
+        }
+
+        return found.Distinct().Take(12).ToList();
+    }
+
+    /// <summary>Figures only. Dates and times are excluded: a timestamp may be
+    /// shortened at a narrow width, a mark may not.</summary>
+    private static readonly Regex Numeric = new(@"^[\s\d.,+\-()%]+$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Numbers that end in an ellipsis. A mark, a percentage or a total is the
+    /// whole point of a marking tool; "29 / 35 (82…" is not a score.
+    /// </summary>
+    public static List<string> TrimmedNumbers(DependencyObject root)
+    {
+        var found = new List<string>();
+        foreach (var block in Descendants(root).OfType<TextBlock>())
+        {
+            if (!block.IsVisible)
+            {
+                continue;
+            }
+
+            var text = block.Text?.Trim() ?? string.Empty;
+            if (text.Length is 0 or > 24
+                || !text.Any(char.IsDigit)
+                || !Numeric.IsMatch(text)
+                || block.TextTrimming == TextTrimming.None)
+            {
+                continue;
+            }
+
+            found.Add($"'{Shorten(text)}' is {block.TextTrimming}");
+        }
+
+        return found.Distinct().Take(12).ToList();
+    }
+
+    /// <summary>
+    /// The same sentence painted twice on one page. One number, one place: if two
+    /// parts of a page say the same thing, one of them is redundant. Blocks inside
+    /// item templates are exempt — a table legitimately repeats its cells.
+    /// </summary>
+    public static List<string> RepeatedText(DependencyObject root)
+    {
+        var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var block in Descendants(root).OfType<TextBlock>())
+        {
+            if (!block.IsVisible || InsideItemHost(block))
+            {
+                continue;
+            }
+
+            var text = block.Text?.Trim() ?? string.Empty;
+            if (text.Length < 24)
+            {
+                continue;
+            }
+
+            seen[text] = seen.TryGetValue(text, out var count) ? count + 1 : 1;
+        }
+
+        return seen.Where(pair => pair.Value > 1)
+            .Select(pair => $"'{Shorten(pair.Key)}' x{pair.Value}")
+            .Take(8).ToList();
+    }
+
+    private static bool InsideItemHost(DependencyObject node)
+    {
+        var current = node;
+        while (current is not null)
+        {
+            if (current is DataGridRow or ListBoxItem or DataGrid or ItemsControl)
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Text that is painted into less width than it needs. A <see cref="TextBlock"/>

@@ -32,7 +32,7 @@
                             <Border DockPanel.Dock="Right" Style="{StaticResource WarningChip}" Padding="9,2"
                                     VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Discrepancies.Count, StringFormat={}{0} open}"
-                                           FontSize="10.5" Foreground="{DynamicResource WarningTextBrush}" />
+                                           FontSize="11" Foreground="{DynamicResource WarningTextBrush}" />
                             </Border>
                             <TextBlock Text="Discrepancies" Style="{StaticResource RowTitle}" VerticalAlignment="Center" />
                         </DockPanel>
@@ -93,7 +93,7 @@
                         <Border Grid.Column="0" Style="{StaticResource Panel}" Margin="0,0,6,0"
                                 Visibility="{Binding HasSchemeSays, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
-                                <TextBlock Text="THE MARK SCHEME SAYS" Style="{StaticResource SectionLabel}" />
+                                <TextBlock Text="The mark scheme says" Style="{StaticResource SectionLabel}" />
                                 <TextBlock Text="{Binding SchemeSays}" Margin="0,6,0,0" FontSize="12.5"
                                            Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
                             </StackPanel>
@@ -102,7 +102,7 @@
                         <Border Grid.Column="1" Style="{StaticResource Panel}"
                                 Visibility="{Binding HasStudentSays, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
-                                <TextBlock Text="THE STUDENT WROTE" Style="{StaticResource SectionLabel}" />
+                                <TextBlock Text="The student wrote" Style="{StaticResource SectionLabel}" />
                                 <TextBlock Text="{Binding StudentSays}" Margin="0,6,0,0" FontSize="12.5"
                                            Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
                             </StackPanel>
@@ -112,7 +112,7 @@
                     <Border Style="{StaticResource Panel}" Margin="0,10,0,0"
                             Visibility="{Binding HasIndependentCheck, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
-                            <TextBlock Text="THE INDEPENDENT CHECK SAYS" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="The independent check says" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="{Binding IndependentCheck}" Margin="0,6,0,0" FontSize="12.5"
                                        Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
                         </StackPanel>
@@ -171,7 +171,7 @@
                                         <Border DockPanel.Dock="Right" Style="{StaticResource WarningChip}"
                                                 Padding="9,2" VerticalAlignment="Center" Margin="8,0,0,0"
                                                 Visibility="{Binding IsIgnored, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="Skipped" FontSize="10.5"
+                                            <TextBlock Text="Skipped" FontSize="11"
                                                        Foreground="{DynamicResource WarningTextBrush}" />
                                         </Border>
                                         <StackPanel VerticalAlignment="Center">
@@ -222,7 +222,7 @@
 
             <Border Style="{StaticResource Card}" Margin="0,12,0,0">
                 <StackPanel>
-                    <TextBlock Text="DISCREPANCY RECORD" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="Discrepancy record" Style="{StaticResource SectionLabel}" />
                     <TextBlock Text="A staged proposal changes nothing until it is explicitly approved. The backend records every decision."
                                Style="{StaticResource CardSubtitle}" Margin="0,6,0,0" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding DetailNote}" FontSize="12.5" Margin="0,10,0,0"

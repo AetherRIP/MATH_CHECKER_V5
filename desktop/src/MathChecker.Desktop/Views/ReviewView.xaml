@@ -31,7 +31,7 @@
                             <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Padding="9,2"
                                     VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Items.Count, StringFormat={}{0} waiting}"
-                                           FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                           FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
                             <TextBlock Text="Teacher decisions" Style="{StaticResource RowTitle}"
                                        VerticalAlignment="Center" />
@@ -73,7 +73,7 @@
                     Visibility="{Binding Selected, Converter={StaticResource NullToVisibility}}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
-                        <TextBlock Text="SELECTED RESULT" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="Selected result" Style="{StaticResource SectionLabel}" />
                         <TextBlock Text="{Binding Selected.StudentName}" Style="{StaticResource CardTitle}"
                                    FontSize="20" Margin="0,8,0,0" TextWrapping="Wrap" />
                         <TextBlock Text="{Binding Selected.AssignmentTitle}"
@@ -100,7 +100,7 @@
                                        FontSize="11.5" HorizontalAlignment="Right" />
                         </DockPanel>
 
-                        <TextBlock Text="WHY THE ENGINE ASKED" Style="{StaticResource SectionLabel}"
+                        <TextBlock Text="Why the engine asked" Style="{StaticResource SectionLabel}"
                                    Margin="0,14,0,6" />
 
                         <!-- The coded reasons: what failed, which stage, whether it
@@ -117,7 +117,7 @@
                                                         Style="{StaticResource WarningChip}"
                                                         VerticalAlignment="Center"
                                                         Visibility="{Binding NeedsHuman, Converter={StaticResource BoolToVis}}">
-                                                    <TextBlock Text="{Binding SeverityText}" FontSize="10"
+                                                    <TextBlock Text="{Binding SeverityText}" FontSize="11"
                                                                Foreground="{DynamicResource WarningTextBrush}" />
                                                 </Border>
                                                 <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="Medium"
@@ -130,7 +130,7 @@
                                                        TextWrapping="Wrap"
                                                        Foreground="{DynamicResource TextMutedBrush}"
                                                        Visibility="{Binding ActionText, Converter={StaticResource NullToVisibility}}" />
-                                            <TextBlock Text="{Binding StageLine}" FontSize="10.5" Margin="0,4,0,0"
+                                            <TextBlock Text="{Binding StageLine}" FontSize="11" Margin="0,4,0,0"
                                                        TextWrapping="Wrap"
                                                        Foreground="{DynamicResource TextMutedBrush}" />
                                         </StackPanel>

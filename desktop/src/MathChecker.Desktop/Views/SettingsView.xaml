@@ -74,7 +74,7 @@
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <DockPanel Style="{StaticResource SectionHead}">
-                            <TextBlock DockPanel.Dock="Left" Text="1 · TEACHER AND REPORT BRANDING"
+                            <TextBlock DockPanel.Dock="Left" Text="1 · Teacher and report branding"
                                        Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
                             <TextBlock Text="Printed on every exported report" Style="{StaticResource SectionNote}" />
                         </DockPanel>
@@ -138,7 +138,7 @@
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <DockPanel Style="{StaticResource SectionHead}">
-                            <TextBlock DockPanel.Dock="Left" Text="2 · WORKERS AND LIMITS"
+                            <TextBlock DockPanel.Dock="Left" Text="2 · Workers and limits"
                                        Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
                             <TextBlock Text="How many papers run at once, and what they may use"
                                        Style="{StaticResource SectionNote}" />
@@ -204,7 +204,7 @@
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <DockPanel Style="{StaticResource SectionHead}">
-                            <TextBlock DockPanel.Dock="Left" Text="3 · BEHAVIOUR AND APPEARANCE"
+                            <TextBlock DockPanel.Dock="Left" Text="3 · Behaviour and appearance"
                                        Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
                             <TextBlock Text="What the backend may do, and how this window looks"
                                        Style="{StaticResource SectionNote}" />
@@ -248,7 +248,7 @@
 
                         <Border Style="{StaticResource Divider}" Margin="0,14,0,12" />
 
-                        <TextBlock Text="APPEARANCE" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="Appearance" Style="{StaticResource SectionLabel}" />
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <RadioButton Content="Light" GroupName="appearance"
                                          Style="{StaticResource SegmentToggle}"
@@ -270,7 +270,7 @@
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <DockPanel Style="{StaticResource SectionHead}">
-                            <TextBlock DockPanel.Dock="Left" Text="4 · WHAT THE BACKEND REPORTS"
+                            <TextBlock DockPanel.Dock="Left" Text="4 · What the backend reports"
                                        Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
                             <TextBlock Text="Read-only — saving this page does not change these"
                                        Style="{StaticResource SectionNote}" />

@@ -43,10 +43,10 @@
                             Visibility="{Binding Actions.Count, Converter={StaticResource NonZeroToVis}}">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,10">
-                                <TextBlock DockPanel.Dock="Left" Text="WHAT YOU CAN DO HERE"
+                                <TextBlock DockPanel.Dock="Left" Text="What you can do here"
                                            Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
                                 <TextBlock Text="Each one asks the backend; Refresh reads every area again"
-                                           FontSize="10.5" HorizontalAlignment="Right"
+                                           FontSize="11" HorizontalAlignment="Right"
                                            VerticalAlignment="Center" TextWrapping="NoWrap"
                                            TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource TextMutedBrush}" />
@@ -70,10 +70,10 @@
                     <!-- The areas this page reports, numbered so the reader can
                          see how many there are and tell them apart. -->
                     <DockPanel Margin="2,4,0,8">
-                        <TextBlock DockPanel.Dock="Left" Text="WHAT THIS PAGE REPORTS"
+                        <TextBlock DockPanel.Dock="Left" Text="What this page reports"
                                    Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
                         <TextBlock Text="{Binding Sections.Count, StringFormat={}{0} areas reported by the backend}"
-                                   FontSize="10.5" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"
                                    TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource TextMutedBrush}" />
                     </DockPanel>
@@ -109,7 +109,7 @@
                                                   Visibility="{Binding HasRaw, Converter={StaticResource BoolToVis}}">
                                             <StackPanel>
                                                 <TextBlock Text="{Binding Path, StringFormat=Endpoint: /api/{0}}"
-                                                           FontSize="10.5" Margin="0,4,0,6"
+                                                           FontSize="11" Margin="0,4,0,6"
                                                            Foreground="{DynamicResource TextMutedBrush}"
                                                            TextWrapping="Wrap" />
                                                 <TextBox Style="{StaticResource JsonBox}" Text="{Binding Raw}"

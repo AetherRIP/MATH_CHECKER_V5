@@ -188,7 +188,9 @@ public static class Program
 
         audit.Check("the window opens on a page", main.Current is not null,
             main.Current?.Key ?? "(none)");
-        audit.Check("the application builds every page", main.Pages.Count == 28,
+        // 29: the 22 registered pages plus the 7 JSON/report pages. This is a
+        // count of what the shell builds, not a quality gate.
+        audit.Check("the application builds every page", main.Pages.Count == 29,
             $"pages={main.Pages.Count}");
         audit.Check("the navigation rail has its spaces", main.Spaces.Count == 7,
             string.Join(", ", main.Spaces.Select(space => $"{space.Name}({space.Count})")));
@@ -326,6 +328,12 @@ public static class Program
                         : string.Empty));
                 audit.Check($"{label} shows its text in full", render.ClippedText.Count == 0,
                     string.Join(" || ", render.ClippedText));
+                audit.Check($"{label} uses no all-caps label outside the eyebrow",
+                    render.CapsLabels.Count == 0, string.Join(" || ", render.CapsLabels));
+                audit.Check($"{label} never trims a number",
+                    render.TrimmedNumbers.Count == 0, string.Join(" || ", render.TrimmedNumbers));
+                audit.Check($"{label} says each sentence once",
+                    render.RepeatedText.Count == 0, string.Join(" || ", render.RepeatedText));
                 if (render.CanExecuteFailures.Count > 0)
                 {
                     audit.Fail($"{label} evaluates every enabled button's command",
@@ -375,7 +383,7 @@ public static class Program
 
         var after = Memory();
         audit.Check("navigating the whole application three times does not duplicate pages",
-            main.Pages.Count == 28, $"pages={main.Pages.Count}");
+            main.Pages.Count == 29, $"pages={main.Pages.Count}");
         audit.Check("repeated navigation does not grow the heap without bound",
             after.ManagedMb - before.ManagedMb < 120,
             $"managed {before.ManagedMb:F1} MB → {after.ManagedMb:F1} MB " +

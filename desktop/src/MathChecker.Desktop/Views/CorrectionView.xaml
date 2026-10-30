@@ -43,10 +43,10 @@
                 <Border Style="{StaticResource Card}" AllowDrop="True" Drop="OnDrop" DragOver="OnDragOver">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,10">
-                            <TextBlock DockPanel.Dock="Left" Text="1 · ATTACH THE TWO FILES"
+                            <TextBlock DockPanel.Dock="Left" Text="1 · Attach the two files"
                                        Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
                             <TextBlock Text="Both are required · drag a PDF onto this card, or choose below"
-                                       FontSize="10.5" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"
                                        TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                        Foreground="{DynamicResource TextMutedBrush}" />
                         </DockPanel>
@@ -57,7 +57,7 @@
                                         VerticalAlignment="Center" Margin="10,0,0,0"
                                         Command="{Binding PickSubmissionCommand}"
                                         ToolTip="The student's answered paper: PDF, PNG, JPG or WEBP" />
-                                <TextBlock DockPanel.Dock="Left" Text="STUDENT WORK" Width="104"
+                                <TextBlock DockPanel.Dock="Left" Text="Student work" Width="104"
                                            Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <Ellipse>
@@ -85,7 +85,7 @@
                                         VerticalAlignment="Center" Margin="10,0,0,0"
                                         Command="{Binding PickMarkSchemeCommand}"
                                         ToolTip="The mark scheme this paper is marked against" />
-                                <TextBlock DockPanel.Dock="Left" Text="MARK SCHEME" Width="104"
+                                <TextBlock DockPanel.Dock="Left" Text="Mark scheme" Width="104"
                                            Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <Ellipse>
@@ -108,7 +108,7 @@
                         </Border>
 
                         <TextBlock Text="PDF, PNG, JPG or WEBP up to 200 MB. Dropping two files at once fills both rows."
-                                   FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
+                                   FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
                                    Foreground="{DynamicResource TextMutedBrush}" />
                     </StackPanel>
                 </Border>
@@ -117,10 +117,10 @@
                 <Border Style="{StaticResource Card}" Margin="0,12,0,0">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,10">
-                            <TextBlock DockPanel.Dock="Left" Text="2 · NAME IT AND START"
+                            <TextBlock DockPanel.Dock="Left" Text="2 · Name it and start"
                                        Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
                             <TextBlock Text="The name is optional · the paper is stored as “Student” if you leave it blank"
-                                       FontSize="10.5" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"
                                        TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                        Foreground="{DynamicResource TextMutedBrush}" />
                         </DockPanel>
@@ -147,10 +147,10 @@
                 <Border Style="{StaticResource Card}" Margin="0,12,0,0">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,8">
-                            <TextBlock DockPanel.Dock="Left" Text="3 · WATCH IT RUN"
+                            <TextBlock DockPanel.Dock="Left" Text="3 · Watch it run"
                                        Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
-                            <TextBlock Text="UPLOAD TRANSFER ONLY"
-                                       FontSize="10.5" HorizontalAlignment="Right" VerticalAlignment="Center"
+                            <TextBlock Text="Upload transfer only"
+                                       FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"
                                        TextWrapping="NoWrap"
                                        Foreground="{DynamicResource TextMutedBrush}" />
                         </DockPanel>

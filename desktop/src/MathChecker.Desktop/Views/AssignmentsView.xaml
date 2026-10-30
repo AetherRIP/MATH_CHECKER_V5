@@ -79,7 +79,7 @@
                               SelectedValue="{Binding Kind}" />
                     <Border Style="{StaticResource Chip}" Padding="9,3" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Items.Count, StringFormat={}{0} assignments}"
-                                   FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                   FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                 </WrapPanel>
             </Border>
@@ -139,7 +139,7 @@
 
             <Border Style="{StaticResource Card}" Margin="0,12,0,0">
                 <StackPanel>
-                    <TextBlock Text="MARK SCHEME" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="Mark scheme" Style="{StaticResource SectionLabel}" />
                     <!-- An instruction before a selection is a hint, not data. -->
                     <TextBlock Text="Select an assignment to read its mark scheme."
                                Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0"

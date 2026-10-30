@@ -30,7 +30,7 @@
 
             <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,12">
                 <StackPanel>
-                    <TextBlock Text="ADD KEYS" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="Add keys" Style="{StaticResource SectionLabel}" />
                     <TextBlock Text="One key per line. Keys are sent to the backend, tested against the real API and stored in its secret store — the desktop app never keeps a copy."
                                Style="{StaticResource CardSubtitle}" Margin="0,5,0,8" />
                     <TextBox Height="64" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
@@ -86,7 +86,7 @@
 
             <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,12,0,0">
                 <StackPanel>
-                    <TextBlock Text="KEY TEST RESULT" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="Key test result" Style="{StaticResource SectionLabel}" />
                     <TextBlock Text="The backend tests keys before using them; results are shown here."
                                Style="{StaticResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap"
                                Visibility="{Binding HasResult, Converter={StaticResource InverseBoolToVis}}" />

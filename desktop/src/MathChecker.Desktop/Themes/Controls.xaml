@@ -27,21 +27,23 @@
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
+    <!-- Titles are language, not measurement: Plus Jakarta carries them. A
+         page title is 27/600 — bold at this size reads as a poster. -->
     <Style x:Key="PageTitle" TargetType="TextBlock">
-        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
-        <Setter Property="FontSize" Value="31" />
-        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="FontFamily" Value="{StaticResource BodyFont}" />
+        <Setter Property="FontSize" Value="27" />
+        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-        <Setter Property="LineHeight" Value="37" />
+        <Setter Property="LineHeight" Value="34" />
         <Setter Property="Margin" Value="0" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
-    <!-- The rest of the type scale. Six sizes only: eyebrow, caption, body,
-         card title, page title, display figure. -->
+    <!-- The one all-caps voice left in the application: the space you are in.
+         Everything else is a sentence, because everything else is read. -->
     <Style x:Key="PageEyebrow" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource MediumFont}" />
-        <Setter Property="FontSize" Value="9.5" />
+        <Setter Property="FontSize" Value="10" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
         <Setter Property="TextWrapping" Value="NoWrap" />
@@ -57,26 +59,29 @@
         <Setter Property="HorizontalAlignment" Value="Left" />
     </Style>
 
+    <!-- The rest of the type scale. Seven steps, nothing below 11 except the
+         eyebrow: 27 / 20 / 15 / 13 / 12 / 11.5 / 11. -->
     <Style x:Key="PageStatus" TargetType="TextBlock">
         <Setter Property="FontSize" Value="12" />
         <Setter Property="FontWeight" Value="Medium" />
-        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
     <!-- Figures are instrument readings: Space Grotesk, tabular, so a column
-         of scores lines up digit over digit. -->
+         of scores lines up digit over digit. 600, never 700: a reading is
+         stated, not shouted. -->
     <Style x:Key="DisplayFigure" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
         <Setter Property="FontSize" Value="38" />
-        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="LineHeight" Value="42" />
         <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
     </Style>
 
     <Style x:Key="CardTitle" TargetType="TextBlock">
-        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="FontFamily" Value="{StaticResource BodyFont}" />
         <Setter Property="FontSize" Value="15" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
@@ -99,7 +104,7 @@
     </Style>
 
     <Style x:Key="RowDetail" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="11.5" />
         <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         <Setter Property="TextWrapping" Value="NoWrap" />
@@ -112,20 +117,23 @@
         <Setter Property="TextWrapping" Value="NoWrap" />
     </Style>
 
+    <!-- One section-label treatment for the whole application. A block heading
+         is a sentence at 12/600 in ink; muted is for values, not for headings. -->
     <Style x:Key="SectionTitle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource BodyFont}" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
-        <Setter Property="Margin" Value="0,14,0,6" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Margin" Value="0,16,0,6" />
     </Style>
 
     <Style x:Key="SectionLabel" TargetType="TextBlock">
-        <Setter Property="FontFamily" Value="{StaticResource MediumFont}" />
-        <Setter Property="FontSize" Value="9.5" />
+        <Setter Property="FontFamily" Value="{StaticResource BodyFont}" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="TextWrapping" Value="NoWrap" />
+        <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
 
     <Style x:Key="Muted" TargetType="TextBlock">
@@ -143,14 +151,14 @@
     <Style x:Key="StatValue" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
         <Setter Property="FontSize" Value="30" />
-        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="Margin" Value="0,2,0,0" />
     </Style>
 
     <Style x:Key="StatLabel" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="10.5" />
+        <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
     </Style>
@@ -195,7 +203,7 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource CardRadius}" />
         <Setter Property="Padding" Value="{StaticResource CardPadding}" />
-        <Setter Property="Margin" Value="0,0,0,12" />
+        <Setter Property="Margin" Value="{StaticResource StackGap}" />
         <Setter Property="Effect" Value="{DynamicResource CardShadowEffect}" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
@@ -299,11 +307,15 @@
                             <Setter TargetName="Chrome" Property="BorderBrush"
                                     Value="{DynamicResource AccentBrush}" />
                         </Trigger>
+                        <!-- Disabled is quieter than enabled, never louder: a
+                             filled grey block reads as a heavier button, which
+                             is why a dead "Cancel job" looked more pressable
+                             than the live "Refresh" beside it. -->
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Chrome" Property="Background"
-                                    Value="{DynamicResource SurfaceSelectedBrush}" />
+                            <Setter TargetName="Chrome" Property="Background" Value="Transparent" />
                             <Setter TargetName="Chrome" Property="BorderBrush"
                                     Value="{DynamicResource HairlineBrush}" />
+                            <Setter TargetName="Chrome" Property="Opacity" Value="0.55" />
                             <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
                             <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
@@ -342,11 +354,15 @@
                             <Setter TargetName="Chrome" Property="Background"
                                     Value="{DynamicResource AccentPressedBrush}" />
                         </Trigger>
+                        <!-- Disabled is quieter than enabled, never louder: a
+                             filled grey block reads as a heavier button, which
+                             is why a dead "Cancel job" looked more pressable
+                             than the live "Refresh" beside it. -->
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Chrome" Property="Background"
-                                    Value="{DynamicResource SurfaceSelectedBrush}" />
+                            <Setter TargetName="Chrome" Property="Background" Value="Transparent" />
                             <Setter TargetName="Chrome" Property="BorderBrush"
                                     Value="{DynamicResource HairlineBrush}" />
+                            <Setter TargetName="Chrome" Property="Opacity" Value="0.55" />
                             <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
                             <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
@@ -690,12 +706,14 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <!-- Active row marker: a 3 DIP bar in the padding,
-                                 the identity's recurring structural device. -->
+                            <!-- Active row marker: a 3 DIP ink bar in the padding,
+                                 the identity's recurring structural device. It is
+                                 ink, not signal — teal is kept for the action you
+                                 are meant to take. -->
                             <Border x:Name="Marker" Width="3" Height="16" Margin="-10,0,0,0"
                                     HorizontalAlignment="Left" VerticalAlignment="Center"
                                     CornerRadius="1.5" Visibility="Collapsed"
-                                    Background="{DynamicResource AccentBrush}" />
+                                    Background="{DynamicResource TextBrush}" />
                             <TextBlock x:Name="Glyph" Text="{Binding NavGlyph}"
                                        FontFamily="{StaticResource IconFont}" FontSize="15"
                                        Foreground="{TemplateBinding Foreground}"
@@ -719,9 +737,10 @@
                             <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                            <Setter TargetName="Row" Property="Background"
+                                    Value="{DynamicResource SurfaceSelectedBrush}" />
                             <Setter TargetName="Marker" Property="Visibility" Value="Visible" />
-                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                             <Setter TargetName="Label" Property="FontWeight" Value="SemiBold" />
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -734,13 +753,13 @@
          the header, hairline rules between rows, no zebra striping. -->
     <Style TargetType="DataGridColumnHeader">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
         <Setter Property="BorderThickness" Value="0,0,0,1" />
-        <Setter Property="Height" Value="32" />
-        <Setter Property="Padding" Value="10,0" />
-        <Setter Property="FontFamily" Value="{StaticResource MediumFont}" />
-        <Setter Property="FontSize" Value="9.5" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="FontFamily" Value="{StaticResource BodyFont}" />
+        <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -1072,14 +1091,9 @@
                             <ui:HeaderPanel>
                                 <StackPanel VerticalAlignment="Center">
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                        <!-- The eyebrow's rule: the same 3 DIP marker
-                                             the navigation uses for its active row. -->
-                                        <Border Width="3" Height="13" CornerRadius="1.5" Margin="0,0,9,0"
-                                                VerticalAlignment="Center"
-                                                Background="{DynamicResource AccentBrush}" />
                                         <TextBlock Text="{TemplateBinding Eyebrow}"
                                                    Style="{StaticResource PageEyebrow}" />
-                                        <TextBlock x:Name="BusyLabel" Text="WORKING"
+                                        <TextBlock x:Name="BusyLabel" Text="Working"
                                                    Style="{StaticResource PageEyebrow}"
                                                    Foreground="{DynamicResource AccentBrush}"
                                                    Margin="10,0,0,0" Visibility="Collapsed" />
@@ -1271,10 +1285,10 @@
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Pill" Property="Background"
-                                    Value="{DynamicResource AccentSoftBrush}" />
+                                    Value="{DynamicResource SurfaceSelectedBrush}" />
                             <Setter TargetName="Pill" Property="BorderBrush"
-                                    Value="{DynamicResource AccentLineBrush}" />
-                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    Value="{DynamicResource HairlineStrongBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -1318,8 +1332,9 @@
                 <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
             </Trigger>
             <Trigger Property="IsSelected" Value="True">
-                <Setter TargetName="Row" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                <Setter TargetName="Row" Property="Background"
+                        Value="{DynamicResource SurfaceSelectedBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
             </Trigger>
         </ControlTemplate.Triggers>
     </ControlTemplate>
@@ -1396,6 +1411,48 @@
     <Style x:Key="CellText" TargetType="TextBlock">
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- The score gutter. A figure in a table is an instrument reading: tabular
+         so a column of them lines up digit over digit, right-aligned against the
+         rule, and never trimmed — a mark says nothing if it ends in an ellipsis. -->
+    <Style x:Key="CellNumber" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
+        <Setter Property="HorizontalAlignment" Value="Right" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextTrimming" Value="None" />
+    </Style>
+
+    <Style x:Key="NumberHeader" TargetType="DataGridColumnHeader"
+           BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+        <Setter Property="HorizontalContentAlignment" Value="Right" />
+    </Style>
+
+    <!-- The other half of the score gutter: the header that sits above the rule,
+         so the rule starts at the top of the column instead of mid-row. -->
+    <Style x:Key="GutterHeader" TargetType="DataGridColumnHeader"
+           BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+        <Setter Property="HorizontalContentAlignment" Value="Right" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridColumnHeader">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{DynamicResource HairlineBrush}"
+                            BorderThickness="1,0,0,1"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Right" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- A cell that owns its full column width, so a gutter rule can sit on the
+         column edge rather than inside the shared cell padding. -->
+    <Style x:Key="GutterCell" TargetType="DataGridCell"
+           BasedOn="{StaticResource {x:Type DataGridCell}}">
+        <Setter Property="Padding" Value="0" />
     </Style>
 
     <Style x:Key="DataTable" TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
@@ -1503,7 +1560,7 @@
          both appearances because the surface beneath it is always coloured. -->
     <Style x:Key="HeroActionButton" TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource HeroInkBrush}" />
-        <Setter Property="Foreground" Value="#16151F" />
+        <Setter Property="Foreground" Value="{DynamicResource HeroActionInkBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource BodyFont}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="FontWeight" Value="SemiBold" />
@@ -1522,10 +1579,12 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Chrome" Property="Background" Value="#EDEAFB" />
+                            <Setter TargetName="Chrome" Property="Background"
+                                    Value="{DynamicResource HeroActionHoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Chrome" Property="Background" Value="#DCD7F5" />
+                            <Setter TargetName="Chrome" Property="Background"
+                                    Value="{DynamicResource HeroActionPressedBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -1629,6 +1688,26 @@
                 <ControlTemplate TargetType="Menu">
                     <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
                         <ItemsPresenter />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- The surface behind a right-click menu and behind a header's More
+         button: the same raised card as the command palette. -->
+    <Style TargetType="ContextMenu">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border Background="{DynamicResource SurfaceRaisedBrush}"
+                            BorderBrush="{DynamicResource HairlineStrongBrush}"
+                            BorderThickness="1" CornerRadius="{StaticResource ControlRadius}"
+                            Padding="4" MinWidth="196"
+                            Effect="{DynamicResource FloatingShadow}">
+                        <StackPanel IsItemsHost="True"
+                                    KeyboardNavigation.DirectionalNavigation="Cycle" />
                     </Border>
                 </ControlTemplate>
             </Setter.Value>

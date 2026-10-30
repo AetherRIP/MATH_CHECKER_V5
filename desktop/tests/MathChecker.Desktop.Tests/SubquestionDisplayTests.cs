@@ -138,7 +138,7 @@ public class SubquestionDisplayTests
             view.UpdateLayout();
 
             var text = DescendantText(view);
-            Assert.Contains("SUBQUESTIONS", text);
+            Assert.Contains("Subquestions", text);
             Assert.Contains("2 parts · 1 marked, 1 unmarked", text);
             Assert.Contains("7a", text);
             Assert.Contains("2 / 2", text);
@@ -165,7 +165,7 @@ public class SubquestionDisplayTests
             view.Arrange(new Rect(0, 0, 1400, 900));
             view.UpdateLayout();
 
-            Assert.DoesNotContain("SUBQUESTIONS", DescendantText(view));
+            Assert.DoesNotContain("Subquestions", DescendantText(view));
         });
     }
 

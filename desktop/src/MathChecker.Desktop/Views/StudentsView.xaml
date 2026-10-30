@@ -5,24 +5,6 @@
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI"
              xmlns:views="clr-namespace:MathChecker.Desktop.Views">
     <UserControl.Resources>
-        <!-- The theme wraps every TextBlock by default, which defeats
-             trimming; these cells must stay on one line. -->
-        <Style x:Key="FactLabel" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="9.5" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
-            <Setter Property="TextWrapping" Value="NoWrap" />
-            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-        </Style>
-
-        <Style x:Key="FactValue" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11.5" />
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-            <Setter Property="TextWrapping" Value="NoWrap" />
-            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-            <Setter Property="Margin" Value="0,2,0,0" />
-        </Style>
-
         <!-- Headline counts, sized like the monitor's tiles rather than the page
              title: they are evidence, not decoration. -->
         <Style x:Key="SummaryTile" TargetType="Border" BasedOn="{StaticResource Panel}">
@@ -56,20 +38,37 @@
             <Grid>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Top"
                             Visibility="{Binding IsProfileClosed, Converter={StaticResource BoolToVis}}">
-                    <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                    <Button Content="Results" Command="{Binding OpenResultsCommand}"
+                            ToolTip="Open this person's stored corrections" />
                     <Button Content="Open profile" Style="{StaticResource PrimaryButton}"
                             Command="{Binding OpenProfileCommand}"
                             ToolTip="Everything stored for the selected student" />
-                    <Button Content="Results" Command="{Binding OpenResultsCommand}" Margin="0"
-                            ToolTip="Open this person's stored corrections" />
+                    <Button Content="More" Style="{StaticResource GhostButton}" Margin="8,0,0,0"
+                            ui:ClickMenu.OpenOnClick="True"
+                            AutomationProperties.Name="More roster actions">
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Refresh the roster" Command="{Binding RefreshCommand}" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Top"
                             Visibility="{Binding IsProfileOpen, Converter={StaticResource BoolToVis}}">
                     <Button Content="Back to students" Command="{Binding CloseProfileCommand}" />
-                    <Button Content="Refresh" Command="{Binding Profile.RefreshCommand}" />
-                    <Button Content="Export report" Command="{Binding Profile.ReportCommand}" />
-                    <Button Content="Results" Command="{Binding OpenResultsCommand}" Margin="0" />
+                    <Button Content="Export report" Style="{StaticResource PrimaryButton}"
+                            Command="{Binding Profile.ReportCommand}" />
+                    <Button Content="More" Style="{StaticResource GhostButton}" Margin="8,0,0,0"
+                            ui:ClickMenu.OpenOnClick="True"
+                            AutomationProperties.Name="More profile actions">
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Refresh the profile" Command="{Binding Profile.RefreshCommand}" />
+                                <MenuItem Header="Results" Command="{Binding OpenResultsCommand}" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
                 </StackPanel>
             </Grid>
         </ui:PageFrame.Actions>
@@ -116,7 +115,7 @@
                         </StackPanel>
 
                         <StackPanel>
-                            <TextBlock Text="GOOGLE CLASSROOM" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Google Classroom" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="{Binding ClassroomStateText}"
                                        Style="{StaticResource CardTitle}" Margin="0,5,0,0"
                                        TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
@@ -133,50 +132,36 @@
                 <!-- Headline counts as tiles, with the sync provenance beside
                      them: the numbers line up because each sits in its own tile
                      instead of a WrapPanel. -->
-                <DockPanel Grid.Row="1" Margin="0,0,0,10">
-                    <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center"
-                                HorizontalAlignment="Right" Margin="10,0,0,0">
-                        <TextBlock Text="{Binding LastSyncText}" FontSize="10.5"
-                                   HorizontalAlignment="Right"
-                                   Foreground="{DynamicResource TextMutedBrush}" />
-                        <!-- Google does return addresses for every account type,
-                             so the page says where they came from. -->
-                        <TextBlock Text="{Binding EmailSource, StringFormat=Email source: {0}}"
-                                   FontSize="10.5" HorizontalAlignment="Right"
-                                   Foreground="{DynamicResource TextMutedBrush}" />
-                    </StackPanel>
-
-                    <WrapPanel>
-                        <Border Style="{StaticResource SummaryTile}">
-                            <StackPanel>
-                                <TextBlock Text="STUDENTS" Style="{StaticResource StatLabel}" />
-                                <TextBlock Text="{Binding StudentsCountText}"
-                                           Style="{StaticResource SummaryNumber}" />
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource SummaryTile}">
-                            <StackPanel>
-                                <TextBlock Text="CLASSES" Style="{StaticResource StatLabel}" />
-                                <TextBlock Text="{Binding ClassesCountText}"
-                                           Style="{StaticResource SummaryNumber}" />
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource SummaryTile}">
-                            <StackPanel>
-                                <TextBlock Text="CORRECTIONS" Style="{StaticResource StatLabel}" />
-                                <TextBlock Text="{Binding CorrectionsCountText}"
-                                           Style="{StaticResource SummaryNumber}" />
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource SummaryTile}" Margin="0">
-                            <StackPanel>
-                                <TextBlock Text="IN PROGRESS" Style="{StaticResource StatLabel}" />
-                                <TextBlock Text="{Binding InProgressCountText}"
-                                           Style="{StaticResource SummaryNumber}" />
-                            </StackPanel>
-                        </Border>
-                    </WrapPanel>
-                </DockPanel>
+                <WrapPanel Grid.Row="1" Margin="0,0,0,10">
+                    <Border Style="{StaticResource SummaryTile}">
+                        <StackPanel>
+                            <TextBlock Text="Students" Style="{StaticResource StatLabel}" />
+                            <TextBlock Text="{Binding StudentsCountText}"
+                                       Style="{StaticResource SummaryNumber}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SummaryTile}">
+                        <StackPanel>
+                            <TextBlock Text="Classes" Style="{StaticResource StatLabel}" />
+                            <TextBlock Text="{Binding ClassesCountText}"
+                                       Style="{StaticResource SummaryNumber}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SummaryTile}">
+                        <StackPanel>
+                            <TextBlock Text="Corrections" Style="{StaticResource StatLabel}" />
+                            <TextBlock Text="{Binding CorrectionsCountText}"
+                                       Style="{StaticResource SummaryNumber}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SummaryTile}" Margin="0">
+                        <StackPanel>
+                            <TextBlock Text="In progress" Style="{StaticResource StatLabel}" />
+                            <TextBlock Text="{Binding InProgressCountText}"
+                                       Style="{StaticResource SummaryNumber}" />
+                        </StackPanel>
+                    </Border>
+                </WrapPanel>
 
                 <Border Grid.Row="2" Style="{StaticResource FilterBar}" Margin="0,0,0,10">
                     <Grid>
@@ -205,15 +190,9 @@
                                   AutomationProperties.Name="Class filter" />
 
                         <TextBlock Grid.Column="4" Text="Select a row to open the full profile."
-                                   FontSize="10.5" VerticalAlignment="Center" Margin="14,0,10,0"
+                                   FontSize="11" VerticalAlignment="Center" Margin="14,0,10,0"
                                    TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource TextMutedBrush}" />
-
-                        <Border Grid.Column="5" Style="{StaticResource Chip}" Padding="9,3"
-                                VerticalAlignment="Center">
-                            <TextBlock Text="{Binding ShownText}"
-                                       FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
-                        </Border>
                     </Grid>
                 </Border>
 
@@ -221,12 +200,21 @@
                     <DockPanel>
                         <Border DockPanel.Dock="Top" Style="{StaticResource TableToolbar}">
                             <DockPanel>
-                                <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Padding="9,2"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding ShownText}" FontSize="10.5"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                                </Border>
-                                <TextBlock Text="Roster" Style="{StaticResource RowTitle}"
+                                <!-- Where the roster came from belongs with the roster,
+                                     not floating beside the tiles where it read as a
+                                     second, misaligned column. -->
+                                <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center"
+                                            HorizontalAlignment="Right" Margin="14,0,0,0">
+                                    <TextBlock Text="{Binding LastSyncText}" FontSize="11"
+                                               HorizontalAlignment="Right"
+                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                    <!-- Google does return addresses for every account
+                                         type, so the page says where they came from. -->
+                                    <TextBlock Text="{Binding EmailSource, StringFormat=Email source: {0}}"
+                                               FontSize="11" HorizontalAlignment="Right"
+                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                </StackPanel>
+                                <TextBlock Text="Roster" Style="{StaticResource CardTitle}"
                                            VerticalAlignment="Center" />
                             </DockPanel>
                         </Border>
@@ -236,7 +224,12 @@
                                  cells are the same columns, so the labels line up
                                  at every window width and the numeric block can
                                  never be pushed off the row. -->
+                            <!-- FillColumn: without it nothing absorbs the spare width,
+                                 so the score column stopped mid-card and left a dead
+                                 gap at the end of every row. Records takes the slack
+                                 and the score stays pinned to the right edge. -->
                             <DataGrid Style="{StaticResource RosterTable}"
+                                      ui:TableLayout.FillColumn="2"
                                       ItemsSource="{Binding Items}"
                                       SelectedItem="{Binding Selected}"
                                       AutomationProperties.Name="Students">
@@ -252,13 +245,13 @@
                                                                TextTrimming="CharacterEllipsis"
                                                                ToolTip="{Binding CoursesText}"
                                                                Foreground="{DynamicResource TextBrush}" />
-                                                    <TextBlock Text="{Binding SummaryLine}" FontSize="10.5"
+                                                    <TextBlock Text="{Binding SummaryLine}" FontSize="11"
                                                                Margin="0,2,0,0"
                                                                TextWrapping="NoWrap"
                                                                TextTrimming="CharacterEllipsis"
                                                                ToolTip="{Binding CoursesText}"
                                                                Foreground="{DynamicResource TextMutedBrush}" />
-                                                    <TextBlock Text="{Binding EmailText}" FontSize="10.5"
+                                                    <TextBlock Text="{Binding EmailText}" FontSize="11"
                                                                TextWrapping="NoWrap"
                                                                TextTrimming="CharacterEllipsis"
                                                                ToolTip="{Binding EmailText}"
@@ -300,48 +293,58 @@
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
 
-                                    <!-- A star width, not Auto: three facts of
-                                         differing length made the column wider
-                                         than the table and pushed the last
-                                         value under the window edge. -->
-                                    <!-- Priorities keep the roster inside a narrow
-                                         window: three 160-DIP floors cannot all fit
-                                         in a 480-DIP body, and the grid used to
-                                         spill past the window edge. -->
-                                    <DataGridTemplateColumn Header="Records" Width="1.1*" MinWidth="250"
+                                    <!-- Facts, not headings: the old cell repeated
+                                         three micro-headings on every row, which
+                                         competed with the table's own header and
+                                         squeezed the score into an ellipsis. -->
+                                    <DataGridTemplateColumn Header="Records" Width="0.9*" MinWidth="150"
                                                             ui:TableLayout.Priority="2">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <UniformGrid Columns="3" Margin="0,4" VerticalAlignment="Center">
-                                                    <StackPanel>
-                                                        <TextBlock Text="SUBMITTED"
-                                                                   Style="{StaticResource FactLabel}" />
-                                                        <TextBlock Text="{Binding SubmittedText}"
-                                                                   Style="{StaticResource FactValue}" />
-                                                        <TextBlock Text="{Binding PendingText}" FontSize="10.5"
-                                                                   Margin="0,2,0,0"
-                                                                   TextTrimming="CharacterEllipsis"
-                                                                   Foreground="{DynamicResource TextMutedBrush}"
-                                                                   Visibility="{Binding Pending,
-                                                                       Converter={StaticResource NonZeroToVis}}" />
-                                                    </StackPanel>
-                                                    <StackPanel Margin="8,0,0,0">
-                                                        <TextBlock Text="MATH CHECKER"
-                                                                   Style="{StaticResource FactLabel}" />
-                                                        <TextBlock Text="{Binding TotalText}"
-                                                                   Style="{StaticResource FactValue}" />
-                                                        <TextBlock Text="{Binding Corrections, StringFormat={}{0} corrections}"
-                                                                   FontSize="10.5" Margin="0,2,0,0"
-                                                                   TextTrimming="CharacterEllipsis"
+                                                <StackPanel Margin="0,4" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding SubmittedText}" FontSize="11.5"
+                                                               TextWrapping="NoWrap"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="{Binding CorrectionsText}" FontSize="11"
+                                                               Margin="0,2,0,0" TextWrapping="NoWrap"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                    <TextBlock Text="{Binding PendingText}" FontSize="11"
+                                                               Margin="0,2,0,0" TextWrapping="NoWrap"
+                                                               Foreground="{DynamicResource WarningTextBrush}"
+                                                               Visibility="{Binding Pending,
+                                                                   Converter={StaticResource NonZeroToVis}}" />
+                                                    <TextBlock Text="{Binding SyncText}" FontSize="11"
+                                                               Margin="0,2,0,0" TextWrapping="NoWrap"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+
+                                    <!-- The score gutter: the figure gets its own
+                                         column with the room to state the mark, and
+                                         the rule separates reading from the number. -->
+                                    <DataGridTemplateColumn Header="Score" Width="128"
+                                                            HeaderStyle="{StaticResource GutterHeader}"
+                                                            CellStyle="{StaticResource GutterCell}">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="{DynamicResource HairlineBrush}"
+                                                        BorderThickness="1,0,0,0" Padding="14,4,8,4">
+                                                    <StackPanel VerticalAlignment="Center"
+                                                                HorizontalAlignment="Right">
+                                                        <TextBlock Text="{Binding ScoreText}"
+                                                                   FontFamily="{StaticResource DisplayFont}"
+                                                                   FontSize="13" FontWeight="SemiBold"
+                                                                   Typography.NumeralAlignment="Tabular"
+                                                                   TextAlignment="Right" TextWrapping="NoWrap"
+                                                                   Foreground="{DynamicResource TextBrush}" />
+                                                        <TextBlock Text="{Binding ScorePercentText}"
+                                                                   FontSize="11" TextAlignment="Right"
+                                                                   TextWrapping="NoWrap"
                                                                    Foreground="{DynamicResource TextMutedBrush}" />
                                                     </StackPanel>
-                                                    <StackPanel Margin="8,0,0,0">
-                                                        <TextBlock Text="LAST SYNC"
-                                                                   Style="{StaticResource FactLabel}" />
-                                                        <TextBlock Text="{Binding SyncText}"
-                                                                   Style="{StaticResource FactValue}" />
-                                                    </StackPanel>
-                                                </UniformGrid>
+                                                </Border>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>

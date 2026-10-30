@@ -299,9 +299,14 @@ public sealed class MarkSchemeViewModel : PageViewModel
     /// <summary>What an empty question list means right now. "Open an assignment"
     /// is wrong while an assignment with an unread scheme is on screen: there is
     /// nothing to review YET, and one click away from having everything.</summary>
+    /// <remarks>
+    /// The no-assignment branch completes the sentence in the summary card above
+    /// rather than repeating it: the page said the same thing twice, once at the
+    /// top and once in the empty list.
+    /// </remarks>
     public string EmptyQuestionsText => NeedsRead
         ? "Read the mark scheme to list its questions and decide how each one is handled."
-        : "Open an assignment and choose “Review mark scheme” to see its questions.";
+        : "Its questions appear here once an assignment is open.";
 
     /// <summary>What reading will do, or why it produced nothing.</summary>
     public string ReadHint

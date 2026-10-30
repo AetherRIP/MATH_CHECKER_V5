@@ -29,7 +29,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="CERTIFIED ACCURACY" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Certified accuracy" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="{Binding CertifiedHeadline}" FontFamily="{StaticResource DisplayFont}"
                                        FontSize="28" FontWeight="Bold" Margin="0,7,0,0"
                                        Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap"
@@ -42,7 +42,7 @@
                             <Border Style="{StaticResource WarningBanner}" Margin="0,12,0,0"
                                     Visibility="{Binding HasCertificationReason, Converter={StaticResource BoolToVis}}">
                                 <StackPanel>
-                                    <TextBlock Text="WHY THE SCORE IS NOT AVAILABLE"
+                                    <TextBlock Text="Why the score is not available"
                                                Style="{StaticResource SectionLabel}"
                                                Foreground="{DynamicResource WarningTextBrush}" />
                                     <TextBlock Text="{Binding CertificationReason}" Margin="0,4,0,0"
@@ -61,7 +61,7 @@
                                        Margin="0,8,0,0" HorizontalAlignment="Right"
                                        Foreground="{DynamicResource TextMutedBrush}" />
                             <TextBlock Text="{Binding DatasetShaText}" FontFamily="{StaticResource MonoFont}"
-                                       FontSize="10" Margin="0,3,0,0" HorizontalAlignment="Right"
+                                       FontSize="11" Margin="0,3,0,0" HorizontalAlignment="Right"
                                        Foreground="{DynamicResource TextMutedBrush}" />
                         </StackPanel>
                     </Grid>
@@ -71,35 +71,35 @@
                 <ui:ResponsiveGridPanel MinItemWidth="150" Gap="12" Margin="0,0,0,12">
                     <Border Style="{StaticResource StatTile}" Margin="0">
                         <StackPanel>
-                            <TextBlock Text="TEACHER VERIFIED" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Teacher verified" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="{Binding VerifiedCountText}" Style="{StaticResource DisplayFigure}"
                                        FontSize="30" Margin="0,6,0,0" Foreground="{DynamicResource SuccessTextBrush}" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource StatTile}" Margin="0">
                         <StackPanel>
-                            <TextBlock Text="UNVERIFIED" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Unverified" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="{Binding UnverifiedCountText}" Style="{StaticResource DisplayFigure}"
                                        FontSize="30" Margin="0,6,0,0" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource StatTile}" Margin="0">
                         <StackPanel>
-                            <TextBlock Text="DISPUTED" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Disputed" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="{Binding DisputedCountText}" Style="{StaticResource DisplayFigure}"
                                        FontSize="30" Margin="0,6,0,0" Foreground="{DynamicResource DangerTextBrush}" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource StatTile}" Margin="0">
                         <StackPanel>
-                            <TextBlock Text="INCOMPLETE" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Incomplete" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="{Binding IncompleteCountText}" Style="{StaticResource DisplayFigure}"
                                        FontSize="30" Margin="0,6,0,0" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource StatTile}" Margin="0">
                         <StackPanel>
-                            <TextBlock Text="HOLDOUT ITEMS" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Holdout items" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="{Binding HoldoutCountText}" Style="{StaticResource DisplayFigure}"
                                        FontSize="30" Margin="0,6,0,0" />
                         </StackPanel>
@@ -111,41 +111,41 @@
                 <Border Style="{StaticResource Card}" Margin="0,0,0,12"
                         Visibility="{Binding ShowCertifiedMetrics, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
-                        <TextBlock Text="TEACHER-VERIFIED MEASUREMENTS" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="Teacher-verified measurements" Style="{StaticResource SectionLabel}" />
                         <TextBlock Text="{Binding CertifiedSampleText}" FontSize="11.5" Margin="0,5,0,10"
                                    Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
                         <ui:ResponsiveGridPanel MinItemWidth="230" Gap="12">
                             <Border Style="{StaticResource Panel}" Margin="0">
                                 <StackPanel>
-                                    <TextBlock Text="ITEM AGREEMENT" Style="{StaticResource SectionLabel}" />
+                                    <TextBlock Text="Item agreement" Style="{StaticResource SectionLabel}" />
                                     <TextBlock Text="{Binding CertifiedItemsText}" FontSize="12" Margin="0,5,0,0"
                                                Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource Panel}" Margin="0">
                                 <StackPanel>
-                                    <TextBlock Text="QUESTION AGREEMENT" Style="{StaticResource SectionLabel}" />
+                                    <TextBlock Text="Question agreement" Style="{StaticResource SectionLabel}" />
                                     <TextBlock Text="{Binding CertifiedQuestionsText}" FontSize="12" Margin="0,5,0,0"
                                                Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource Panel}" Margin="0">
                                 <StackPanel>
-                                    <TextBlock Text="SUBQUESTION AGREEMENT" Style="{StaticResource SectionLabel}" />
+                                    <TextBlock Text="Subquestion agreement" Style="{StaticResource SectionLabel}" />
                                     <TextBlock Text="{Binding CertifiedSubquestionsText}" FontSize="12" Margin="0,5,0,0"
                                                Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource Panel}" Margin="0">
                                 <StackPanel>
-                                    <TextBlock Text="TOTAL-MARK AGREEMENT" Style="{StaticResource SectionLabel}" />
+                                    <TextBlock Text="Total-mark agreement" Style="{StaticResource SectionLabel}" />
                                     <TextBlock Text="{Binding CertifiedTotalText}" FontSize="12" Margin="0,5,0,0"
                                                Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource Panel}" Margin="0">
                                 <StackPanel>
-                                    <TextBlock Text="MEAN ABSOLUTE ERROR" Style="{StaticResource SectionLabel}" />
+                                    <TextBlock Text="Mean absolute error" Style="{StaticResource SectionLabel}" />
                                     <TextBlock Text="{Binding CertifiedMaeText}" FontSize="12" Margin="0,5,0,0" />
                                     <TextBlock Text="{Binding CertifiedOverText}" FontSize="11" Margin="0,3,0,0"
                                                Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
@@ -155,7 +155,7 @@
                             </Border>
                             <Border Style="{StaticResource Panel}" Margin="0">
                                 <StackPanel>
-                                    <TextBlock Text="COVERAGE AND REVIEW" Style="{StaticResource SectionLabel}" />
+                                    <TextBlock Text="Coverage and review" Style="{StaticResource SectionLabel}" />
                                     <TextBlock Text="{Binding CertifiedCoverageText}" FontSize="12" Margin="0,5,0,0"
                                                TextWrapping="Wrap" />
                                     <TextBlock Text="{Binding CertifiedReviewText}" FontSize="11" Margin="0,3,0,0"
@@ -174,10 +174,10 @@
                         <StackPanel>
                             <DockPanel>
                                 <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Padding="9,2">
-                                    <TextBlock Text="{Binding LatestRunStatus}" FontSize="10.5"
+                                    <TextBlock Text="{Binding LatestRunStatus}" FontSize="11"
                                                Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </Border>
-                                <TextBlock Text="LATEST BENCHMARK RUN" Style="{StaticResource SectionLabel}"
+                                <TextBlock Text="Latest benchmark run" Style="{StaticResource SectionLabel}"
                                            VerticalAlignment="Center" />
                             </DockPanel>
                             <TextBlock Text="{Binding LatestRunId}" FontFamily="{StaticResource MonoFont}"
@@ -214,7 +214,7 @@
                             </StackPanel>
 
                             <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,11,0,10" />
-                            <TextBlock Text="REPRODUCIBILITY" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Reproducibility" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="{Binding LatestRunReproduction}" FontSize="12" Margin="0,5,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding RunControlNote}" FontSize="11" Margin="0,10,0,0"
@@ -224,7 +224,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0">
                         <StackPanel>
-                            <TextBlock Text="REFERENCE DATASET" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Reference dataset" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="{Binding DatasetCompositionText}" FontSize="12.5" Margin="0,7,0,0"
                                        TextWrapping="Wrap" />
                             <DockPanel Margin="0,7,0,0">
@@ -248,12 +248,12 @@
                             </DockPanel>
 
                             <TextBlock Text="{Binding RunsRootText}" FontFamily="{StaticResource MonoFont}"
-                                       FontSize="9.5" Margin="0,10,0,0" TextTrimming="CharacterEllipsis"
+                                       FontSize="11" Margin="0,10,0,0" TextTrimming="CharacterEllipsis"
                                        Foreground="{DynamicResource TextMutedBrush}" />
 
                             <StackPanel Margin="0,10,0,0"
                                         Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVis}}">
-                                <TextBlock Text="DATASET LIMITATIONS" Style="{StaticResource SectionLabel}" />
+                                <TextBlock Text="Dataset limitations" Style="{StaticResource SectionLabel}" />
                                 <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto" Margin="0,5,0,0">
                                     <ItemsControl ItemsSource="{Binding Warnings}"
                                                   AutomationProperties.Name="Dataset limitations">
@@ -282,7 +282,7 @@
                                 <DockPanel>
                                     <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Padding="9,2"
                                             VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding References.Count}" FontSize="10.5"
+                                        <TextBlock Text="{Binding References.Count}" FontSize="11"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </Border>
                                     <TextBlock Text="Reference items" Style="{StaticResource RowTitle}"
@@ -334,28 +334,28 @@
 
                                     <WrapPanel Margin="0,9,0,0">
                                         <Border Style="{StaticResource Chip}" Margin="0,0,6,4">
-                                            <TextBlock Text="{Binding DetailPartition}" FontSize="10.5"
+                                            <TextBlock Text="{Binding DetailPartition}" FontSize="11"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </Border>
                                         <Border Style="{StaticResource Chip}" Margin="0,0,6,4">
-                                            <TextBlock Text="{Binding DetailProvenance}" FontSize="10.5"
+                                            <TextBlock Text="{Binding DetailProvenance}" FontSize="11"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </Border>
                                         <Border Style="{StaticResource Chip}" Margin="0,0,6,4">
-                                            <TextBlock Text="{Binding DetailMaxText}" FontSize="10.5"
+                                            <TextBlock Text="{Binding DetailMaxText}" FontSize="11"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </Border>
                                     </WrapPanel>
 
                                     <Border Style="{StaticResource Panel}" Margin="0,10,0,0">
                                         <StackPanel>
-                                            <TextBlock Text="THE QUESTION" Style="{StaticResource SectionLabel}" />
+                                            <TextBlock Text="The question" Style="{StaticResource SectionLabel}" />
                                             <TextBlock Text="{Binding DetailPrompt}" FontSize="13.5" Margin="0,6,0,0"
                                                        Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
                                         </StackPanel>
                                     </Border>
 
-                                    <TextBlock Text="THE THREE MARKS ARE DIFFERENT THINGS" Style="{StaticResource SectionLabel}"
+                                    <TextBlock Text="The three marks are different things" Style="{StaticResource SectionLabel}"
                                                Margin="0,14,0,2" />
                                     <TextBlock Text="The scheme-derived reference is not a teacher mark, and the AI mark is not ground truth."
                                                FontSize="11" Foreground="{DynamicResource TextMutedBrush}"
@@ -364,12 +364,12 @@
                                     <ui:ResponsiveGridPanel MinItemWidth="185" Gap="8">
                                         <Border Style="{StaticResource Panel}" Margin="0">
                                             <StackPanel>
-                                                <TextBlock Text="OFFICIAL MARK SCHEME" Style="{StaticResource SectionLabel}"
+                                                <TextBlock Text="Official mark scheme" Style="{StaticResource SectionLabel}"
                                                            Foreground="{DynamicResource AccentBrush}" />
                                                 <TextBlock Text="{Binding DetailSchemeMarkText}" FontSize="22"
                                                            FontWeight="SemiBold" Margin="0,6,0,0" />
                                                 <TextBlock Text="scheme-derived reference mark"
-                                                           FontSize="10.5" Foreground="{DynamicResource TextMutedBrush}" />
+                                                           FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
                                                 <ItemsControl ItemsSource="{Binding SchemeLines}" Margin="0,8,0,0">
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate>
@@ -384,33 +384,33 @@
 
                                         <Border Style="{StaticResource Panel}" Margin="0">
                                             <StackPanel>
-                                                <TextBlock Text="AI-AWARDED MARK · LATEST RUN"
+                                                <TextBlock Text="AI-awarded mark · latest run"
                                                            Style="{StaticResource SectionLabel}"
                                                            Foreground="{DynamicResource WarningTextBrush}" />
                                                 <TextBlock Text="{Binding AiMarkText}" FontSize="22"
                                                            FontWeight="SemiBold" Margin="0,6,0,0"
                                                            Foreground="{DynamicResource WarningTextBrush}"
                                                            TextWrapping="Wrap" />
-                                                <TextBlock Text="{Binding AiMarkDetail}" FontSize="10.5" Margin="0,4,0,0"
+                                                <TextBlock Text="{Binding AiMarkDetail}" FontSize="11" Margin="0,4,0,0"
                                                            Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
                                                 <TextBlock Text="Not ground truth and never counted as teacher evidence."
-                                                           FontSize="10.5" Margin="0,6,0,0"
+                                                           FontSize="11" Margin="0,6,0,0"
                                                            Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
                                             </StackPanel>
                                         </Border>
 
                                         <Border Style="{StaticResource Panel}" Margin="0">
                                             <StackPanel>
-                                                <TextBlock Text="TEACHER-CONFIRMED MARK"
+                                                <TextBlock Text="Teacher-confirmed mark"
                                                            Style="{StaticResource SectionLabel}"
                                                            Foreground="{DynamicResource SuccessTextBrush}" />
                                                 <TextBlock Text="{Binding DetailTeacherMarkText}" FontSize="22"
                                                            FontWeight="SemiBold" Margin="0,6,0,0"
                                                            Foreground="{DynamicResource SuccessTextBrush}"
                                                            TextWrapping="Wrap" />
-                                                <TextBlock Text="{Binding DetailTeacherStatus}" FontSize="10.5" Margin="0,4,0,0"
+                                                <TextBlock Text="{Binding DetailTeacherStatus}" FontSize="11" Margin="0,4,0,0"
                                                            Foreground="{DynamicResource TextMutedBrush}" />
-                                                <TextBlock Text="{Binding DetailEligibility}" FontSize="10.5" Margin="0,5,0,0"
+                                                <TextBlock Text="{Binding DetailEligibility}" FontSize="11" Margin="0,5,0,0"
                                                            Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
                                             </StackPanel>
                                         </Border>
@@ -424,9 +424,9 @@
 
                                     <Border Style="{StaticResource Panel}" Margin="0,10,0,0">
                                         <StackPanel>
-                                            <TextBlock Text="REFERENCE RULING" Style="{StaticResource SectionLabel}" />
+                                            <TextBlock Text="Reference ruling" Style="{StaticResource SectionLabel}" />
                                             <TextBlock Text="Scheme-derived rationale; it is not teacher confirmation."
-                                                       FontSize="10.5" Foreground="{DynamicResource TextMutedBrush}"
+                                                       FontSize="11" Foreground="{DynamicResource TextMutedBrush}"
                                                        Margin="0,3,0,0" TextWrapping="Wrap" />
                                             <TextBlock Text="{Binding DetailRuling}" FontSize="12.5" Margin="0,6,0,0"
                                                        TextWrapping="Wrap" />
@@ -445,7 +445,7 @@
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Border Style="{StaticResource Chip}" Margin="0,0,5,4">
-                                                        <TextBlock Text="{Binding}" FontSize="10"
+                                                        <TextBlock Text="{Binding}" FontSize="11"
                                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                                     </Border>
                                                 </DataTemplate>
@@ -455,7 +455,7 @@
 
                                     <Border Style="{StaticResource Panel}" Margin="0,6,0,0">
                                         <StackPanel>
-                                            <TextBlock Text="CANDIDATE WORKING" Style="{StaticResource SectionLabel}" />
+                                            <TextBlock Text="Candidate working" Style="{StaticResource SectionLabel}" />
                                             <ItemsControl ItemsSource="{Binding AnswerLines}" Margin="0,6,0,0">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
@@ -470,14 +470,14 @@
                                     <StackPanel Margin="0,12,0,0">
                                         <DockPanel>
                                             <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Padding="9,2">
-                                                <TextBlock Text="{Binding Assessments.Count}" FontSize="10.5"
+                                                <TextBlock Text="{Binding Assessments.Count}" FontSize="11"
                                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                                             </Border>
-                                            <TextBlock Text="ASSESSMENT HISTORY" Style="{StaticResource SectionLabel}"
+                                            <TextBlock Text="Assessment history" Style="{StaticResource SectionLabel}"
                                                        VerticalAlignment="Center" />
                                         </DockPanel>
                                         <TextBlock Text="Append-only. Every teacher assessment is preserved; a conflict is never silently resolved."
-                                                   FontSize="10.5" Margin="0,4,0,0"
+                                                   FontSize="11" Margin="0,4,0,0"
                                                    Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
                                         <ItemsControl ItemsSource="{Binding Assessments}" Margin="0,7,0,0"
                                                       AutomationProperties.Name="Assessment history">
@@ -491,13 +491,13 @@
                                                                 <TextBlock Text="{Binding AssessorText}" FontSize="12"
                                                                            TextTrimming="CharacterEllipsis" />
                                                             </DockPanel>
-                                                            <TextBlock Text="{Binding StatusLabel}" FontSize="10.5" Margin="0,2,0,0"
+                                                            <TextBlock Text="{Binding StatusLabel}" FontSize="11" Margin="0,2,0,0"
                                                                        Foreground="{DynamicResource TextMutedBrush}" />
-                                                            <TextBlock Text="{Binding WhenText}" FontSize="10.5" Margin="0,2,0,0"
+                                                            <TextBlock Text="{Binding WhenText}" FontSize="11" Margin="0,2,0,0"
                                                                        Foreground="{DynamicResource TextMutedBrush}" />
                                                             <TextBlock Text="{Binding NoteText}" FontSize="11.5" Margin="0,4,0,0"
                                                                        TextWrapping="Wrap" />
-                                                            <TextBlock Text="{Binding AlternativeText}" FontSize="10.5" Margin="0,3,0,0"
+                                                            <TextBlock Text="{Binding AlternativeText}" FontSize="11" Margin="0,3,0,0"
                                                                        TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}"
                                                                        Visibility="{Binding HasAlternatives, Converter={StaticResource BoolToVis}}" />
                                                         </StackPanel>
@@ -519,7 +519,7 @@
                                                FontSize="11.5" Margin="0,4,0,10"
                                                Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
 
-                                    <TextBlock Text="DECISION" Style="{StaticResource SectionLabel}" />
+                                    <TextBlock Text="Decision" Style="{StaticResource SectionLabel}" />
                                     <ComboBox Margin="0,5,0,0" ItemsSource="{Binding DecisionOptions}"
                                               SelectedItem="{Binding Decision, Mode=TwoWay}"
                                               DisplayMemberPath="Label"
@@ -527,44 +527,44 @@
 
                                     <ui:ResponsiveGridPanel MinItemWidth="145" Gap="8" Margin="0,10,0,0">
                                         <StackPanel>
-                                            <TextBlock Text="MARK AWARDED" Style="{StaticResource SectionLabel}" />
+                                            <TextBlock Text="Mark awarded" Style="{StaticResource SectionLabel}" />
                                             <TextBox Margin="0,5,0,0" Text="{Binding MarkText, UpdateSourceTrigger=PropertyChanged}"
                                                      AutomationProperties.Name="Teacher awarded mark" />
-                                            <TextBlock Text="{Binding DetailMaxText}" FontSize="10"
+                                            <TextBlock Text="{Binding DetailMaxText}" FontSize="11"
                                                        Foreground="{DynamicResource TextMutedBrush}" Margin="0,3,0,0" />
                                         </StackPanel>
                                         <StackPanel>
-                                            <TextBlock Text="ASSESSOR" Style="{StaticResource SectionLabel}" />
+                                            <TextBlock Text="Assessor" Style="{StaticResource SectionLabel}" />
                                             <TextBox Margin="0,5,0,0" Text="{Binding Assessor, UpdateSourceTrigger=PropertyChanged}"
                                                      AutomationProperties.Name="Assessor" />
-                                            <TextBlock Text="Name, initials or role identifier" FontSize="10"
+                                            <TextBlock Text="Name, initials or role identifier" FontSize="11"
                                                        Foreground="{DynamicResource TextMutedBrush}" Margin="0,3,0,0" />
                                         </StackPanel>
                                         <StackPanel>
-                                            <TextBlock Text="ROLE (OPTIONAL)" Style="{StaticResource SectionLabel}" />
+                                            <TextBlock Text="Role (optional)" Style="{StaticResource SectionLabel}" />
                                             <TextBox Margin="0,5,0,0" Text="{Binding AssessorRole, UpdateSourceTrigger=PropertyChanged}"
                                                      AutomationProperties.Name="Assessor role" />
-                                            <TextBlock Text="For example: Head of Maths" FontSize="10"
+                                            <TextBlock Text="For example: Head of Maths" FontSize="11"
                                                        Foreground="{DynamicResource TextMutedBrush}" Margin="0,3,0,0" />
                                         </StackPanel>
                                     </ui:ResponsiveGridPanel>
 
-                                    <TextBlock Text="MARKING NOTE" Style="{StaticResource SectionLabel}" Margin="0,10,0,0" />
+                                    <TextBlock Text="Marking note" Style="{StaticResource SectionLabel}" Margin="0,10,0,0" />
                                     <TextBox Margin="0,5,0,0" Height="62" AcceptsReturn="True"
                                              VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"
                                              Text="{Binding Note, UpdateSourceTrigger=PropertyChanged}"
                                              AutomationProperties.Name="Marking note" />
                                     <TextBlock Text="Required for a disputed or incomplete assessment; optional otherwise."
-                                               FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="0,3,0,0" />
+                                               FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,3,0,0" />
 
-                                    <TextBlock Text="ACCEPTED ALTERNATIVE METHODS" Style="{StaticResource SectionLabel}"
+                                    <TextBlock Text="Accepted alternative methods" Style="{StaticResource SectionLabel}"
                                                Margin="0,10,0,0" />
                                     <TextBox Margin="0,5,0,0" Height="52" AcceptsReturn="True"
                                              VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"
                                              Text="{Binding AlternativeText, UpdateSourceTrigger=PropertyChanged}"
                                              AutomationProperties.Name="Accepted alternative methods" />
                                     <TextBlock Text="One method per line. These travel with the assessment, not into a student's grade."
-                                               FontSize="10" Foreground="{DynamicResource TextMutedBrush}" Margin="0,3,0,0" />
+                                               FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,3,0,0" />
 
                                     <CheckBox Margin="0,12,0,0" IsChecked="{Binding IsConfirmed, Mode=TwoWay}"
                                               Content="I confirm this is my own assessed mark for this reference item."

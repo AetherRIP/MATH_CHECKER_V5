@@ -16,21 +16,21 @@
             <UniformGrid Columns="3" Margin="0,0,0,12">
                 <Border Style="{StaticResource StatTile}" Margin="0,0,12,0">
                     <StackPanel>
-                        <TextBlock Text="THIS HOUR" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="This hour" Style="{StaticResource SectionLabel}" />
                         <TextBlock Text="{Binding HourText}" Style="{StaticResource DisplayFigure}"
                                    FontSize="32" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource StatTile}" Margin="0,0,12,0">
                     <StackPanel>
-                        <TextBlock Text="TODAY" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="Today" Style="{StaticResource SectionLabel}" />
                         <TextBlock Text="{Binding DayText}" Style="{StaticResource DisplayFigure}"
                                    FontSize="32" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource StatTile}" Margin="0">
                     <StackPanel>
-                        <TextBlock Text="LIMITS" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="Limits" Style="{StaticResource SectionLabel}" />
                         <TextBlock Text="{Binding HourlyLimitText}" FontSize="12" Margin="0,8,0,0"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Text="{Binding DailyLimitText}" FontSize="12" Margin="0,3,0,0"
@@ -46,10 +46,10 @@
                                Margin="0,6,0,0"
                                Visibility="{Binding LimitWarning, Converter={StaticResource NullToVisibility}}" />
                     <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,10,0,10" />
-                    <TextBlock Text="AI PROVIDER TRAFFIC" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="AI provider traffic" Style="{StaticResource SectionLabel}" />
                     <TextBlock Text="{Binding ApiText}" FontSize="12" Margin="0,6,0,0"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
-                    <TextBlock Text="AI REQUESTS PER CORRECTION" Style="{StaticResource SectionLabel}"
+                    <TextBlock Text="AI requests per correction" Style="{StaticResource SectionLabel}"
                                Margin="0,12,0,0" />
                     <TextBlock Text="{Binding AiText}" FontSize="12" Margin="0,6,0,0"
                                Foreground="{DynamicResource TextSecondaryBrush}"
@@ -62,7 +62,7 @@
                  used. Both say "not measured" rather than showing a 0. -->
             <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                 <StackPanel>
-                    <TextBlock Text="GEMINI TOKENS AND LATENCY" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="Gemini tokens and latency" Style="{StaticResource SectionLabel}" />
                     <TextBlock Text="{Binding LedgerTokensText}" FontSize="12" Margin="0,6,0,0"
                                Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap"
@@ -82,7 +82,7 @@
 
                     <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,10,0,10" />
 
-                    <TextBlock Text="MODELS" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="Models" Style="{StaticResource SectionLabel}" />
                     <TextBlock Text="{Binding ProductionModelText}" FontSize="12" Margin="0,6,0,0"
                                TextWrapping="Wrap"
                                AutomationProperties.Name="Production marking model" />

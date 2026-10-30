@@ -64,12 +64,12 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="SET UP THE REPORT"
+                    <TextBlock Grid.Row="0" Text="Set up the report"
                                Style="{StaticResource SectionLabel}" />
 
                     <!-- 1 · scope -->
                     <StackPanel Grid.Row="1" Margin="0,10,0,0">
-                        <TextBlock Text="1 · SCOPE" Style="{StaticResource SectionLabel}"
+                        <TextBlock Text="1 · Scope" Style="{StaticResource SectionLabel}"
                                    Foreground="{DynamicResource TextMutedBrush}" />
 
                         <TextBlock Text="Class" Style="{StaticResource FieldLabel}"
@@ -105,10 +105,10 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="2 · ASSIGNMENTS" Style="{StaticResource SectionLabel}"
+                            <TextBlock Text="2 · Assignments" Style="{StaticResource SectionLabel}"
                                        Foreground="{DynamicResource TextMutedBrush}" />
                             <TextBlock Text="Tick as many as the report should cover."
-                                       FontSize="10.5" Margin="0,2,0,0" TextWrapping="NoWrap"
+                                       FontSize="11" Margin="0,2,0,0" TextWrapping="NoWrap"
                                        TextTrimming="CharacterEllipsis"
                                        Foreground="{DynamicResource TextMutedBrush}" />
                         </StackPanel>
@@ -139,7 +139,7 @@
                                                                TextTrimming="CharacterEllipsis"
                                                                ToolTip="{Binding DisplayTitle}"
                                                                Foreground="{DynamicResource TextBrush}" />
-                                                    <TextBlock Text="{Binding MetaText}" FontSize="10.5"
+                                                    <TextBlock Text="{Binding MetaText}" FontSize="11"
                                                                TextWrapping="NoWrap"
                                                                TextTrimming="CharacterEllipsis"
                                                                ToolTip="{Binding MetaText}"
@@ -158,10 +158,10 @@
                         <DockPanel>
                             <Border DockPanel.Dock="Right" Style="{StaticResource Chip}"
                                     Padding="8,2" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding AssignmentCountText}" FontSize="10.5"
+                                <TextBlock Text="{Binding AssignmentCountText}" FontSize="11"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
-                            <TextBlock Text="{Binding SelectionSummary}" FontSize="10.5"
+                            <TextBlock Text="{Binding SelectionSummary}" FontSize="11"
                                        VerticalAlignment="Center" TextWrapping="NoWrap"
                                        TextTrimming="CharacterEllipsis"
                                        ToolTip="{Binding SelectionSummary}"
@@ -186,14 +186,14 @@
                         <DockPanel>
                             <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Padding="9,2"
                                     VerticalAlignment="Center">
-                                <TextBlock Text="{Binding RowCountText}" FontSize="10.5"
+                                <TextBlock Text="{Binding RowCountText}" FontSize="11"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
                             <TextBlock DockPanel.Dock="Left" Text="Report"
                                        Style="{StaticResource RowTitle}" VerticalAlignment="Center" />
                             <!-- What the current scope covers, in one line, always
                                  visible next to the rows it produced. -->
-                            <TextBlock Text="{Binding ScopeSummary}" FontSize="10.5"
+                            <TextBlock Text="{Binding ScopeSummary}" FontSize="11"
                                        VerticalAlignment="Center" Margin="14,0,12,0"
                                        TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                        ToolTip="{Binding ScopeSummary}"

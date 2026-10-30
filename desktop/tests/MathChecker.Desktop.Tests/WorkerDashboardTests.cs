@@ -329,7 +329,7 @@ public class WorkerDashboardTests
             Assert.Contains("TEST 3", text);
             Assert.Contains("Waiting for a worker", text);
             Assert.Contains("503 UNAVAILABLE", text);
-            Assert.Contains("WORKER DETAILS", text);
+            Assert.Contains("Worker details", text);
         });
     }
 
@@ -382,10 +382,10 @@ public class WorkerDashboardTests
             var text = DescendantText(view);
             // The page owns its three steps and nothing else: no worker card,
             // no live dashboard and no stage list of its own.
-            Assert.Contains("ATTACH THE TWO FILES", text);
-            Assert.Contains("NAME IT AND START", text);
-            Assert.Contains("WATCH IT RUN", text);
-            Assert.DoesNotContain("WORKER DETAILS", text);
+            Assert.Contains("1 · Attach the two files", text);
+            Assert.Contains("2 · Name it and start", text);
+            Assert.Contains("3 · Watch it run", text);
+            Assert.DoesNotContain("Worker details", text);
             Assert.DoesNotContain("PROCESSING", text);
         });
     }

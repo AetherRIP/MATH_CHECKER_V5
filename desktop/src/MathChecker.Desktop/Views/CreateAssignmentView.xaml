@@ -3,9 +3,17 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:MathChecker.Desktop.Core.UI">
     <UserControl.Resources>
+        <!-- One label column for every field in the form, so the inputs share a
+             left edge instead of starting wherever the longest label ended. -->
         <Style x:Key="FormLabel" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}">
             <Setter Property="VerticalAlignment" Value="Top" />
-            <Setter Property="Margin" Value="0,7,14,0" />
+            <Setter Property="Margin" Value="0,8,14,0" />
+        </Style>
+
+        <Style x:Key="FormField" TargetType="TextBox">
+            <Setter Property="Width" Value="{StaticResource FieldWidth}" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Margin" Value="0,0,0,12" />
         </Style>
     </UserControl.Resources>
 
@@ -24,16 +32,16 @@
         </ui:PageFrame.Actions>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
-            <StackPanel MaxWidth="880" HorizontalAlignment="Left">
+            <StackPanel MaxWidth="{StaticResource FormWidth}" HorizontalAlignment="Left">
 
                 <!-- ================================================== 1 · details -->
                 <Border Style="{StaticResource Card}" Padding="18">
                     <StackPanel>
-                        <TextBlock Text="1 · THE ASSIGNMENT" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="1 · The assignment" Style="{StaticResource SectionLabel}" />
 
-                        <Grid Margin="0,12,0,0">
+                        <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="{StaticResource LabelColumnWidth}" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
@@ -43,34 +51,39 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
-                            <TextBlock Text="Name" Style="{StaticResource FormLabel}" />
-                            <TextBox Grid.Column="1" Margin="0,0,0,10"
+                            <TextBlock Text="Name *" Style="{StaticResource FormLabel}" />
+                            <TextBox Grid.Column="1" Style="{StaticResource FormField}"
                                      Text="{Binding AssignmentTitle, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.Name="Assignment name"
                                      ToolTip="What the assignment is called in Math Checker and on reports" />
 
                             <TextBlock Grid.Row="1" Text="Notes" Style="{StaticResource FormLabel}" />
-                            <TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,0,10" Height="64"
-                                     AcceptsReturn="True" TextWrapping="Wrap"
+                            <TextBox Grid.Row="1" Grid.Column="1" Style="{StaticResource FormField}"
+                                     Height="68" AcceptsReturn="True" TextWrapping="Wrap"
                                      VerticalScrollBarVisibility="Auto"
+                                     VerticalContentAlignment="Top"
                                      Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.Name="Assignment notes"
                                      ToolTip="Optional: anything you want on record for this assignment" />
 
                             <TextBlock Grid.Row="2" Text="Due date" Style="{StaticResource FormLabel}" />
-                            <TextBox Grid.Row="2" Grid.Column="1" Margin="0,0,0,10" Width="180"
-                                     HorizontalAlignment="Left"
+                            <TextBox Grid.Row="2" Grid.Column="1" Style="{StaticResource FormField}"
                                      Text="{Binding DueDate, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.Name="Due date"
                                      ToolTip="YYYY-MM-DD, for example 2026-11-14. Leave empty for no due date." />
 
                             <TextBlock Grid.Row="3" Text="Marked out of" Style="{StaticResource FormLabel}" />
-                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal">
-                                <TextBox Width="100" Text="{Binding MaxPoints, UpdateSourceTrigger=PropertyChanged}"
+                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal"
+                                        VerticalAlignment="Top">
+                                <!-- Only a number is narrow; every other field shares
+                                     one width so the form has a single right edge. -->
+                                <TextBox Width="120" Margin="0,0,0,12"
+                                         Text="{Binding MaxPoints, UpdateSourceTrigger=PropertyChanged}"
                                          AutomationProperties.Name="Total marks"
                                          ToolTip="The maximum mark for the paper — the grade scale" />
                                 <TextBlock Text="total marks for the paper" Style="{StaticResource Muted}"
-                                           VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="NoWrap" />
+                                           VerticalAlignment="Center" Margin="12,0,0,12"
+                                           TextWrapping="NoWrap" />
                             </StackPanel>
                         </Grid>
                     </StackPanel>
@@ -79,10 +92,10 @@
                 <!-- ================================================== 2 · place -->
                 <Border Style="{StaticResource Card}" Padding="18">
                     <StackPanel>
-                        <TextBlock Text="2 · WHERE IT LIVES" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="2 · Where it lives" Style="{StaticResource SectionLabel}" />
                         <ComboBox ItemsSource="{Binding Destinations}" SelectedValuePath="Value"
-                                  SelectedValue="{Binding Destination}" Width="380" Margin="0,10,0,0"
-                                  HorizontalAlignment="Left"
+                                  SelectedValue="{Binding Destination}" Width="{StaticResource FieldWidth}"
+                                  Margin="0,10,0,0" HorizontalAlignment="Left"
                                   AutomationProperties.Name="Where the assignment is created" />
                         <TextBlock Text="{Binding DestinationHint}" Style="{StaticResource Muted}"
                                    Margin="0,8,0,0" TextWrapping="Wrap" />
@@ -92,7 +105,7 @@
                 <!-- ================================================== 3 · scheme -->
                 <Border Style="{StaticResource Card}" Padding="18">
                     <StackPanel>
-                        <TextBlock Text="3 · MARK SCHEME" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="3 · Mark scheme" Style="{StaticResource SectionLabel}" />
                         <DockPanel Margin="0,10,0,0">
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
                                         VerticalAlignment="Center" Margin="12,0,0,0">
@@ -112,8 +125,9 @@
                     </StackPanel>
                 </Border>
 
-                <TextBlock Style="{StaticResource Muted}" Margin="2,2,0,18" TextWrapping="Wrap"
-                           Text="Create assignment makes it, attaches the mark scheme, then opens the assignment so papers can be uploaded and corrected." />
+                <!-- One footnote, not a second explanation of the button. -->
+                <TextBlock Style="{StaticResource CardSubtitle}" Margin="2,0,0,18" TextWrapping="Wrap"
+                           Text="Fields marked * are required. Create assignment attaches the mark scheme and opens the assignment so papers can be uploaded." />
             </StackPanel>
         </ScrollViewer>
     </ui:PageFrame>

@@ -79,14 +79,14 @@
                               AutomationProperties.Name="Filter by status" />
 
                     <TextBlock Grid.Column="5" Text="Select a row to inspect its marks and attempts."
-                               FontSize="10.5" VerticalAlignment="Center" Margin="14,0,10,0"
+                               FontSize="11" VerticalAlignment="Center" Margin="14,0,10,0"
                                TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                Foreground="{DynamicResource TextMutedBrush}" />
 
                     <Border Grid.Column="6" Style="{StaticResource Chip}" Padding="9,3"
                             VerticalAlignment="Center">
                         <TextBlock Text="{Binding Items.Count, StringFormat={}{0} rows}"
-                                   FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                   FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                 </Grid>
             </Border>
@@ -106,7 +106,7 @@
                                 <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Padding="9,2"
                                         VerticalAlignment="Center">
                                     <TextBlock Text="{Binding Items.Count, StringFormat={}{0} stored}"
-                                               FontSize="10.5"
+                                               FontSize="11"
                                                Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </Border>
                                 <TextBlock Text="Stored corrections" Style="{StaticResource RowTitle}"
@@ -155,7 +155,7 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                   Padding="0,0,6,0">
                         <StackPanel>
-                            <TextBlock Text="SELECTED CORRECTION" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Selected correction" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="{Binding DetailHeader}" Style="{StaticResource CardTitle}"
                                        FontSize="14" Margin="0,8,0,0" TextWrapping="Wrap"
                                        TextTrimming="None" />
@@ -169,14 +169,14 @@
                             <UniformGrid Columns="2" Margin="0,12,0,0">
                                 <Border Style="{StaticResource MiniTile}">
                                     <StackPanel>
-                                        <TextBlock Text="SCORE" Style="{StaticResource StatLabel}"
+                                        <TextBlock Text="Score" Style="{StaticResource StatLabel}"
                                                    TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                                         <TextBlock Text="{Binding Detail.ScoreText}" Style="{StaticResource MiniValue}" />
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource MiniTile}" Margin="0">
                                     <StackPanel>
-                                        <TextBlock Text="PERCENTAGE" Style="{StaticResource StatLabel}"
+                                        <TextBlock Text="Percentage" Style="{StaticResource StatLabel}"
                                                    TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                                         <TextBlock Text="{Binding Detail.PercentageText}"
                                                    Style="{StaticResource MiniValue}" />
@@ -184,7 +184,7 @@
                                 </Border>
                             </UniformGrid>
 
-                            <TextBlock Text="MARKING DECISIONS" Style="{StaticResource SectionLabel}"
+                            <TextBlock Text="Marking decisions" Style="{StaticResource SectionLabel}"
                                        Margin="0,14,0,6" />
                             <WrapPanel>
                                 <Button Content="Re-mark with AI" Command="{Binding RemarkCommand}"
@@ -256,7 +256,7 @@
                                        TextWrapping="Wrap"
                                        Visibility="{Binding HasQuestions, Converter={StaticResource InverseBoolToVis}}" />
 
-                            <TextBlock Text="EXPORT THIS CORRECTION" Style="{StaticResource SectionLabel}"
+                            <TextBlock Text="Export this correction" Style="{StaticResource SectionLabel}"
                                        Margin="0,14,0,6" />
                             <WrapPanel>
                                 <Button Content="PDF" Command="{Binding ExportPdfCommand}"

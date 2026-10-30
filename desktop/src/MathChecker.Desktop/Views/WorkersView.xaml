@@ -108,15 +108,15 @@
                     <!-- Why queued work is waiting: the backend's own cooldown. -->
                     <Border Style="{StaticResource WarningChip}" Padding="10,4" Margin="0,0,8,0"
                             Visibility="{Binding HasProviderPause, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{Binding ProviderText}" FontSize="10.5"
+                        <TextBlock Text="{Binding ProviderText}" FontSize="11"
                                    Foreground="{DynamicResource WarningTextBrush}" />
                     </Border>
                     <Border Style="{StaticResource Chip}" Padding="10,4" Margin="0,0,8,0">
-                        <TextBlock Text="{Binding LiveMode}" FontSize="10.5"
+                        <TextBlock Text="{Binding LiveMode}" FontSize="11"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                     <Border Style="{StaticResource Chip}" Padding="10,4">
-                        <TextBlock Text="{Binding WorkersText}" FontSize="10.5"
+                        <TextBlock Text="{Binding WorkersText}" FontSize="11"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                 </StackPanel>
@@ -134,31 +134,31 @@
                         <Border Style="{StaticResource SummaryTile}">
                             <StackPanel>
                                 <TextBlock Text="{Binding TotalCount}" Style="{StaticResource SummaryNumber}" />
-                                <TextBlock Text="JOBS" Style="{StaticResource StatLabel}" />
+                                <TextBlock Text="Jobs" Style="{StaticResource StatLabel}" />
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource SummaryTile}">
                             <StackPanel>
                                 <TextBlock Text="{Binding ProcessingCount}" Style="{StaticResource SummaryNumber}" />
-                                <TextBlock Text="PROCESSING" Style="{StaticResource StatLabel}" />
+                                <TextBlock Text="Processing" Style="{StaticResource StatLabel}" />
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource SummaryTile}">
                             <StackPanel>
                                 <TextBlock Text="{Binding QueuedCount}" Style="{StaticResource SummaryNumber}" />
-                                <TextBlock Text="QUEUED" Style="{StaticResource StatLabel}" />
+                                <TextBlock Text="Queued" Style="{StaticResource StatLabel}" />
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource SummaryTile}">
                             <StackPanel>
                                 <TextBlock Text="{Binding CompletedCount}" Style="{StaticResource SummaryNumber}" />
-                                <TextBlock Text="COMPLETED" Style="{StaticResource StatLabel}" />
+                                <TextBlock Text="Completed" Style="{StaticResource StatLabel}" />
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource SummaryTile}">
                             <StackPanel>
                                 <TextBlock Text="{Binding FailedCount}" Style="{StaticResource SummaryNumber}" />
-                                <TextBlock Text="FAILED" Style="{StaticResource StatLabel}" />
+                                <TextBlock Text="Failed" Style="{StaticResource StatLabel}" />
                             </StackPanel>
                         </Border>
                     </WrapPanel>
@@ -174,7 +174,7 @@
                         <StackPanel>
                             <TextBlock Text="{Binding PoolText}" Style="{StaticResource SummaryNumber}"
                                        FontSize="20" />
-                            <TextBlock Text="CORRECTIONS AT ONCE" Style="{StaticResource StatLabel}" />
+                            <TextBlock Text="Corrections at once" Style="{StaticResource StatLabel}" />
                             <DockPanel Margin="0,8,0,0">
                                 <Button DockPanel.Dock="Right" Content="Apply"
                                         Command="{Binding ApplyWorkersCommand}" Height="26" Padding="10,1"
@@ -187,7 +187,7 @@
                                           AutomationProperties.Name="Corrections to run at once"
                                           ToolTip="Capped by the number of healthy API keys" />
                             </DockPanel>
-                            <TextBlock Text="{Binding WorkerNote}" FontSize="10" Margin="0,6,0,0"
+                            <TextBlock Text="{Binding WorkerNote}" FontSize="11" Margin="0,6,0,0"
                                        TextWrapping="Wrap" LineHeight="14"
                                        Foreground="{DynamicResource TextMutedBrush}" />
                         </StackPanel>
@@ -292,12 +292,12 @@
 
                                             <WrapPanel Margin="0,9,0,0">
                                                 <Border Style="{StaticResource Chip}" Padding="8,2" Margin="0,0,6,0">
-                                                    <TextBlock Text="{Binding PagesText}" FontSize="10.5"
+                                                    <TextBlock Text="{Binding PagesText}" FontSize="11"
                                                                Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </Border>
                                                 <Border Style="{StaticResource Chip}" Padding="8,2">
                                                     <TextBlock Text="{Binding AttemptsText, StringFormat=Attempt {0}}"
-                                                               FontSize="10.5"
+                                                               FontSize="11"
                                                                Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </Border>
                                             </WrapPanel>
@@ -380,7 +380,7 @@
                                     Height="28" Padding="10,3" Command="{Binding CloseDetailsCommand}"
                                     VerticalAlignment="Top" />
                             <StackPanel>
-                                <TextBlock Text="WORKER DETAILS" Style="{StaticResource SectionLabel}" />
+                                <TextBlock Text="Worker details" Style="{StaticResource SectionLabel}" />
                                 <TextBlock Text="{Binding DetailTitle}" Style="{StaticResource RowTitle}"
                                            Margin="0,4,0,0" TextWrapping="Wrap" />
                             </StackPanel>
@@ -402,7 +402,7 @@
                             <StackPanel>
                                 <ItemsControl ItemsSource="{Binding DetailFacts}"
                                               ItemTemplate="{StaticResource FactRowTemplate}" />
-                                <TextBlock Text="STAGE HISTORY" Style="{StaticResource SectionLabel}"
+                                <TextBlock Text="Stage history" Style="{StaticResource SectionLabel}"
                                            Margin="0,12,0,6"
                                            Visibility="{Binding HasStages, Converter={StaticResource BoolToVis}}" />
                                 <ItemsControl ItemsSource="{Binding DetailStages}"
@@ -411,7 +411,7 @@
                                         <DataTemplate>
                                             <DockPanel Margin="0,0,0,6">
                                                 <TextBlock DockPanel.Dock="Right" Text="{Binding AtText}"
-                                                           FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                                           FontFamily="{StaticResource MonoFont}" FontSize="11"
                                                            Foreground="{DynamicResource TextMutedBrush}"
                                                            VerticalAlignment="Center" />
                                                 <TextBlock Text="{Binding StageText}" FontSize="11.5"

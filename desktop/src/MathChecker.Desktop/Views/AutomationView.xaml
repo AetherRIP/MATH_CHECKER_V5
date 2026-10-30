@@ -80,7 +80,7 @@
                                 AutomationProperties.Name="Turn automatic correction on or off"
                                 ToolTip="Switches the background scan on or off. It never starts a correction on a paper you cannot see." />
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="AUTOMATIC CORRECTION" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Automatic correction" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="{Binding AutoText}" FontSize="11.5" Margin="0,4,0,0"
                                        TextWrapping="Wrap"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -115,7 +115,7 @@
                               AutomationProperties.Name="Filter by class" />
                     <Border Grid.Column="4" Style="{StaticResource Chip}" Padding="9,3"
                             VerticalAlignment="Center" Margin="12,0,0,0">
-                        <TextBlock Text="{Binding ShownText}" FontSize="10.5"
+                        <TextBlock Text="{Binding ShownText}" FontSize="11"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                 </Grid>
@@ -128,10 +128,10 @@
 
                     <!-- ================================================== 1 · pick -->
                     <DockPanel Margin="0,0,0,8">
-                        <TextBlock DockPanel.Dock="Left" Text="1 · CHOOSE AN ASSIGNMENT"
+                        <TextBlock DockPanel.Dock="Left" Text="1 · Choose an assignment"
                                    Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
                         <TextBlock Text="The counts come from Google Classroom as last synced."
-                                   FontSize="10.5" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextMutedBrush}" TextWrapping="NoWrap" />
                     </DockPanel>
 
@@ -169,7 +169,7 @@
                                                        Margin="0,3,0,0" TextWrapping="NoWrap"
                                                        TextTrimming="CharacterEllipsis"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
-                                            <TextBlock Text="{Binding DueText}" FontSize="10.5"
+                                            <TextBlock Text="{Binding DueText}" FontSize="11"
                                                        Margin="0,2,0,0"
                                                        Foreground="{DynamicResource TextMutedBrush}"
                                                        TextWrapping="NoWrap" />
@@ -226,7 +226,7 @@
                                                         AutomationProperties.Name="{Binding ButtonAccessibleName}"
                                                         ToolTip="{Binding ReadyText}"
                                                         Visibility="{Binding IsReady, Converter={StaticResource InverseBoolToVis}}" />
-                                                <TextBlock Text="{Binding ReadyText}" FontSize="10.5"
+                                                <TextBlock Text="{Binding ReadyText}" FontSize="11"
                                                            Margin="0,5,0,0" HorizontalAlignment="Right"
                                                            MaxWidth="330" TextAlignment="Right"
                                                            TextWrapping="Wrap">
@@ -252,7 +252,7 @@
                     </ItemsControl>
 
                     <!-- ================================================ 2 · review -->
-                    <TextBlock Text="2 · REVIEW BEFORE STARTING" Style="{StaticResource SectionLabel}"
+                    <TextBlock Text="2 · Review before starting" Style="{StaticResource SectionLabel}"
                                Margin="0,10,0,8" />
 
                     <Border Style="{StaticResource Card}" Visibility="{Binding HasSelection, Converter={StaticResource InverseBoolToVis}}">
@@ -307,10 +307,10 @@
                                             ToolTip="Queue exactly these papers; one failure never stops the rest" />
                                 </StackPanel>
                                 <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="PAPERS TO CORRECT"
+                                    <TextBlock Text="Papers to correct"
                                                Style="{StaticResource SectionLabel}" />
                                     <TextBlock Text="{Binding SelectionText}"
-                                               FontSize="10.5" Margin="0,2,0,0"
+                                               FontSize="11" Margin="0,2,0,0"
                                                Foreground="{DynamicResource TextMutedBrush}" />
                                 </StackPanel>
                             </DockPanel>
@@ -328,7 +328,7 @@
                                             ToolTip="Untick everything; nothing will be queued" />
                                 </StackPanel>
                                 <TextBlock Text="Untick a student to leave that paper out of this run."
-                                           FontSize="10.5" VerticalAlignment="Center"
+                                           FontSize="11" VerticalAlignment="Center"
                                            TextWrapping="Wrap" Margin="0,0,10,0"
                                            Foreground="{DynamicResource TextMutedBrush}" />
                             </DockPanel>
@@ -361,7 +361,7 @@
 
                             <DockPanel Margin="0,10,0,0"
                                        Visibility="{Binding HasSkippedPapers, Converter={StaticResource BoolToVis}}">
-                                <TextBlock DockPanel.Dock="Left" Text="SKIPPED" Style="{StaticResource SectionLabel}"
+                                <TextBlock DockPanel.Dock="Left" Text="Skipped" Style="{StaticResource SectionLabel}"
                                            VerticalAlignment="Top" Margin="0,2,14,0" />
                                 <ItemsControl ItemsSource="{Binding SkippedPapers}">
                                     <ItemsControl.ItemTemplate>
@@ -383,7 +383,7 @@
                     </Border>
 
                     <!-- ================================================= 3 · queue -->
-                    <TextBlock Text="3 · QUEUE" Style="{StaticResource SectionLabel}" Margin="0,10,0,8" />
+                    <TextBlock Text="3 · Queue" Style="{StaticResource SectionLabel}" Margin="0,10,0,8" />
                     <Border Style="{StaticResource Card}">
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Content="Open Correction monitor"
@@ -406,7 +406,7 @@
                         <StackPanel Margin="0,4,0,0">
                             <Border Style="{StaticResource Card}">
                                 <StackPanel>
-                                    <TextBlock Text="BACKGROUND CHECK" Style="{StaticResource SectionLabel}" />
+                                    <TextBlock Text="Background check" Style="{StaticResource SectionLabel}" />
                                     <TextBlock Text="A separate, scheduled scan: it looks for work that was handed in after you last looked. It does not correct an assignment you have not allow-listed."
                                                Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,4,0,10" />
 
@@ -510,7 +510,7 @@
                                     <DockPanel Margin="0,0,0,8">
                                         <Button DockPanel.Dock="Right" Content="Clear log"
                                                 Command="{Binding ClearLogCommand}" Height="26" Padding="9,2" />
-                                        <TextBlock Text="BACKGROUND ACTIVITY" Style="{StaticResource SectionLabel}"
+                                        <TextBlock Text="Background activity" Style="{StaticResource SectionLabel}"
                                                    VerticalAlignment="Center" />
                                     </DockPanel>
                                     <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">

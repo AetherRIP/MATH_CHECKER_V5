@@ -37,7 +37,7 @@
                 <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,0,10"
                         Visibility="{Binding Info, Converter={StaticResource NullToVisibility}}">
                     <StackPanel>
-                        <TextBlock Text="ABOUT THESE OVERRIDES" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="About these overrides" Style="{StaticResource SectionLabel}" />
                         <TextBlock Text="{Binding Info}" FontSize="12.5" Margin="0,7,0,0"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextWrapping="Wrap" LineHeight="19" />
@@ -48,7 +48,7 @@
             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="14" Margin="0,0,0,12">
                 <DockPanel>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                        <TextBlock Text="SYSTEM PROMPT OVERRIDE" Style="{StaticResource SectionLabel}"
+                        <TextBlock Text="System prompt override" Style="{StaticResource SectionLabel}"
                                    VerticalAlignment="Center" />
                         <TextBlock DockPanel.Dock="Right" Text="Applies to every correction"
                                    Style="{StaticResource CardSubtitle}" HorizontalAlignment="Right" />
@@ -63,7 +63,7 @@
             <Border Grid.Row="2" Style="{StaticResource Card}" Padding="14">
                 <DockPanel>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                        <TextBlock Text="USER PROMPT OVERRIDE" Style="{StaticResource SectionLabel}"
+                        <TextBlock Text="User prompt override" Style="{StaticResource SectionLabel}"
                                    VerticalAlignment="Center" />
                         <TextBlock DockPanel.Dock="Right" Text="Wraps each uploaded paper"
                                    Style="{StaticResource CardSubtitle}" HorizontalAlignment="Right" />

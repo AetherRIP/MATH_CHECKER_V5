@@ -831,6 +831,25 @@ public sealed class StudentDto
         ? $"{TotalEarned:0.#} / {TotalAvailable:0.#} ({TotalEarned / TotalAvailable * 100:0.#}%)"
         : "—";
 
+    /// <summary>The score as a mark sheet states it, split so the roster can give
+    /// the figure its own column instead of squeezing it into a sentence that
+    /// the row has no width for.</summary>
+    public string ScoreText => TotalAvailable > 0
+        ? $"{TotalEarned:0.#} / {TotalAvailable:0.#}"
+        : "—";
+
+    public string ScorePercentText => TotalAvailable > 0
+        ? $"{TotalEarned / TotalAvailable * 100:0.#}%"
+        : string.Empty;
+
+    /// <summary>How many corrections back the score. A count, not a heading.</summary>
+    public string CorrectionsText => Corrections switch
+    {
+        0 => "No corrections",
+        1 => "1 correction",
+        _ => $"{Corrections} corrections",
+    };
+
     /// <summary>The teacher's own class, or an honest "not assigned".</summary>
     public string ClassText => string.IsNullOrWhiteSpace(ClassLabel) ? "Not assigned" : ClassLabel!;
 

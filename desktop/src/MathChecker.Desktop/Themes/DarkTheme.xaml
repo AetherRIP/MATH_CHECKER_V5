@@ -59,6 +59,13 @@
     <SolidColorBrush x:Key="HeroInkBrush" Color="#F2FAFB" />
     <SolidColorBrush x:Key="HeroMutedBrush" Color="#93B7BC" />
 
+    <!-- The single light action the hero carries. It is priced against the
+         ink panel, not the theme, so its hover is a teal-tinted white rather
+         than a palette surface. -->
+    <SolidColorBrush x:Key="HeroActionInkBrush" Color="#0E1A1C" />
+    <SolidColorBrush x:Key="HeroActionHoverBrush" Color="#E6F5F3" />
+    <SolidColorBrush x:Key="HeroActionPressedBrush" Color="#CBE8E4" />
+
     <LinearGradientBrush x:Key="CanvasGradientBrush" StartPoint="0,0" EndPoint="0,1">
         <GradientStop Color="#0C1117" Offset="0" />
         <GradientStop Color="#0B0F14" Offset="1" />

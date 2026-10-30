@@ -14,7 +14,7 @@
     </UserControl.Resources>
 
     <ui:PageFrame Eyebrow="{Binding Eyebrow}" Title="{Binding Title}"
-                  Description="{Binding AssignmentTitle}"
+                  Description="Every question in the scheme, the answer the marker will use, and how each one is handled."
                   StatusText="{Binding Status}" ErrorText="{Binding Error}"
                   IsBusy="{Binding IsBusy}" BodyPadding="0,18,0,0">
         <ui:PageFrame.Actions>
@@ -40,7 +40,7 @@
                  ============================================================ -->
             <Border Style="{StaticResource Card}">
                 <StackPanel>
-                    <TextBlock Text="MARK SCHEME AND DECISIONS" Style="{StaticResource SectionLabel}" />
+                    <TextBlock Text="What is in the scheme" Style="{StaticResource SectionLabel}" />
 
                     <TextBlock Text="{Binding SummaryLine}" FontSize="12" Margin="0,8,0,0"
                                TextWrapping="Wrap" Foreground="{DynamicResource TextBrush}" />
@@ -69,17 +69,27 @@
                     </WrapPanel>
 
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                        <TextBox Width="240" VerticalAlignment="Center"
-                                 Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
-                                 AutomationProperties.Name="Search questions"
-                                 ToolTip="Find a question by its number, e.g. 4(b)(ii)" />
+                        <Grid Width="240" VerticalAlignment="Center">
+                            <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Search questions"
+                                     ToolTip="Find a question by its number, e.g. 4(b)(ii)" />
+                            <!-- WPF has no placeholder: a muted label that disappears
+                                 as soon as the teacher types. Without it the field
+                                 was an unlabelled empty box. -->
+                            <TextBlock Text="Find a question, e.g. 4(b)(ii)" IsHitTestVisible="False"
+                                       Margin="11,0,0,0" VerticalAlignment="Center" FontSize="12"
+                                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Visibility="{Binding Search,
+                                           Converter={StaticResource EmptyToVisibility}}" />
+                        </Grid>
                         <ComboBox Width="180" Margin="8,0,0,0" VerticalAlignment="Center"
                                   ItemsSource="{Binding Filters}"
                                   SelectedItem="{Binding Filter}"
                                   AutomationProperties.Name="Filter questions" />
                         <Border Style="{StaticResource Chip}" Padding="9,3" Margin="8,0,0,0"
                                 VerticalAlignment="Center">
-                            <TextBlock Text="{Binding FilteredCount}" FontSize="10.5"
+                            <TextBlock Text="{Binding FilteredCount}" FontSize="11"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Border>
                     </StackPanel>
@@ -159,10 +169,12 @@
                                                 <Setter Property="MaxHeight" Value="34" />
                                                 <Setter Property="VerticalAlignment" Value="Center" />
                                                 <Setter Property="ToolTip" Value="{Binding AnswerSummary}" />
+                                                <!-- Muted ink, no synthetic italic: the
+                                                     bundled family has no italic face, so
+                                                     WPF faked the slant. -->
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding AnswerIsPlaceholder}"
                                                                  Value="True">
-                                                        <Setter Property="FontStyle" Value="Italic" />
                                                         <Setter Property="Foreground"
                                                                 Value="{DynamicResource TextMutedBrush}" />
                                                     </DataTrigger>
@@ -221,13 +233,22 @@
                                        TextWrapping="Wrap"
                                        Foreground="{DynamicResource TextMutedBrush}" />
 
+                            <!-- Nothing chosen: say what the pane is for, rather
+                                 than showing an empty answer box and a row of dead
+                                 buttons that look like a filled-in form. -->
+                            <TextBlock Text="Pick a question on the left to see the answer the marker will use, choose how it is handled, and read every change made to it."
+                                       FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Visibility="{Binding HasSelection, Converter={StaticResource InverseBoolToVis}}" />
+
+                            <StackPanel Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
                             <Border Style="{StaticResource Chip}" Padding="9,3" Margin="0,10,0,0"
                                     HorizontalAlignment="Left">
-                                <TextBlock Text="{Binding SelectedStatus}" FontSize="10.5"
+                                <TextBlock Text="{Binding SelectedStatus}" FontSize="11"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
 
-                            <TextBlock Text="THE SCHEME SAYS" Style="{StaticResource SectionLabel}"
+                            <TextBlock Text="The scheme says" Style="{StaticResource SectionLabel}"
                                        Margin="0,16,0,0" />
                             <TextBlock Text="{Binding SelectedAnswer}" FontSize="12"
                                        Margin="0,6,0,0" TextWrapping="Wrap">
@@ -238,7 +259,6 @@
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding SelectedAnswerIsPlaceholder}"
                                                          Value="True">
-                                                <Setter Property="FontStyle" Value="Italic" />
                                                 <Setter Property="Foreground"
                                                         Value="{DynamicResource TextMutedBrush}" />
                                             </DataTrigger>
@@ -246,11 +266,18 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
+                            <!-- Said in words rather than implied by a fake slant. -->
+                            <TextBlock Text="No answer was extracted for this question; write the one the marker should use below."
+                                       FontSize="11.5" Margin="0,6,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource WarningTextBrush}"
+                                       Visibility="{Binding SelectedAnswerIsPlaceholder,
+                                           Converter={StaticResource BoolToVis}}" />
+
                             <TextBlock Text="{Binding SelectedCriteria}" FontSize="11.5"
                                        Margin="0,6,0,0" TextWrapping="Wrap"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
 
-                            <TextBlock Text="ANSWER THE MARKER WILL USE" Style="{StaticResource SectionLabel}"
+                            <TextBlock Text="Answer the marker will use" Style="{StaticResource SectionLabel}"
                                        Margin="0,16,0,0" />
                             <TextBox Margin="0,6,0,0" MinHeight="54" AcceptsReturn="True"
                                      TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
@@ -266,7 +293,7 @@
                                         ToolTip="Discard your edit; the uploaded scheme is never modified" />
                             </StackPanel>
 
-                            <TextBlock Text="YOUR DECISION" Style="{StaticResource SectionLabel}"
+                            <TextBlock Text="Your decision" Style="{StaticResource SectionLabel}"
                                        Margin="0,16,0,0" />
                             <WrapPanel Margin="0,6,0,0">
                                 <Button Content="Mark automatically" Margin="0,0,6,6"
@@ -286,7 +313,7 @@
                                         ToolTip="Never mark this question; its marks leave the total" />
                             </WrapPanel>
 
-                            <TextBlock Text="NOTE" Style="{StaticResource SectionLabel}" Margin="0,10,0,0" />
+                            <TextBlock Text="Note" Style="{StaticResource SectionLabel}" Margin="0,12,0,0" />
                             <TextBox Margin="0,6,0,0" TextWrapping="Wrap"
                                      Text="{Binding NoteDraft, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.Name="Note"
@@ -295,7 +322,7 @@
                                     Command="{Binding SaveNoteCommand}"
                                     IsEnabled="{Binding HasSelection}" />
 
-                            <TextBlock Text="DECISION HISTORY" Style="{StaticResource SectionLabel}"
+                            <TextBlock Text="Decision history" Style="{StaticResource SectionLabel}"
                                        Margin="0,16,0,0" />
                             <TextBlock Text="No changes have been made to this question."
                                        FontSize="11.5" Margin="0,6,0,0" TextWrapping="Wrap"
@@ -313,7 +340,7 @@
                                                 <TextBlock Text="{Binding Reason}" FontSize="11"
                                                            Margin="0,2,0,0" TextWrapping="Wrap"
                                                            Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                <TextBlock Text="{Binding When}" FontSize="10.5"
+                                                <TextBlock Text="{Binding When}" FontSize="11"
                                                            Margin="0,2,0,0"
                                                            Foreground="{DynamicResource TextMutedBrush}" />
                                             </StackPanel>
@@ -321,6 +348,7 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
                 </Border>
