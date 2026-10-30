@@ -369,6 +369,12 @@ from .automation import routes as automation_routes  # noqa: E402
 
 app.include_router(automation_routes.router)
 
+# Teacher-verified marking benchmark: reference verification, recorded runs
+# and reproducibility checks. It writes only under data/benchmark/.
+from .api import benchmark_routes  # noqa: E402
+
+benchmark_routes.register(app)
+
 # Read-only testing/accuracy audit view (no writes, no publishing).
 from .audit import routes as audit_routes  # noqa: E402
 

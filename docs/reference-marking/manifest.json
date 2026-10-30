@@ -174,7 +174,7 @@
             "b^3 / b = b^2",
             "= 3b^2a^3"
           ],
-          "ruling": "3 of 2: all three clauses evidenced. The final answer is written 3b^2a^3 rather than 3a^3b^2 \u2014 the scheme explicitly accepts an equivalent ordering, so A1 stands.",
+          "ruling": "3 of 3: all three clauses evidenced. The final answer is written 3b^2a^3 rather than 3a^3b^2 \u2014 the scheme explicitly accepts an equivalent ordering, so A1 stands.",
           "basis": "A1's own wording admits equivalent orderings; multiplication is commutative"
         },
         {

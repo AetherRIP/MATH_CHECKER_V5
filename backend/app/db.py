@@ -226,6 +226,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
     bw_cols = {row[1] for row in conn.execute("PRAGMA table_info(job_bandwidth)")}
     if bw_cols and "ai_calls_json" not in bw_cols:
         conn.execute("ALTER TABLE job_bandwidth ADD COLUMN ai_calls_json TEXT")
+    # Measured token totals (gemini.telemetry). Additive: an existing install
+    # keeps every counter it already holds, and 0 means "not recorded yet"
+    # rather than "this paper cost nothing" — the ledger rows are the authority.
+    for col in ("input_tokens", "output_tokens", "cached_tokens",
+                "total_tokens"):
+        if bw_cols and col not in bw_cols:
+            conn.execute(
+                f"ALTER TABLE job_bandwidth ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
 
     # Classroom assignment lifecycle (§ deletion sync). When an assignment is
     # deleted in Google Classroom it is ARCHIVED here, never hard-deleted, so

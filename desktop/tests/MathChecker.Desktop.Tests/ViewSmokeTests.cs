@@ -190,6 +190,7 @@ public sealed class ViewSmokeTests
         yield return () => new AutomationView();
         yield return () => new ReviewView();
         yield return () => new SchemeReviewView();
+        yield return () => new AccuracyBenchmarkView();
         yield return () => new MarkingDeskView();
         yield return () => new ResultsView();
         yield return () => new ReportsView();

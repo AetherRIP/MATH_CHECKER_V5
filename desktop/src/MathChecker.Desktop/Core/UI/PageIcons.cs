@@ -19,6 +19,7 @@ public static class PageIcons
         ["jobs"] = "\uE81C",        // History
         ["automation"] = "\uE945",  // Lightning
         ["review"] = "\uE73E",      // CheckMark
+        ["accuracy"] = "\uE9D2",    // Chart (the benchmark's measured agreement)
         ["scheme"] = "\uE8A5",      // Document
         ["desk"] = "\uE70F",        // Edit
         ["results"] = "\uE9D2",     // Chart
