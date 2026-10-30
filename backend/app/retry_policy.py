@@ -358,6 +358,17 @@ ACTION_FAIL = "fail"
 
 _WAIT_BUDGET_SECONDS = 15 * 60  # total parked time per job (matches JobManager)
 
+#: Minimum wait before re-running a job the provider shed with "high demand".
+#:
+#: Measured consequence of not having this: the recorded correction jobs show
+#: four full attempts, each diagnosed HIGH_DEMAND and re-run about 2 s apart,
+#: because the circuit breaker had no cooldown recorded yet when the parent
+#: asked. A 503 "high demand" is not resolved in two seconds, so retrying that
+#: fast spends the job's attempt budget on a provider that is already shedding
+#: work. A minute still fits well inside the 15-minute parking budget, and a
+#: longer provider cooldown always wins over it.
+HIGH_DEMAND_MIN_PARK_SECONDS = 60.0
+
 
 @dataclass(frozen=True)
 class Decision:
@@ -387,6 +398,8 @@ def decide(failure: Failure, *, attempts: int, max_attempts: int,
         delay = float(park_hint_delay or 0.0)
         if delay <= 0:
             delay = compute_backoff(max(1, retries_used + 1))
+        if failure.cls == HIGH_DEMAND:
+            delay = max(delay, HIGH_DEMAND_MIN_PARK_SECONDS)
         if waited_seconds + delay > wait_budget:
             return Decision(
                 action=ACTION_FAIL, delay=0.0,

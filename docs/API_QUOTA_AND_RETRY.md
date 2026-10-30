@@ -57,7 +57,7 @@ retries, and whether to **park** instead of spending attempts.
 |---|---|---|---|
 | `TRANSIENT_PROVIDER_ERROR` | yes | 2 | no |
 | `RATE_LIMIT` | yes | 2 | **yes** |
-| `HIGH_DEMAND` | yes | 2 | **yes** |
+| `HIGH_DEMAND` | yes | 2 | **yes** (≥ 60 s) |
 | `API_UNAVAILABLE` | yes | 2 | **yes** |
 | `TIMEOUT` | yes | 1 | no |
 | `NETWORK_ERROR` | yes | 1 | no |
@@ -71,7 +71,16 @@ retries, and whether to **park** instead of spending attempts.
 | `WORKER_CRASH` | yes | 2 | no |
 
 Parking is the important one: a capacity problem waits for capacity instead of
-burning the job's attempt budget, so three 503s do not fail a paper.
+burning the job's attempt budget, so three 503s do not fail a paper. A
+`HIGH_DEMAND` park never retries sooner than `HIGH_DEMAND_MIN_PARK_SECONDS = 60`,
+because the recorded jobs used to re-run a shed request about two seconds later
+and spend the attempt budget on a provider that was already refusing work; a
+longer provider cooldown still wins.
+
+A deployment that configures more than one marking model gives every non-primary
+entry a rescue budget of 4 minutes and a single attempt (`legacy_marking`,
+`FALLBACK_MODEL_DEADLINE_MS`), so a slow model cannot hold a job for the length
+of the page-scaled timeout.
 
 Backoff is jittered exponential (`BACKOFF_BASE_SECONDS = 2`,
 `BACKOFF_GROWTH = 2`, `BACKOFF_CAP_SECONDS = 30`, jitter 0.8–1.2), and a
@@ -165,6 +174,16 @@ never mistaken for "measured nothing".
 - Desktop: **Usage → AI requests per correction** and the AI-provider-traffic
   line. An unmeasured job says nothing rather than "0 requests".
 - Per job: `telemetry.job_totals(job_id)` and `telemetry.for_job(job_id)`.
+
+## 8a. Reasoning (thinking) budget
+
+`gemini.thinking_budget` controls the marking call's reasoning budget. It is
+`None` by default, which sends exactly what the application has always sent.
+Measured on 2026-10-30 (see `docs/results/CORRECTION_PERFORMANCE_RECOVERY.md`):
+on the reference papers no mark moved with thinking off, while a real 41-page
+call halved (139 s → 64 s) and its total moved by one mark. Reproduce with
+`backend/scripts/benchmark_marking_config.py`; enable per deployment only after
+a teacher checks real scripts marked under it.
 
 ## 9. Model registry
 

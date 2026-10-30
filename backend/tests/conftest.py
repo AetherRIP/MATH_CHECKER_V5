@@ -84,6 +84,12 @@ def fresh_state(tmp_path, monkeypatch):
     monkeypatch.setattr(_concurrency, "_control",
                         _concurrency.ConcurrencyControl())
 
+    # The provider circuit breaker is process-global for the same reason: a test
+    # that simulates a 503 benches the model for every later test in the run, so
+    # a following test would find the model "cooling down" and send nothing.
+    from app.gemini import provider_health as _health
+    monkeypatch.setattr(_health, "_provider", _health.ProviderHealth())
+
     # login throttling is process-global in-memory state; clear it so one test
     # cannot rate-limit another (every TestClient shares the same client host).
     from app import auth_gate as _ag

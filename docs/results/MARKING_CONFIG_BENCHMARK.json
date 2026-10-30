@@ -1,0 +1,114 @@
+{
+  "measured_at": "2026-10-30T18:48:30Z",
+  "model": "gemini-3.6-flash",
+  "dataset": {
+    "version": "1",
+    "sha256": "f0a32cc936d60d0660f71818fa1b25c9bb4d10aff687e43339525ea8b589541a"
+  },
+  "certified": false,
+  "certification_note": "Reference marks are scheme-derived; review.verified_by is null. Agreement means agreement with the printed scheme, not a teacher-certified accuracy figure.",
+  "arms": [
+    {
+      "config": "default",
+      "settings": {},
+      "certified": false,
+      "certification": "the included references are scheme-derived, not teacher-verified",
+      "items_exact": 16,
+      "items_compared": 16,
+      "items_rate": 1.0,
+      "questions_exact": 13,
+      "questions_compared": 13,
+      "mean_absolute_error": 0,
+      "missing_marks": 0,
+      "call_seconds": [
+        51.0,
+        16.9
+      ],
+      "call_median_s": 34.0,
+      "call_total_s": 67.9,
+      "thoughts_tokens": [
+        4536,
+        2138
+      ],
+      "thoughts_total": 6674,
+      "upload_seconds": 8.5,
+      "run_id": "20261030-184830-948acd"
+    },
+    {
+      "config": "no-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 0
+        }
+      },
+      "certified": false,
+      "certification": "the included references are scheme-derived, not teacher-verified",
+      "items_exact": 16,
+      "items_compared": 16,
+      "items_rate": 1.0,
+      "questions_exact": 13,
+      "questions_compared": 13,
+      "mean_absolute_error": 0,
+      "missing_marks": 0,
+      "call_seconds": [
+        101.3,
+        7.4
+      ],
+      "call_median_s": 54.4,
+      "call_total_s": 108.7,
+      "thoughts_tokens": [
+        0,
+        0
+      ],
+      "thoughts_total": 0,
+      "upload_seconds": 3.6,
+      "run_id": "20261030-184947-09b56c"
+    },
+    {
+      "config": "low-thinking",
+      "settings": {
+        "thinking_config": {
+          "thinking_budget": 1024
+        }
+      },
+      "certified": false,
+      "certification": "the included references are scheme-derived, not teacher-verified",
+      "items_exact": 15,
+      "items_compared": 16,
+      "items_rate": 0.9375,
+      "questions_exact": 12,
+      "questions_compared": 13,
+      "mean_absolute_error": 0.0625,
+      "missing_marks": 0,
+      "call_seconds": [
+        38.8,
+        51.5
+      ],
+      "call_median_s": 45.1,
+      "call_total_s": 90.3,
+      "thoughts_tokens": [
+        0,
+        0
+      ],
+      "thoughts_total": 0,
+      "upload_seconds": 3.4,
+      "run_id": "20261030-185139-923bc1"
+    }
+  ],
+  "comparisons": [
+    {
+      "vs": "default",
+      "config": "no-thinking",
+      "items_exact_delta": 0,
+      "same_rate": true,
+      "median_call_delta_s": 20.4
+    },
+    {
+      "vs": "default",
+      "config": "low-thinking",
+      "items_exact_delta": -1,
+      "same_rate": false,
+      "median_call_delta_s": 11.1
+    }
+  ]
+}

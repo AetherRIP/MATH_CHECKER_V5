@@ -214,7 +214,11 @@ class TestModelFallback:
         assert client.models.calls == ["m1", "m2"]
 
     def test_mark_one_submission_pipeline(self):
-        client = self._make_client({"gemini-3.8-flash": '''
+        # Answer whatever model the configured chain actually asks for: this
+        # test is about the pipeline, not about which model is the default.
+        from app.config import get_config
+        configured_model = list(get_config().gemini.primary_models)[0]
+        client = self._make_client({configured_model: '''
 {
   "paper_info": {"qualification": "Q", "paper": "1H", "session": "S", "max_marks": 5},
   "questions": [
