@@ -75,6 +75,15 @@ def fresh_state(tmp_path, monkeypatch):
     from app.workers.pool import WorkerPoolHolder
     WorkerPoolHolder.reset()
 
+    # The adaptive concurrency controller is process-global state as well. A test
+    # that simulates a 429 halves it, and without this the NEXT test's pool would
+    # inherit that reduction and refuse to run the parallelism it asked for —
+    # which is exactly how one test's simulated outage became another test's
+    # "flake". A fresh controller per test keeps the assertion honest.
+    from app.workers import concurrency as _concurrency
+    monkeypatch.setattr(_concurrency, "_control",
+                        _concurrency.ConcurrencyControl())
+
     # login throttling is process-global in-memory state; clear it so one test
     # cannot rate-limit another (every TestClient shares the same client host).
     from app import auth_gate as _ag
