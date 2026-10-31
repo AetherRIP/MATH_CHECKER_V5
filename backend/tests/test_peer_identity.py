@@ -12,7 +12,8 @@ from dataclasses import replace
 
 import pytest
 
-from app.distributed import accounts, audit as distributed_audit, schema, signing
+from app.distributed import (accounts, audit as distributed_audit, schema,
+                             secure_store, signing)
 from app.peer import (AUTH_FAILED, CERT_EXPIRED, CERT_NOT_YET_VALID,
                       DUPLICATE_DEVICE_ID, EPOCH_ROLLBACK, IDENTIFIER_KEY_MISMATCH,
                       REVOKED, VERSION_MISMATCH, WRONG_DEPARTMENT, PeerError,
@@ -402,3 +403,18 @@ def test_no_private_key_reaches_a_shared_document(department, device, certificat
                      revocations.to_json()):
         assert "PRIVATE KEY" not in document
         assert "private_key" not in document
+
+def test_identity_file_with_a_foreign_private_key_is_refused(department):
+    """A key pair is one fact, so a mismatched store is a broken store.
+
+    Before this was checked the file loaded happily and the identity signed
+    bytes nothing could verify -- a failure that only surfaces when a peer
+    rejects a certificate the device believes it holds.
+    """
+    identity = peer_identity.DeviceIdentity.generate(department.dept_id, now=NOW)
+    path = identity.save()
+    data = secure_store.load(path)
+    data["private_key_pem"] = signing.generate_keypair()[0]
+    secure_store.save(path, data)
+    with pytest.raises(peer_identity.PeerErrorStoreUnreadable):
+        peer_identity.DeviceIdentity.load(path)

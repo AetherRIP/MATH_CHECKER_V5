@@ -14,10 +14,10 @@ from dataclasses import replace
 
 import pytest
 
-from app.distributed import signing
+from app.distributed import secure_store, signing
 from app.peer import (AUTH_FAILED, IDENTIFIER_KEY_MISMATCH, INVITE_EXPIRED,
                       INVITE_INVALID, REVOKED, ROSTER_INCOMPLETE, WRONG_DEPARTMENT,
-                      PeerVerificationError)
+                      PeerError, PeerVerificationError)
 from app.peer import ca as peer_ca
 from app.peer import identity as peer_identity
 from app.peer import invite as peer_invite
@@ -289,3 +289,64 @@ def test_invitation_signature_is_not_transferable_to_another_department(
     with pytest.raises(PeerVerificationError) as exc:
         swapped.accept(newcomer, request=request, now=NOW)
     assert _reason(exc) == AUTH_FAILED
+
+# ---------------------------------------------------------------------------
+# a device that already trusts a department cannot be re-pointed at another
+# ---------------------------------------------------------------------------
+
+def test_reinvitation_by_a_different_department_is_refused_when_a_key_is_pinned(
+        department, newcomer, owner_records):
+    credentials, _, _ = _claim(department, newcomer, owner_records)
+    other_department = peer_ca.DepartmentCA.create("dept-beta", "Beta Department",
+                                                   now=NOW)
+
+    # The same key pair, re-invited by a *different* root. Nothing inside the
+    # envelope is invalid: the envelope is signed by the key it carries.
+    rehomed = newcomer.adopt_department(other_department.dept_id)
+    request = peer_invite.InviteRequest.create(rehomed, now=NOW)
+    invitation = peer_invite.Invitation.issue(
+        request, department=other_department,
+        roster=peer_roster.Roster(other_department.dept_id),
+        revocations=peer_revocation.RevocationList(other_department.dept_id),
+        now=NOW)
+
+    with pytest.raises(PeerVerificationError) as exc:
+        invitation.accept(
+            rehomed, request=request, now=NOW,
+            expected_department_public_key=credentials.department_public_key)
+    assert _reason(exc) == WRONG_DEPARTMENT
+
+
+def test_a_pinned_department_key_still_accepts_its_own_invitation(
+        department, newcomer, owner_records):
+    _, invitation, request = _claim(department, newcomer, owner_records)
+    accepted = invitation.accept(
+        newcomer, request=request, now=NOW,
+        expected_department_public_key=department.public_key_pem)
+    assert accepted.department_public_key == department.public_key_pem
+
+
+# ---------------------------------------------------------------------------
+# a saved credential must describe one device in one department
+# ---------------------------------------------------------------------------
+
+def test_credentials_file_naming_another_department_is_refused(
+        department, newcomer, owner_records):
+    credentials, _, _ = _claim(department, newcomer, owner_records)
+    path = credentials.save()
+    data = secure_store.load(path)
+    data["dept_id"] = "dept-beta"
+    secure_store.save(path, data)
+    with pytest.raises(PeerError):
+        peer_invite.PeerCredentials.load(path)
+
+
+def test_credentials_file_with_a_foreign_private_key_is_refused(
+        department, newcomer, owner_records):
+    credentials, _, _ = _claim(department, newcomer, owner_records)
+    path = credentials.save()
+    data = secure_store.load(path)
+    data["private_key_pem"] = signing.generate_keypair()[0]
+    secure_store.save(path, data)
+    with pytest.raises(PeerError):
+        peer_invite.PeerCredentials.load(path)

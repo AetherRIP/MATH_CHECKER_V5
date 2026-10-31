@@ -306,14 +306,21 @@ class Invitation:
 
     def accept(self, identity: DeviceIdentity, *,
                request: InviteRequest | None = None,
+               expected_department_public_key: str | None = None,
                known_revocation_epoch: int | None = None,
                known_roster_epoch: int | None = None,
                now: float | None = None) -> "PeerCredentials":
         """Verify the whole chain and return this device's credentials.
 
         Verification order is fixed so each failure has one reason:
-        envelope signature -> expiry -> department -> certificate chain ->
-        identity binding -> request binding -> roster -> revocation.
+        envelope signature -> pinned department key -> expiry -> certificate
+        chain -> identity binding -> request binding -> roster -> revocation.
+
+        Pass ``expected_department_public_key`` whenever this device already
+        trusts a department key (``PeerCredentials.department_public_key``).
+        The envelope is signed only by the key it carries, so without pinning a
+        second code signed by a different root would quietly re-bind the device
+        to that root, leaving the teacher to notice as the only defence.
         """
         if not self.signature:
             raise PeerVerificationError(AUTH_FAILED, "the invitation is unsigned")
@@ -321,6 +328,13 @@ class Invitation:
                                       self.department_public_key):
             raise PeerVerificationError(
                 AUTH_FAILED, "the invitation signature does not verify")
+
+        if expected_department_public_key is not None:
+            if (raw_public_bytes(self.department_public_key)
+                    != raw_public_bytes(expected_department_public_key)):
+                raise PeerVerificationError(
+                    WRONG_DEPARTMENT,
+                    "this invitation was signed by a different department key")
 
         moment = float(now if now is not None else time.time())
         check_not_future_dated(self.issued_at, moment)
@@ -369,6 +383,34 @@ class Invitation:
     def __str__(self) -> str:                 # pragma: no cover - debugging aid
         return (f"Invitation(dept={self.dept_id!r}, "
                 f"device={self.certificate.device_id}, nonce={self.request_nonce[:8]}…)")
+
+
+def _assert_credentials_are_consistent(credentials: "PeerCredentials", *,
+                                       source: str) -> None:
+    """Refuse a saved credential whose parts describe different devices.
+
+    ``load`` cannot get this from a signature: every document in the file is
+    individually valid, and the question is whether they belong together. A
+    file naming one department in ``dept_id`` and another in its certificate,
+    or pairing this device's certificate with another device's key, would
+    otherwise load silently and fail later -- at a handshake, or never (§7).
+    """
+    if (credentials.identity.dept_id != credentials.dept_id
+            or credentials.certificate.dept_id != credentials.dept_id):
+        raise PeerError(
+            f"credentials file names more than one department: {source}")
+    try:
+        certificate_key = raw_public_bytes(
+            credentials.certificate.device_public_key)
+    except PeerVerificationError as exc:
+        raise PeerError(
+            f"credentials file holds an unreadable certificate key: "
+            f"{source}") from exc
+    if (credentials.certificate.device_id != credentials.identity.device_id
+            or certificate_key
+            != raw_public_bytes(credentials.identity.public_key_pem)):
+        raise PeerError(
+            f"credentials file names a certificate for another device: {source}")
 
 
 @dataclass(frozen=True)
@@ -451,17 +493,21 @@ class PeerCredentials:
                 label=identity_data.get("label"),
                 created_at=float(identity_data.get("created_at") or 0.0),
             )
-            return cls(identity=identity,
-                       certificate=DeviceCertificate.from_dict(data["certificate"]),
-                       roster=Roster.from_dict(data["roster"]),
-                       revocations=RevocationList.from_dict(data["revocations"]),
-                       dept_id=str(data["dept_id"]),
-                       department_public_key=str(data["department_public_key"]),
-                       department_name=(None if data.get("department_name") is None
-                                        else str(data["department_name"])),
-                       accepted_at=float(data.get("accepted_at") or 0.0))
+            identity.verify_binding()
+            credentials = cls(
+                identity=identity,
+                certificate=DeviceCertificate.from_dict(data["certificate"]),
+                roster=Roster.from_dict(data["roster"]),
+                revocations=RevocationList.from_dict(data["revocations"]),
+                dept_id=str(data["dept_id"]),
+                department_public_key=str(data["department_public_key"]),
+                department_name=(None if data.get("department_name") is None
+                                 else str(data["department_name"])),
+                accepted_at=float(data.get("accepted_at") or 0.0))
         except (KeyError, TypeError, ValueError, PeerVerificationError) as exc:
             raise PeerError(f"credentials file is malformed: {target.name}") from exc
+        _assert_credentials_are_consistent(credentials, source=target.name)
+        return credentials
 
     def assert_certificate_current(self, *, now: float | None = None) -> None:
         """Raise ``CERT_EXPIRED`` when this device's own certificate has lapsed."""

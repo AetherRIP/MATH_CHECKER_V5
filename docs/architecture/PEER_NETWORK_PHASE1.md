@@ -174,3 +174,50 @@ should not be saved (`public_dict()` is the loggable/log-safe view).
 7. **Not wired into the application yet.** No route, no desktop surface, no
    process supervision; those are Phase 2. That is deliberate: Phase 1 must be
    provably inert with respect to marking.
+
+## 10. Independent review, 2026-10-31
+
+A review of this package against the plan's §9 and §15 found two defects, both
+fixed here with regression tests, and four findings recorded rather than quietly
+accepted.
+
+**Fixed — a second invitation could replace the department key.**
+`Invitation.accept()` verified the envelope against the department key *inside*
+it and never compared that key with the one the device already trusted. A device
+that pasted a second code — signed by a different root, for its own key — was
+re-bound to that root with no error. `accept()` now takes
+`expected_department_public_key` and reports `WRONG_DEPARTMENT` on a mismatch.
+It is optional because no Phase 1 caller holds a key yet; **Phase 2 must pass
+`PeerCredentials.department_public_key` whenever one exists.**
+
+**Fixed — a saved credential could mix devices or departments.**
+`PeerCredentials.load()` rebuilt the identity, certificate, roster and revocation
+list without checking that they belong together, and never checked that the
+stored private key matches the stored public key. Every document was
+individually valid, so nothing complained. `DeviceIdentity.verify_binding()` now
+checks the key pair as well as the identifier, and `load()` refuses a file whose
+`dept_id`, identity and certificate disagree — matching the rule in §7 that a
+broken store raises instead of looking like a first run.
+
+**Recorded, not changed**
+
+1. **`secure_store` falls back to plaintext silently.** If DPAPI fails on
+   Windows the file is written unencrypted with the `MC1P` marker. That is
+   deliberate for a device credential and wrong for the root private key. Phase 2
+   must probe at startup and refuse to run degraded without saying so (R-08);
+   changing the shared store here would alter behaviour the update and
+   device-credential paths already depend on.
+2. **Certificate lifetime is bounded at issuance, not at verification.** The
+   365-day ceiling is enforced by `DepartmentCA.issue_certificate`; a verifier
+   accepts any window the root signed. That only matters with a compromised root,
+   which can mint anything anyway, and a verifier-side policy needs the Phase 4
+   handshake to report the reason to a user.
+3. **A requester chooses its own expiry.** `InviteRequest.verify()` enforces the
+   expiry in the document, not a maximum, so a request can be made to last years.
+   It cannot mint anything: the owner still has to act, and the invitation has
+   its own seven-day expiry.
+4. **Equal epochs are not distinguished.** Rollback protection refuses an epoch
+   *older* than one already seen, so two different rosters at the same epoch are
+   both acceptable. Only a second signing machine or a compromised CA can produce
+   that; Phase 1 has exactly one owner machine, and fork detection belongs with
+   whoever gossips rosters in Phase 3.

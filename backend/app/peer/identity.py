@@ -182,11 +182,28 @@ class DeviceIdentity:
                 "the device identifier does not derive from its public key")
 
     def verify_binding(self) -> None:
-        """Re-check the identifier/key binding (cheap, and used after loading)."""
+        """Re-check every binding this identity claims, key pair included.
+
+        Used after loading, where a file can be internally consistent and
+        still wrong: a public key paired with a *different* private key signs
+        bytes nothing can verify, and the device would present a certificate it
+        cannot prove possession of (plan §9.2). Cheap enough for every load.
+        """
         if device_id_for_public_key(self.public_key_pem) != self.device_id:
             raise PeerVerificationError(
                 IDENTIFIER_KEY_MISMATCH,
                 "the device identifier does not derive from its public key")
+        if not self.private_key_pem:
+            return
+        try:
+            derived_public = signing.public_pem_from_private(self.private_key_pem)
+        except (ValueError, TypeError) as exc:
+            raise PeerVerificationError(
+                MALFORMED, "the stored private key cannot be read") from exc
+        if raw_public_bytes(derived_public) != raw_public_bytes(self.public_key_pem):
+            raise PeerVerificationError(
+                MALFORMED,
+                "the stored private key does not belong to the public key")
 
     # -- signing -------------------------------------------------------------
 
@@ -250,10 +267,10 @@ class DeviceIdentity:
                 label=data.get("label"),
                 created_at=float(data.get("created_at") or 0.0),
             )
-        except (KeyError, TypeError, ValueError) as exc:
+            identity.verify_binding()
+        except (KeyError, TypeError, ValueError, PeerVerificationError) as exc:
             raise PeerErrorStoreUnreadable(
-                f"identity file is malformed: {target.name}") from exc
-        identity.verify_binding()
+                f"identity file is malformed or inconsistent: {target.name}") from exc
         return identity
 
     def adopt_department(self, dept_id: str) -> "DeviceIdentity":
