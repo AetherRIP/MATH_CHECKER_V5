@@ -56,6 +56,9 @@ single host's self-addressed traffic never touches the inbound filter.
 
 **Mitigation.**
 - Run P0-1 and P0-3 before writing any data-path code.
+- Run the two-host test with an interpreter that no inbound rule covers: this
+  machine already has Allow rules for its base Python install, and a test under
+  that interpreter would pass for the wrong reason. The probe reports this.
 - If the pinhole does not open: fall back to discovery-only over 5353 plus the
   elevated-rule path, and state in the interface that direct connections need a
   one-time approval.

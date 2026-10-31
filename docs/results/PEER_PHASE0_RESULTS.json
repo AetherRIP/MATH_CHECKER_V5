@@ -1,6 +1,6 @@
 {
   "mode": "local",
-  "checked_at": "2026-10-31T00:25:48+00:00",
+  "checked_at": "2026-10-31T00:37:05+00:00",
   "host": "Arthur_RIP_002",
   "elevated": false,
   "primary_ipv4": "192.168.18.14",
@@ -219,6 +219,13 @@
       "Action": "Allow"
     }
   ],
+  "confound": {
+    "interpreter": "C:\\Projects\\MATH_CHECKER_V5\\.venv\\Scripts\\python.exe",
+    "matching_inbound_allow_rules": [],
+    "open_inbound_allow_rules": [],
+    "pair_run_trustworthy": true,
+    "detail": "no inbound Allow rule covers this interpreter, so an inbound connection can only arrive through the stateful filter."
+  },
   "p0_3_shared_5353": {
     "port": 5353,
     "sockets": 2,
@@ -236,7 +243,7 @@
       "always_both": true,
       "ever_both": true,
       "never_any": false,
-      "ambient_datagrams_discarded": 0
+      "ambient_datagrams_discarded": 1
     },
     "unicast_lan": {
       "target": "192.168.18.14",
@@ -250,7 +257,7 @@
       "always_both": false,
       "ever_both": false,
       "never_any": true,
-      "ambient_datagrams_discarded": 0
+      "ambient_datagrams_discarded": 1
     },
     "unicast_loopback": {
       "target": "127.0.0.1",

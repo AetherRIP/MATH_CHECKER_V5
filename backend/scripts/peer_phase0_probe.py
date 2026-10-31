@@ -20,12 +20,26 @@ Two modes:
           return traffic arrive with no firewall rule and no elevation?
     P0-2b does an inbound TCP connection to a non-elevated listener arrive?
 
+IMPORTANT — run it with an interpreter that has no firewall rule
+----------------------------------------------------------------
+Windows creates a program-scoped inbound Allow rule the first time somebody
+approves a firewall prompt for ``python.exe``. If such a rule covers the
+interpreter running this probe, an inbound connection arrives because of the
+rule, not because the stateful filter opened a pinhole: the experiment passes and
+proves nothing. Every result therefore carries a ``confound`` block recording
+whether a rule already covers ``sys.executable``, and a pair run whose verdict is
+reported as INVALID AS EVIDENCE must be repeated with a rule-free interpreter
+(a project ``.venv`` is normally one, since a rule names the base install).
+
 Usage
 -----
-    python backend/scripts/peer_phase0_probe.py local
-    python backend/scripts/peer_phase0_probe.py local --try-firewall-rule
-    python backend/scripts/peer_phase0_probe.py pair --name A --peer 192.168.1.31
-    python backend/scripts/peer_phase0_probe.py pair --name B --peer 192.168.1.30
+    .venv\Scripts\python.exe backend/scripts/peer_phase0_probe.py local
+    .venv\Scripts\python.exe backend/scripts/peer_phase0_probe.py local --try-firewall-rule
+    .venv\Scripts\python.exe backend/scripts/peer_phase0_probe.py pair --name A --peer 192.168.1.31
+    .venv\Scripts\python.exe backend/scripts/peer_phase0_probe.py pair --name B --peer 192.168.1.30
+
+Read the ``confound`` block FIRST. ``pair_run_trustworthy: true`` means the
+inbound numbers can be believed.
 
 Start both ``pair`` runs within a few seconds of each other; they discover each
 other by exchanging addresses on the command line, deliberately, so a failure in
@@ -159,6 +173,128 @@ def firewall_rules_for(*names: str) -> list[dict]:
         if block:
             rules.append(block)
     return rules
+
+
+def inbound_allow_rules_covering(program: str) -> list[dict]:
+    """Inbound Allow rules that already permit traffic to this interpreter.
+
+    This is the confound that decides whether a pair run means anything. Windows
+    creates a program-scoped inbound Allow rule the first time someone approves a
+    firewall prompt for ``python.exe``; if one covers the interpreter running
+    this probe, an inbound connection arrives because of THAT RULE, not because
+    the stateful filter opened a pinhole. The experiment would pass and prove
+    nothing.
+
+    Read-only: it lists rules and never changes them.
+    """
+    target = program.lower()
+    return [
+        {"rule": block.get("Rule Name"),
+         "profiles": block.get("Profiles"),
+         "protocol": block.get("Protocol"),
+         "program": block.get("Program")}
+        for block in _inbound_rule_blocks()
+        if _rule_covers(block, target)
+    ]
+
+
+def _inbound_rule_blocks() -> list[dict]:
+    """Every inbound rule, as a dict of its netsh fields (read-only)."""
+    try:
+        proc = subprocess.run(
+            ["netsh", "advfirewall", "firewall", "show", "rule",
+             "name=all", "dir=in", "verbose"],
+            capture_output=True, text=True, timeout=40)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    blocks: list[dict] = []
+    block: dict = {}
+    for line in proc.stdout.splitlines():
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        key, value = key.strip(), value.strip()
+        if key == "Rule Name":
+            if block:
+                blocks.append(block)
+            block = {"Rule Name": value}
+            continue
+        if block:
+            block[key] = value
+    if block:
+        blocks.append(block)
+    return blocks
+
+
+def _rule_covers(block: dict, target: str) -> bool:
+    """Does this rule pre-approve inbound traffic to ``target``?
+
+    Only an explicit Program match counts. A rule with no Program is either a
+    package-scoped rule for a store app (which cannot admit a console process)
+    or a genuinely open rule; the second kind is reported separately as a
+    warning rather than silently trusted, because guessing wrong here produces a
+    false "the pinhole works" result.
+    """
+    if (block.get("Action") or "").strip().lower() != "allow":
+        return False
+    if (block.get("Enabled") or "yes").strip().lower() != "yes":
+        return False
+    if _is_package_rule(block):
+        return False
+    program = (block.get("Program") or "").strip().lower()
+    if not program:
+        return False
+    protocol = (block.get("Protocol") or "").strip().lower()
+    return program == target and protocol in ("tcp", "udp", "any", "")
+
+
+def _is_package_rule(block: dict) -> bool:
+    """A store-app rule is scoped by package, not by an image path."""
+    if any(key in block for key in ("Package", "AppContainer", "Service")):
+        return True
+    return "ms-resource:" in (block.get("Rule Name") or "")
+
+
+def open_inbound_allow_rules() -> list[dict]:
+    """Inbound Allow rules that name no program at all: a warning, not a verdict."""
+    rules: list[dict] = []
+    for block in _inbound_rule_blocks():
+        if (block.get("Action") or "").strip().lower() != "allow":
+            continue
+        if (block.get("Enabled") or "yes").strip().lower() != "yes":
+            continue
+        if _is_package_rule(block) or (block.get("Program") or "").strip():
+            continue
+        rules.append({"rule": block.get("Rule Name"),
+                      "protocol": block.get("Protocol"),
+                      "profiles": block.get("Profiles")})
+    return rules
+
+
+def confound_check() -> dict:
+    """Would a pair run on this machine be measuring the firewall state or a rule?"""
+    rules = inbound_allow_rules_covering(sys.executable)
+    open_rules = open_inbound_allow_rules()
+    if rules:
+        detail = ("an inbound Allow rule already covers this interpreter: run the "
+                  "pair experiment with an interpreter that has no rule (a project "
+                  ".venv), or remove the rule as an administrator. Otherwise "
+                  "inbound traffic is explained by the rule and says nothing about "
+                  "the firewall pinhole.")
+    elif open_rules:
+        detail = ("no rule names this interpreter, but some inbound Allow rules "
+                  "name no program at all. Check them before trusting an inbound "
+                  "result.")
+    else:
+        detail = ("no inbound Allow rule covers this interpreter, so an inbound "
+                  "connection can only arrive through the stateful filter.")
+    return {
+        "interpreter": sys.executable,
+        "matching_inbound_allow_rules": rules,
+        "open_inbound_allow_rules": open_rules,
+        "pair_run_trustworthy": not rules and not open_rules,
+        "detail": detail,
+    }
 
 
 def try_create_rule(port: int) -> dict:
@@ -331,6 +467,10 @@ def run_pair(args) -> dict:
         "own_address": primary_ipv4(), "elevated": is_elevated(),
         "seconds": args.seconds,
     }
+    # Recorded BEFORE the experiment so the result can be judged afterwards: if
+    # a rule already admits inbound traffic to this interpreter, "accepted"
+    # means nothing.
+    result["confound"] = confound_check()
 
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -400,6 +540,16 @@ def run_pair(args) -> dict:
     # is open; zero means the firewall or the network dropped everything.
     result["p0_1_udp_return_traffic"] = "arrived" if received else "none"
     result["p0_2_inbound_tcp"] = "accepted" if inbound_tcp else "not-observed"
+    if not result["confound"]["pair_run_trustworthy"]:
+        result["verdict"] = (
+            "INVALID AS EVIDENCE: an inbound Allow rule already covers this "
+            "interpreter, so inbound traffic is explained by the rule rather "
+            "than by a stateful pinhole. Re-run with an interpreter that has no "
+            "rule in place.")
+    else:
+        result["verdict"] = (
+            "pinhole opened" if received
+            else "no return traffic: the stateful filter did not admit it")
     return result
 
 
@@ -418,6 +568,7 @@ def run_local(args) -> dict:
     }
     result["firewall_existing_rules"] = firewall_rules_for(
         "mDNS (UDP-In)", "MathChecker Peer Phase0 Probe")
+    result["confound"] = confound_check()
     result["p0_3_shared_5353"] = probe_shared_5353()
     result["control_self_udp"] = self_udp_control(args.udp_port)
     if args.try_firewall_rule:

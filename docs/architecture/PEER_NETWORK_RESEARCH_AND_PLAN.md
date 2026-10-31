@@ -366,6 +366,14 @@ it: UDP sent from this machine to *its own* LAN address was delivered with no
 firewall rule at all, because self-addressed traffic never traverses the inbound
 filter. A green one-host test would therefore prove nothing.
 
+There is a second way the same experiment can lie. Windows creates a
+program-scoped inbound Allow rule when somebody approves a firewall prompt, and
+this machine already has one for its base Python install (UDP and TCP, any port,
+any remote address, Public profile). An inbound test run under that interpreter
+would report success because of the rule. The probe therefore reports whether any
+rule covers the interpreter it is running under, and labels the run INVALID AS
+EVIDENCE when one does — the two-host test must use an interpreter with no rule.
+
 **Status: open.** `backend/scripts/peer_phase0_probe.py pair` performs the real
 measurement on two laptops; until it is run, no data path may assume the pinhole
 opens. See §6.5.
@@ -382,6 +390,7 @@ its machine-readable output is
 | **P0-2b** does an inbound TCP connection to a non-elevated listener arrive? | **Pending** | Needs two hosts. |
 | **P0-1** does simultaneous UDP create a two-way pinhole? | **Pending** | Needs two hosts. |
 | **Control** is a single-host test valid? | **Measured** | No. Self-addressed UDP succeeds with no rule, and a self-to-self run of the harness delivered 40 of 40 datagrams and accepted its own TCP connection — with no rule in place. One host cannot prove a pinhole. |
+| **Confounder** can an inbound test pass for the wrong reason? | **Measured** | Yes, and it would have. This machine already has inbound **Allow** rules for `...\Python313\python.exe` (UDP and TCP, any port, any remote address, Public profile). Run under that interpreter, the pair experiment would report success because of the rule, not because of a pinhole. The probe now detects this: it reports `confound.pair_run_trustworthy` and marks a run `INVALID AS EVIDENCE` when a rule covers its interpreter. |
 
 Two of the four questions are answered and the transport choice in §6.3 is now
 evidence-based. The two that remain are the ones that decide whether LAN data can
@@ -392,9 +401,17 @@ seconds of each other, then copy both JSON outputs into
 `docs/results/PEER_PHASE0_PAIR_<A|B>.json`:
 
 ```bat
-python backend\scripts\peer_phase0_probe.py pair --name A --peer <B-ipv4>
-python backend\scripts\peer_phase0_probe.py pair --name B --peer <A-ipv4>
+.venv\Scripts\python.exe backend\scripts\peer_phase0_probe.py pair --name A --peer <B-ipv4>
+.venv\Scripts\python.exe backend\scripts\peer_phase0_probe.py pair --name B --peer <A-ipv4>
 ```
+
+**Use a rule-free interpreter.** The command above deliberately names the
+project's virtual environment. Running it as plain `python` resolves to the base
+install, and on this machine that install already has inbound Allow rules for
+UDP and TCP on any port — so the experiment would report `arrived` / `accepted`
+for the wrong reason. The probe records this in its `confound` block and refuses
+to call such a run evidence; check `pair_run_trustworthy: true` before reading
+the result.
 
 A `p0_1_udp_return_traffic` of `arrived` confirms the pinhole and keeps §7.2 as
 written. `none` on both sides means LAN data needs the elevated rule or a relay,
