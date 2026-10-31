@@ -2,7 +2,7 @@
 
 **Run:** 2026-10-16, 18:14–18:30 (local)
 **Harness:** `MathChecker_Distribution/scripts/verify_live_classroom.py`
-**Evidence:** [`docs/results/LIVE_CLASSROOM_CERTIFICATION.json`](../results/LIVE_CLASSROOM_CERTIFICATION.json) · console log [`docs/logs/verify_live_classroom.txt`](../logs/verify_live_classroom.txt) · app log [`docs/logs/live_classroom_app.log`](../logs/live_classroom_app.log)
+**Evidence:** [`docs/results/LIVE_CLASSROOM_CERTIFICATION.json`](../results/LIVE_CLASSROOM_CERTIFICATION.json) · console log `docs/logs/verify_live_classroom.txt` · app log `docs/logs/live_classroom_app.log`
 **Outcome:** 26 of 28 checks passed. **Exit code 4 — cross-checked, NOT certified.** No grade, report or file of any kind was published.
 
 Two things must not be blurred together in this report:
