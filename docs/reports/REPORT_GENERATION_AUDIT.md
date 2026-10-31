@@ -13,10 +13,10 @@ the four parked jobs and the log file are untouched.
 
 | Log | Location | Size / range | What it holds |
 |---|---|---|---|
-| Application runtime log (JSON lines) | [data/logs/app.log](../../data/logs/app.log) | 16.3 MB, 70 878 records, 2026-10-05 → 2026-10-12 | every component: `automation`, `app`, `classroom.*`, `gemini.*`, `security`, `testing_guard`, `pypdf.*` |
-| Automation job log (per job) | `automation_log` table in [data/app.db](../../data/app.db) | 23 automation jobs, 30 results | state transitions, per-step failures, retry decisions |
+| Application runtime log (JSON lines) | `data/logs/app.log` | 16.3 MB, 70 878 records, 2026-10-05 → 2026-10-12 | every component: `automation`, `app`, `classroom.*`, `gemini.*`, `security`, `testing_guard`, `pypdf.*` |
+| Automation job log (per job) | `automation_log` table in `data/app.db` | 23 automation jobs, 30 results | state transitions, per-step failures, retry decisions |
 | Report attachment state | `report_attachments` table | per result | honest per-stage status (`VERIFIED`, `UPLOAD_FAILED`, …) |
-| Release build logs | [MathChecker_Distribution/build_release_rebuild.log](../../MathChecker_Distribution/logs/build_release_rebuild.log), `build_release_final.log` | portable/installer build | release-time validation |
+| Release build logs | `MathChecker_Distribution/logs/build_release_rebuild.log` (git-ignored local transcript), `build_release_final.log` | portable/installer build | release-time validation |
 
 Aggregated by event and level, the report-relevant failures were:
 
