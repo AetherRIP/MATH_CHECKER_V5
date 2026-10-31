@@ -80,6 +80,24 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements-dev.txt
 
+      # The suite serves the built SPA: test_public_access_hardening and
+      # test_lifecycle_end_to_end both read frontend/dist. That folder is
+      # generated and gitignored, so a clean runner has nothing to serve and
+      # nine tests fail on assertions about the real shell -- on a developer
+      # machine they pass only because `npm run build` was run there once. Build
+      # it here so the job tests the application instead of an empty directory.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the frontend the backend serves
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip

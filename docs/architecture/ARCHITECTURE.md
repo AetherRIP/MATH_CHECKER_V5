@@ -198,3 +198,6 @@ legacy assembler, not the canonical release path.
    kept, where it lives, and what the viewer reports.
 5. [Server lifecycle runbook](SERVER_LIFECYCLE.md) for process supervision and
    lifecycle-specific behavior.
+6. [Peer network research and plan](PEER_NETWORK_RESEARCH_AND_PLAN.md) for the
+   designed (not yet built) automatic peer networking, and [ADR-001](ADR-001-PEER-NETWORK.md)
+   for the decision behind it.

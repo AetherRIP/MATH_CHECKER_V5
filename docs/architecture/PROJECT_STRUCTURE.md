@@ -138,7 +138,7 @@ This folder is excluded from releases. It contains report previews and harness
 runs, but also archived release audit copies (`release_audit_backup/`) and other
 historical data. Do **not** interpret its name or ignore status as permission to
 delete the whole tree; inspect individual contents first. See
-[dev_local/README.md](../../dev_local/README.md) where available.
+`dev_local/README.md` where available.
 
 ```
 dev_local/reports/        PDF/PNG renders from backend/scripts/pdf_preview.py
