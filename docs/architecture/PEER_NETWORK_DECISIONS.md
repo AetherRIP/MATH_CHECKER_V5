@@ -1,9 +1,10 @@
 # Peer network — decisions D1, D3 and D4: recommendations
 
-Status: **recommendations for the project owner.** Nothing here is decided, and
-nothing here changes code. Phase 1 ships the mechanics; these three decide the
-policy that the mechanics assume, so each has a recommended default, the
-consequence of choosing differently, and the phase that will depend on it.
+Status: **approved 2026-10-31** in the terms recommended here (see the approval
+record at the end). The recommendations, options and rejected alternatives below
+are kept as written: they are the rationale for the decision, not a draft of it.
+Where the implementation has not caught up with an approval, the approval record
+says so explicitly rather than implying the work is done.
 
 Register context: the decisions were raised in
 `docs/architecture/PEER_NETWORK_RESEARCH_AND_PLAN.md` §16 (table D1–D8) on the
@@ -153,3 +154,41 @@ D2 (do teachers actually work from home at the same time?), D5 (is a Google Driv
 scope acceptable?), D6 (when the hub is removed), D7 (is a peer relay
 acceptable?), and D8 (the Public-Address SSE gap) are unchanged and still listed
 in plan §16. D2, D5, D7 and D8 gate Phases 8–9 and do not block Phase 2.
+
+---
+
+## Approval record — 2026-10-31
+
+The project owner approved all three decisions in the terms recommended below.
+This section is the register entry; the rationale above is unchanged because it
+is what the decision rests on.
+
+| ID | Decision | Approved term | Where it is implemented |
+|---|---|---|---|
+| D1 | Root-key custody | DPAPI-protected owner store, one passphrase-encrypted offline export, root key never leaving the machine otherwise, restoration deliberate and restricted, never serialised into shared department documents | `peer/ca.py` + `distributed/secure_store.py`; the export is **approved but not built** |
+| D4 | Certificate lifetime | 90 days standard, 365 days maximum, expiry enforced and reported, renewal failures reported clearly | `ca.CERT_DEFAULT_DAYS` / `CERT_MAX_DAYS`; `CERT_EXPIRED` / `CERT_NOT_YET_VALID`; Phase 2 startup refuses an expired certificate and warns inside 15 days |
+| D3 | Invitation format | Copy-paste codes, file import/export in Phase 2, QR deferred | Copy-paste codes in `peer/invite.py`; file transport and QR are **not shipped** |
+
+### What approval changes
+
+- These are no longer open questions. Changing one needs a new decision record
+  with its own rationale, not a preference expressed in code or a pull request.
+- D1's export is approved **in principle and deliberately unimplemented**. The
+  archive is root-key-equivalent, so it needs a review of its own before it
+  exists; Phase 2 does not add it and its record says so (§11).
+- D4's enforcement point moves earlier: Phase 1 enforced the lifetime at
+  issuance, and Phase 2 additionally refuses a stored certificate that has
+  since expired or become revoked when the process starts.
+- D3's file import/export is the approved Phase 2 direction; only the code path
+  is implemented so far.
+
+### Not yet done under these decisions
+
+- **D1 offline export** — passphrase-encrypted archive plus a written restore
+  procedure. Unreviewed, unbuilt.
+- **D4 renewal action** — the warning flag is computed; the "renew this device"
+  flow is not implemented.
+- **D3 file import/export** — copy-paste codes exist; file transport does not.
+- **Recorded but unfixed** from the Phase 1 review (`PEER_NETWORK_PHASE1.md`
+  §10): the silent plaintext fallback in `secure_store`, requester-chosen
+  invitation expiry, and equal-epoch roster forks.
