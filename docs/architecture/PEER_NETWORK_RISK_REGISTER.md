@@ -46,6 +46,12 @@ documents that a non-administrator's "Allow" does not create one. The design
 assumes a UDP firewall pinhole opens when both peers send to each other. That
 assumption is untested.
 
+**Status 2026-10-31 — partially measured.** The half that is settled: a
+non-elevated process attempting `netsh advfirewall firewall add rule` is refused
+with "requires elevation" and no rule appears (P0-2a). The half that decides the
+risk — whether the pinhole opens — still needs two laptops (P0-1), because a
+single host's self-addressed traffic never touches the inbound filter.
+
 **Early warning.** Phase 0 experiment P0-1 shows return traffic being dropped.
 
 **Mitigation.**
@@ -65,6 +71,11 @@ devices get a reduced feature set, and the interface must say so plainly.
 **Why it matters.** AP/client isolation and multicast filtering are common
 managed-WLAN features. Both defeat beaconing, and the failure looks identical to
 "nobody else is running the app".
+
+**Status 2026-10-31 — partially measured.** Multicast delivery to two co-bound
+listeners on one host works (2/2), so the local stack is not the obstacle. Whether
+a school WLAN delivers it between two hosts is untested, and no evidence here
+speaks to it.
 
 **Early warning.** Beacons sent, none received, while ordinary unicast to the
 same host succeeds.

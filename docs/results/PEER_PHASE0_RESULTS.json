@@ -1,0 +1,290 @@
+{
+  "mode": "local",
+  "checked_at": "2026-10-31T00:25:48+00:00",
+  "host": "Arthur_RIP_002",
+  "elevated": false,
+  "primary_ipv4": "192.168.18.14",
+  "interfaces": [
+    {
+      "name": "ethernet_0",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_1",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_2",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_3",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_4",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_5",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_6",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_7",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_8",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_32768",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_32769",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_32770",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_32771",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_32772",
+      "loopback": false
+    },
+    {
+      "name": "ethernet_32773",
+      "loopback": false
+    },
+    {
+      "name": "ppp_32768",
+      "loopback": false
+    },
+    {
+      "name": "loopback_0",
+      "loopback": false
+    },
+    {
+      "name": "wireless_0",
+      "loopback": false
+    },
+    {
+      "name": "wireless_1",
+      "loopback": false
+    },
+    {
+      "name": "wireless_2",
+      "loopback": false
+    },
+    {
+      "name": "wireless_3",
+      "loopback": false
+    },
+    {
+      "name": "wireless_4",
+      "loopback": false
+    },
+    {
+      "name": "wireless_5",
+      "loopback": false
+    },
+    {
+      "name": "wireless_6",
+      "loopback": false
+    },
+    {
+      "name": "wireless_7",
+      "loopback": false
+    },
+    {
+      "name": "wireless_8",
+      "loopback": false
+    },
+    {
+      "name": "wireless_9",
+      "loopback": false
+    },
+    {
+      "name": "wireless_10",
+      "loopback": false
+    },
+    {
+      "name": "wireless_11",
+      "loopback": false
+    },
+    {
+      "name": "wireless_12",
+      "loopback": false
+    },
+    {
+      "name": "wireless_32768",
+      "loopback": false
+    },
+    {
+      "name": "wireless_32769",
+      "loopback": false
+    },
+    {
+      "name": "wireless_32770",
+      "loopback": false
+    },
+    {
+      "name": "tunnel_32512",
+      "loopback": false
+    },
+    {
+      "name": "tunnel_32513",
+      "loopback": false
+    },
+    {
+      "name": "tunnel_32514",
+      "loopback": false
+    },
+    {
+      "name": "tunnel_32768",
+      "loopback": false
+    },
+    {
+      "name": "tunnel_32769",
+      "loopback": false
+    },
+    {
+      "name": "tunnel_32770",
+      "loopback": false
+    },
+    {
+      "name": "tunnel_32771",
+      "loopback": false
+    },
+    {
+      "name": "(addresses)",
+      "loopback": false,
+      "addresses": [
+        "192.168.18.14"
+      ]
+    }
+  ],
+  "platform": "win32",
+  "python": "3.13.15",
+  "firewall_existing_rules": [
+    {
+      "name": "mDNS (UDP-In)",
+      "Enabled": "Yes",
+      "Direction": "In",
+      "Profiles": "Public",
+      "Grouping": "mDNS",
+      "LocalIP": "Any",
+      "RemoteIP": "LocalSubnet",
+      "Protocol": "UDP",
+      "LocalPort": "5353",
+      "RemotePort": "Any",
+      "Edge traversal": "No",
+      "Action": "Allow"
+    },
+    {
+      "name": "mDNS (UDP-In)",
+      "Enabled": "Yes",
+      "Direction": "In",
+      "Profiles": "Domain",
+      "Grouping": "mDNS",
+      "LocalIP": "Any",
+      "RemoteIP": "Any",
+      "Protocol": "UDP",
+      "LocalPort": "5353",
+      "RemotePort": "Any",
+      "Edge traversal": "No",
+      "Action": "Allow"
+    },
+    {
+      "name": "mDNS (UDP-In)",
+      "Enabled": "Yes",
+      "Direction": "In",
+      "Profiles": "Private",
+      "Grouping": "mDNS",
+      "LocalIP": "Any",
+      "RemoteIP": "LocalSubnet",
+      "Protocol": "UDP",
+      "LocalPort": "5353",
+      "RemotePort": "Any",
+      "Edge traversal": "No",
+      "Action": "Allow"
+    }
+  ],
+  "p0_3_shared_5353": {
+    "port": 5353,
+    "sockets": 2,
+    "rounds": 5,
+    "co_bind_with_reuseaddr": true,
+    "multicast": {
+      "target": "224.0.0.251",
+      "sockets_reached_per_round": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "always_both": true,
+      "ever_both": true,
+      "never_any": false,
+      "ambient_datagrams_discarded": 0
+    },
+    "unicast_lan": {
+      "target": "192.168.18.14",
+      "sockets_reached_per_round": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "always_both": false,
+      "ever_both": false,
+      "never_any": true,
+      "ambient_datagrams_discarded": 0
+    },
+    "unicast_loopback": {
+      "target": "127.0.0.1",
+      "sockets_reached_per_round": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "always_both": false,
+      "ever_both": false,
+      "never_any": true,
+      "ambient_datagrams_discarded": 0
+    }
+  },
+  "control_self_udp": {
+    "ran": true,
+    "received": true,
+    "address": "192.168.18.14",
+    "note": "self-addressed traffic does not exercise the inbound filter"
+  },
+  "p0_2a_create_rule": {
+    "attempted": true,
+    "created": false,
+    "returncode": 1,
+    "detail": "The requested operation requires elevation (Run as administrator)."
+  },
+  "firewall_after_attempt": [],
+  "verdict": {
+    "p0_3_multicast": "multicast reached both co-bound sockets in every round",
+    "unicast_lan": "LAN-address unicast never reached our sockets ([0, 0, 0, 0, 0])",
+    "unicast_loopback": "loopback unicast never reached our sockets ([0, 0, 0, 0, 0])",
+    "p0_2a": "a non-elevated process cannot create the inbound rule",
+    "p0_1": "not answerable on one machine; run `pair` on two laptops"
+  }
+}

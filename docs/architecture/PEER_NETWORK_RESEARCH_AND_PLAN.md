@@ -310,6 +310,13 @@ administrative rights approves it. Microsoft's documentation adds a detail that
 matters: if a *non-administrator* is shown the firewall prompt and clicks Allow,
 the rule is **not** created.
 
+*Measured 2026-10-31:* a non-elevated process running the exact command the
+design would need — `netsh advfirewall firewall add rule ... dir=in
+protocol=UDP localport=<port>` — was refused with "The requested operation
+requires elevation (Run as administrator)." and the rule inventory was unchanged
+afterwards. This is now evidence rather than documentation: the application
+cannot open a port for itself.
+
 **6.2 Windows already permits UDP 5353 inbound to any program.**
 `netsh advfirewall firewall show rule name="mDNS (UDP-In)"` reports the rule
 **Enabled** on all three profiles: Public and Private scoped to `LocalSubnet`,
@@ -321,18 +328,77 @@ what was measured here.
 **6.3 Port 5353 is shared, and unicast delivery to a shared socket is not
 reliable.** Three processes already held `0.0.0.0:5353`. Binding a fourth
 succeeds **only** with `SO_REUSEADDR=1`; without it the bind fails with
-`WSAEADDRINUSE`. Multicast datagrams are delivered to every socket that joined
-the group, but *unicast* datagrams to a port with several holders have undefined
-delivery. **Recommendation:** use 5353 for multicast discovery only; carry peer
-data on per-peer ephemeral UDP ports, reached through firewall pinholes.
+`WSAEADDRINUSE`.
+
+*Measured 2026-10-31*, two sockets co-bound to 5353 and joined to
+`224.0.0.251`, five rounds per case. Each round drains both sockets and then
+waits for a marker unique to that round, so ambient mDNS traffic can neither
+create nor hide a delivery:
+
+| Datagram sent to | Sockets reached, per round |
+|---|---|
+| multicast `224.0.0.251:5353` | **2, 2, 2, 2, 2** |
+| unicast, this machine's LAN address | **0, 0, 0, 0, 0** |
+| unicast, `127.0.0.1` | **0, 0, 0, 0, 0** |
+
+So multicast reaches every co-bound listener, while a unicast datagram addressed
+to 5353 reached neither of ours — Windows delivered it elsewhere, presumably to
+its own DNS-SD responder, which already holds the port. **Recommendation
+confirmed:** use 5353 for multicast discovery only; carry peer data on per-peer
+UDP ports.
+
+*Methodology note.* A first version of the probe accepted any arriving datagram
+and reported unicast delivery inconsistently (0 of 2 sockets in one run, 2 of 2
+in the next). Matching the probe's own marker after draining the queue made the
+result stable across every round. The correction is recorded because a
+single-sample measurement on a port that carries other software's traffic is not
+worth trusting, and the first answer was wrong.
 
 **6.4 A firewall pinhole is a hypothesis, not yet a fact.** The design assumes
 that when peer A sends a UDP datagram to peer B's port, and B simultaneously
 sends to A's port, Windows' stateful filter permits the return traffic in both
 directions without any rule. Windows Filtering Platform does maintain UDP flow
-state, so this is expected to work, but it has **not** been tested here.
-**Assumption:** confirmed or refuted by experiment P0-1 in §13 before any data
-path is built on it.
+state, so this is expected to work, but it has **not** been measured: it needs
+two hosts, and this investigation had one.
+
+A control run explains why the single-machine result cannot be substituted for
+it: UDP sent from this machine to *its own* LAN address was delivered with no
+firewall rule at all, because self-addressed traffic never traverses the inbound
+filter. A green one-host test would therefore prove nothing.
+
+**Status: open.** `backend/scripts/peer_phase0_probe.py pair` performs the real
+measurement on two laptops; until it is run, no data path may assume the pinhole
+opens. See §6.5.
+
+**6.5 Phase 0 results, as measured on 2026-10-31.** The probe is
+[`backend/scripts/peer_phase0_probe.py`](../../backend/scripts/peer_phase0_probe.py);
+its machine-readable output is
+[`docs/results/PEER_PHASE0_RESULTS.json`](../results/PEER_PHASE0_RESULTS.json).
+
+| Experiment | Status | Result |
+|---|---|---|
+| **P0-3** co-bind UDP 5353, multicast vs unicast | **Measured, 5 rounds** | Multicast reached both sockets in 5 of 5 rounds; unicast reached neither socket in any round, on both the LAN address and loopback. 5353 is multicast-only. |
+| **P0-2a** can a non-elevated process create the inbound rule? | **Measured** | No. Refused with "requires elevation"; rule inventory unchanged. |
+| **P0-2b** does an inbound TCP connection to a non-elevated listener arrive? | **Pending** | Needs two hosts. |
+| **P0-1** does simultaneous UDP create a two-way pinhole? | **Pending** | Needs two hosts. |
+| **Control** is a single-host test valid? | **Measured** | No. Self-addressed UDP succeeds with no rule, and a self-to-self run of the harness delivered 40 of 40 datagrams and accepted its own TCP connection — with no rule in place. One host cannot prove a pinhole. |
+
+Two of the four questions are answered and the transport choice in §6.3 is now
+evidence-based. The two that remain are the ones that decide whether LAN data can
+run without an elevated rule, and they are the reason Phase 4 stays unstarted.
+
+To finish them, run this on each of two laptops on the same Wi-Fi, within a few
+seconds of each other, then copy both JSON outputs into
+`docs/results/PEER_PHASE0_PAIR_<A|B>.json`:
+
+```bat
+python backend\scripts\peer_phase0_probe.py pair --name A --peer <B-ipv4>
+python backend\scripts\peer_phase0_probe.py pair --name B --peer <A-ipv4>
+```
+
+A `p0_1_udp_return_traffic` of `arrived` confirms the pinhole and keeps §7.2 as
+written. `none` on both sides means LAN data needs the elevated rule or a relay,
+and Phase 4 must be revised before it is built.
 
 ---
 
@@ -728,17 +794,28 @@ because it is the only feature that truly needs the fast path.
 
 - **Objective:** replace three assumptions with measurements before any design is
   frozen.
+- **Status 2026-10-31: started, not finished.** Two of four questions are
+  answered; see §6.5 for the table and the run instructions.
 - **Experiments:**
   - **P0-1** Two laptops, no firewall change: each sends UDP to the other's high
-    port simultaneously. Does the return traffic arrive? *(Tests §6.4.)*
-  - **P0-2** Non-elevated inbound TCP on a high port, prompt answered by a
-    non-administrator. Is a rule actually created? *(Expected: no.)*
+    port simultaneously. Does the return traffic arrive? *(Tests §6.4.)* —
+    **PENDING: needs a second laptop.**
+  - **P0-2a** Can a non-elevated process create the inbound rule? — **MEASURED:
+    no**, refused with "requires elevation".
+  - **P0-2b** Does an inbound TCP connection to a non-elevated listener arrive?
+    — **PENDING: needs a second laptop.**
   - **P0-3** Two applications co-binding UDP 5353 with `SO_REUSEADDR`: is
     multicast received by both, and is unicast delivered to the intended socket?
-- **Files:** none shipped; a throwaway probe script.
+    — **MEASURED:** multicast 2/2, unicast 0/2.
+- **Files:**
+  [`backend/scripts/peer_phase0_probe.py`](../../backend/scripts/peer_phase0_probe.py)
+  (stdlib only, so it runs on a bare laptop); results in
+  [`docs/results/PEER_PHASE0_RESULTS.json`](../results/PEER_PHASE0_RESULTS.json).
 - **Tests:** the experiments are the test.
-- **Acceptance:** each of the three has a recorded pass/fail, and the plan's
+- **Acceptance:** each of the four has a recorded pass/fail, and the plan's
   transport choice is either confirmed or revised in an addendum to this file.
+  **Not yet met** — the two pending items are the ones that decide whether LAN
+  data needs an elevated rule.
 - **Risks:** if P0-1 fails, LAN data needs the elevated firewall rule or the
   tunnel, which changes Phase 4 and the product's minimum requirements.
 - **Complexity:** XS.

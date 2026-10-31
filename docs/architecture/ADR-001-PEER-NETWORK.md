@@ -123,6 +123,13 @@ applications can exchange UDP through the stateful firewall without any rule. If
 that fails, LAN data requires the elevated rule or a relay, and this ADR must be
 revisited in an addendum rather than quietly worked around.
 
+**Status 2026-10-31 — partially verified.** Two of the three measurements are in
+(see §6.5 of the plan): a non-elevated process cannot create the inbound
+firewall rule, and UDP 5353 delivers multicast to every co-bound listener while
+unicast reaches none of them. The decisive one — whether simultaneous UDP opens
+a two-way pinhole — still needs a second laptop, so the LAN data path remains
+designed but unstarted.
+
 ## References
 
 - [PEER_NETWORK_RESEARCH_AND_PLAN.md](PEER_NETWORK_RESEARCH_AND_PLAN.md) — full
