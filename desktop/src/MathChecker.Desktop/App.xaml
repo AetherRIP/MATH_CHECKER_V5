@@ -93,6 +93,9 @@
             <DataTemplate DataType="{x:Type vm:PromptsViewModel}">
                 <views:PromptsView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:PeerViewModel}">
+                <views:PeerView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:JsonPageViewModel}">
                 <views:JsonPageView />
             </DataTemplate>

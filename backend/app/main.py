@@ -396,6 +396,12 @@ app.include_router(distributed_router)
 # Access controls (Settings): the Multi-Account Mode state and the Public
 # Address ON/OFF switch that starts/stops the app-managed tunnel. Owner-only,
 # enforced server-side in the router itself.
+# Peer networking (Phase 2): the desktop's switch and the observed supervisor
+# state. Loopback-only, and it starts nothing until it is asked to.
+from .api import peer_routes  # noqa: E402
+
+peer_routes.register(app)
+
 from .api import access_routes  # noqa: E402
 
 access_routes.register(app)
