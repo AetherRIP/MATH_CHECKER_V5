@@ -280,6 +280,72 @@ idempotent.
   `backend/app/api/peer_routes.py`, and the *Peer network* page
   (`PeerViewModel` / `PeerView`). See the section above.
 
+## 11a. Final acceptance audit, 2026-11-01
+
+Statuses are the ones this repository uses: IMPLEMENTED means code exists,
+VERIFIED LOCALLY means a command was run here and passed, VERIFIED LIVE means a
+real backend and a real child process were exercised, VERIFIED IN CI means the
+check passed on the exact head SHA, NOT VERIFIED means it was not measured, and
+BLOCKED means something outside this work stopped it.
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Supervisor, state machine, switch, secure-store refusal | IMPLEMENTED | `peer/service.py`, `peer/control.py`, `test_peer_service.py` |
+| Loopback-only status and preference routes | IMPLEMENTED + VERIFIED LIVE | see below |
+| Desktop page, navigation, DTO, client calls | IMPLEMENTED | `PeerViewModel`, `PeerView`, PR #11 |
+| Desktop page driven in a running WPF window | **NOT VERIFIED** | no UI automation was available in this environment; the page is compiled and unit-tested only |
+| Marking independence, six states byte-identical | VERIFIED LOCALLY | harness re-run on the integrated tree: one hash, `ff3bcadfdc2c3e46...`, 1156 bytes, 6/7 marks, 3 questions |
+| Backend suite | VERIFIED LOCALLY | 2 657 passed, 2 skipped, 702 s, exit 0 |
+| Desktop suite | VERIFIED LOCALLY | 343 passed, 3 m 31 s |
+| Peer route tests | VERIFIED LOCALLY | 18 passed |
+| Peer page tests | VERIFIED LOCALLY | 8 passed |
+| Strict documentation links | VERIFIED LOCALLY | 101 files, 201 links, clean |
+| PR #9 four checks | VERIFIED IN CI | all success on `a0778687` |
+| PR #11 checks | PARTIAL | Documentation, Desktop and Frontend success; Backend still running |
+| PR #10 and PR #8 Backend checks | FAILED IN CI, cause outside Phase 2 | see below |
+
+### What the live exercise actually showed
+
+A real `main.py --serve` backend in demo mode, a real supervisor, and a real
+child process, driven over HTTP exactly as the page drives them:
+
+* Opening the page (three `GET`s) wrote no peer file and spawned no peer child.
+* Enabling with no credentials returned `confirmed: false`,
+  `CREDENTIALS_UNAVAILABLE` and a stated reason, kept the preference ON, and
+  created no process.
+* Malformed bodies (`"yes"`, `1`, `null`, `{}`) were refused with 400.
+* Enabling with credentials reached `RUNNING` with a reported pid; the process
+  tree contained exactly one supervisor; a repeated enable kept the same pid.
+* Disabling answered `confirmed: true`, the child exited, and no orphan remained.
+  With the preference off the reported state is `DISABLED`, which is
+  `describe()`'s documented rule, not a claim the process is still stopping.
+* After a restart the preference was still ON and the page reported the observed
+  state (not a stale `RUNNING`) without starting anything.
+
+The apparent "two children" in an early run were one tree: the venv interpreter
+re-executes `-m app.peer.service_main`, so the grandchild shares the same
+supervised process. Counting processes recursively without checking the parent
+misreads this, which is why the check now reports parentage.
+
+### CI failures on PR #8 and PR #10, and why they are not Phase 2
+
+Both failed the same job step (`Run the suite`) on `windows-latest`:
+
+* PR #10 (`e0f3db92`): `test_retry_architecture.py::
+  test_successful_job_completes_with_zero_retries` — the per-job prepared-input
+  directory still existed at the instant the job was observed terminal. 1 failed,
+  2 638 passed, 44 min run.
+* PR #8 (`2f9eb693`): `test_worker_pool.py::
+  test_metrics_recorded_after_completion` — `avg_seconds` was still absent when
+  the terminal state was observed. 1 failed, 2 538 passed.
+
+Neither test touches the peer package, and PR #8 changes no backend code at all
+(documentation and one standalone script), so the failure cannot be attributed to
+Phase 2. Both are ordering assertions between "terminal status is visible" and
+"the worker's post-completion bookkeeping is visible", which invert under a
+loaded 40-minute run. Reruns were requested on both PRs; the outcome is recorded
+in the audit report rather than assumed here.
+
 ## 12. Remaining limitations
 
 1. The peer layer is inert but incomplete: no peer can be reached yet, by design.
