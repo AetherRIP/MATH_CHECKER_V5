@@ -480,7 +480,11 @@ class PeerCredentials:
         target = Path(path) if path is not None else peer_dir() / "credentials.json"
         if not target.exists():
             return None
-        data = secure_store.load(target)
+        try:
+            data = secure_store.load(target)
+        except OSError as exc:                  # unreadable is not absent (R-08)
+            raise PeerError(
+                f"credentials file exists but cannot be read: {target.name}: {exc}") from exc
         if data is None:
             raise PeerError(f"credentials file exists but cannot be read: {target.name}")
         try:

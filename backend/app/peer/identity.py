@@ -254,7 +254,11 @@ class DeviceIdentity:
         target = Path(path) if path is not None else peer_dir() / "identity.json"
         if not target.exists():
             return None
-        data = secure_store.load(target)
+        try:
+            data = secure_store.load(target)
+        except OSError as exc:                  # unreadable is not absent (R-08)
+            raise PeerErrorStoreUnreadable(
+                f"identity file exists but cannot be read: {target.name}: {exc}") from exc
         if data is None:
             raise PeerErrorStoreUnreadable(
                 f"identity file exists but cannot be read: {target.name}")
