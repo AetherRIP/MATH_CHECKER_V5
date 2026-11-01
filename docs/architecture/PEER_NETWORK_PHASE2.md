@@ -244,19 +244,41 @@ directory and a read-only permission failure both surface as actionable errors,
 the probe reports the mode it actually got, and the supervisor refuses an
 unprotected store while an explicit per-instance opt-out still starts.
 
+
+### The desktop surface
+
+The page is a view over the backend supervisor, not a second state machine. Two
+routes, both refusing any caller that is not on this machine:
+
+* `GET /api/peer/status` returns the stored preference and the observed state side
+  by side. It constructs no supervisor, so opening the page cannot start a process.
+* `POST /api/peer/preference` records `enabled` and answers with a fresh
+  observation plus `confirmed`, computed from that observation. An enable that
+  ended in `CREDENTIALS_UNAVAILABLE` or `UNHEALTHY` comes back unconfirmed with its
+  real reason, and the preference stays on so the next launch retries. A second
+  enable does not spawn a second child, and a failed switch write starts nothing.
+
+`PeerPageTests` (8 tests) pins what makes the page honest: off on first run because
+the backend says so, loading performs one GET and no POST, the running state
+appears only after the backend reports it, a refused start shows the backend reason
+instead of a success message, a refresh replaces a stale `RUNNING`, a 500 surfaces
+as an error without inventing a state, and the diagnostics carry no key material.
+The page deliberately does not use `CommandWithReload`, whose success text is
+written after the reload and would have overwritten a failed-start explanation.
+
+`test_peer_routes.py` (18 tests) covers the same contract on the backend: off by
+default with no supervisor constructed, a corrupt switch file reading as unknown
+and off, malformed bodies and non-loopback callers refused without touching the
+switch, a failed write starting nothing, and repeated enables and disables staying
+idempotent.
+
 ## 11. Not implemented here
 
 * **Networking.** No socket, no discovery, no session, no relay. Phases 3–4.
-* **Desktop surface.** The switch and status are backend-side (`control.describe()`,
-  `PeerService.status_dict()`); binding them to a desktop page/route is the next
-  step and is not done. No route was added, so nothing new is reachable over
-  HTTP.
-* **D1 offline export.** Approved in principle; deliberately not built yet —
-  an export is a root-key-equivalent and needs its own review.
-* **Renewal action.** D4's 90/365-day policy is enforced and a warning flag is
-  computed, but the "renew this device" flow is not implemented.
-* **Packaged-runtime measurement.** The resource numbers in §8 come from a
-  development interpreter.
+* **Desktop surface.** Implemented on `phase-2/desktop-peer-integration`:
+  `GET /api/peer/status` and `POST /api/peer/preference` in
+  `backend/app/api/peer_routes.py`, and the *Peer network* page
+  (`PeerViewModel` / `PeerView`). See the section above.
 
 ## 12. Remaining limitations
 
