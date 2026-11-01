@@ -140,8 +140,10 @@ def probe_secure_store(target: str | Path | None = None) -> StoreProbe:
     path = Path(target) if target is not None else peer_dir() / "store_probe.json"
     token = uuid.uuid4().hex
     try:
-        secure_store.save(path, {"probe": token})
-        marker = path.read_bytes()[:4]
+        # Explicitly the permissive mode: the point of the probe is to learn
+        # WHICH mode this process gets, so it must not fail closed here. The
+        # answer decides whether the service may start (see ``start``).
+        mode = secure_store.save(path, {"probe": token}, require_encryption=False)
         data = secure_store.load(path)
     except OSError as exc:
         return StoreProbe(False, False, f"the secure store is not writable: {exc}")
@@ -153,7 +155,7 @@ def probe_secure_store(target: str | Path | None = None) -> StoreProbe:
     if not isinstance(data, dict) or data.get("probe") != token:
         return StoreProbe(False, False,
                           "the secure store returned a different value than it stored")
-    encrypted = marker == b"MC1D"
+    encrypted = mode == secure_store.MODE_DPAPI
     return StoreProbe(
         True, encrypted,
         "DPAPI-protected for the current user" if encrypted
@@ -321,6 +323,7 @@ class PeerService:
                  stop_timeout: float = 6.0,
                  max_restarts: int = 3,
                  restart_delay: float = 1.0,
+                 require_store_encryption: bool = True,
                  popen=None, clock=None) -> None:
         self._dir = Path(directory) if directory is not None else peer_dir()
         self._credentials_path = (Path(credentials_path) if credentials_path is not None
@@ -332,6 +335,9 @@ class PeerService:
         self._stop_timeout = float(stop_timeout)
         self._max_restarts = int(max_restarts)
         self._restart_delay = float(restart_delay)
+        # D1 puts the department root key in this store, so an unprotected store
+        # is a refusal to start, not a warning (R-08).
+        self._require_store_encryption = bool(require_store_encryption)
         self._popen = popen or subprocess.Popen
         self._clock = clock or time.time
         self._lock = threading.RLock()
@@ -418,6 +424,12 @@ class PeerService:
             if not probe.writable:
                 return self._set(UNHEALTHY, probe.detail,
                                  encrypted_store=False, store_detail=probe.detail)
+            if self._require_store_encryption and not probe.encrypted:
+                return self._set(
+                    UNHEALTHY,
+                    "refusing to start: " + probe.detail +
+                    ". Key material must not be written unencrypted (decision D1).",
+                    encrypted_store=False, store_detail=probe.detail)
 
             self._set(STARTING, "loading credentials",
                       encrypted_store=probe.encrypted, store_detail=probe.detail)

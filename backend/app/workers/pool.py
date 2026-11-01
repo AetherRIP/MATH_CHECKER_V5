@@ -1209,6 +1209,18 @@ class WorkerPool:
             result_id = uuid.uuid4().hex
             now_ts = time.time()
             keep_existing_id: str | None = None
+            # Everything a terminal row promises happens BEFORE that row is
+            # committed. COMPLETED is the pool's public statement that a job
+            # is finished: its prepared inputs are gone (§10) and its
+            # duration counts toward the pool metrics. A reader may act on
+            # that statement the instant the row is visible, so doing this
+            # afterwards left a window in which a COMPLETED job still had
+            # tmp/job-<id>/ on disk and no recorded duration
+            # (test_retry_architecture, test_worker_pool). It also keeps the
+            # provider file release — the one step here that can block on the
+            # network — outside the write transaction, so no other writer is
+            # held up by it.
+            self._finalise_terminal(job_id, result)
             with db.transaction() as conn:
                 # Re-correcting a Classroom submission must UPDATE the previous
                 # result (unique index on coursework+submission), not crash the
@@ -1396,12 +1408,8 @@ class WorkerPool:
                     )
             _record_scheme_audit(job, result_id, final_result, now_ts)
             worker.state.jobs_done += 1
-            cleanup_job_files(job_id)
             self._api_wait_total.pop(job_id, None)
             self._force_reprocess.discard(job_id)
-            with self._metrics_lock:
-                self._job_seconds.append(result.processing_seconds)
-                self._job_seconds = self._job_seconds[-500:]
             log_event("workers", "job completed", worker_id=worker.worker_id,
                       job_id=job_id, student=job["student_name"],
                       earned=earned, available=available,
@@ -1885,10 +1893,41 @@ class WorkerPool:
         )
         return row["id"] if row else None
 
+    def _finalise_terminal(self, job_id: str, result: WorkerResult) -> None:
+        """Do everything a terminal row promises, before that row is written.
+
+        Terminal cleanup (§10) removes the per-job prepared-input cache, and the
+        duration feeds ``public_state()["metrics"]``. A reader of a COMPLETED job
+        is entitled to rely on both immediately, so neither may be left until
+        after the status change: under load the gap was wide enough for a
+        poller to observe a COMPLETED job whose ``tmp/job-<id>/`` still existed
+        and whose duration had not been recorded.
+
+        Cleanup is still allowed to fail without failing the correction — the
+        job is finished either way, its inputs may remain, and the retention /
+        startup sweep retries the removal. That is the pre-existing behaviour,
+        not a new failure mode.
+        """
+        with self._metrics_lock:
+            self._job_seconds.append(result.processing_seconds)
+            self._job_seconds = self._job_seconds[-500:]
+        try:
+            cleanup_job_files(job_id)
+        except Exception:  # noqa: BLE001 — cleanup must never undo a correction
+            log_event("workers", "terminal cleanup failed; inputs may remain",
+                      level=logging.WARNING, job_id=job_id)
+
     def _complete_with_existing(self, job: dict, result_id: str,
                                 *, via: str) -> None:
         """Attach an already-existing result instead of re-running (§9)."""
         now_ts = time.time()
+        # Cleanup first: the COMPLETED row below is what tells a reader the
+        # job's inputs are gone (same ordering as the main completion path).
+        try:
+            cleanup_job_files(job["id"])
+        except Exception:  # noqa: BLE001 — cleanup must never undo a correction
+            log_event("workers", "terminal cleanup failed; inputs may remain",
+                      level=logging.WARNING, job_id=job["id"])
         db.execute(
             "UPDATE correction_jobs SET status = ?, result_id = ?, stage_detail = ?, "
             "retry_due_at = NULL, finished_at = ?, updated_at = ? WHERE id = ?",
@@ -1896,7 +1935,6 @@ class WorkerPool:
              "Reused existing correction result — no duplicate request sent",
              now_ts, now_ts, job["id"]),
         )
-        cleanup_job_files(job["id"])
         self._api_wait_total.pop(job["id"], None)
         log_event("workers", "existing result reused (no duplicate correction)",
                   job_id=job["id"], student=job.get("student_name"),

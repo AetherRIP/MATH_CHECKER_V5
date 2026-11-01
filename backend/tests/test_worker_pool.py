@@ -4,6 +4,7 @@ The pool executes jobs via spawn processes; these tests exercise the
 orchestration logic with the mock Gemini backend (no network, no quota).
 """
 
+import threading
 import time
 
 import pytest
@@ -279,3 +280,52 @@ class TestRealConcurrency:
         assert peak >= 2, f"jobs never overlapped: {peak}"
         assert peak <= max(1, pool.recommended_workers()), peak
         pool.set_size(2)
+
+
+class TestTerminalVisibility:
+    """COMPLETED must not be observable before the job's bookkeeping is done.
+
+    Regression for the two intermittent CI failures: the status row was
+    committed and only afterwards were the prepared inputs deleted and the
+    duration recorded, so a reader polling for a terminal row (the
+    retry-architecture test, a desktop list, an API client) could see
+    COMPLETED while ``tmp/job-<id>/`` still existed and ``avg_seconds`` was
+    still None.
+
+    Cleanup is held open here, so the window is not a race to reproduce: with
+    the old ordering the row is already COMPLETED while cleanup is blocked.
+    """
+
+    def test_completed_is_not_visible_while_cleanup_is_still_running(
+            self, pool, fresh_state, monkeypatch):
+        import app.workers.pool as pool_module
+
+        entered = threading.Event()
+        release = threading.Event()
+        real_cleanup = pool_module.cleanup_job_files
+
+        def blocking_cleanup(job_id):
+            entered.set()
+            assert release.wait(60), "cleanup was never released"
+            return real_cleanup(job_id)
+
+        monkeypatch.setattr(pool_module, "cleanup_job_files", blocking_cleanup)
+
+        job_id = _enqueue_job("Visibility")
+        _stage_manual_job(job_id, fresh_state)
+        pool._wake.set()
+        assert entered.wait(90), "terminal cleanup was never reached"
+
+        cache_dir = config.DATA_DIR / "tmp" / f"job-{job_id}"
+        assert cache_dir.exists(), (
+            "the prepared-input cache must exist while cleanup is blocked")
+        row = db.query_one("SELECT status FROM correction_jobs WHERE id = ?",
+                           (job_id,))
+        assert row["status"] not in ("COMPLETED", "FAILED", "CANCELLED"), (
+            f"job advertised {row['status']} while its inputs still existed")
+
+        release.set()
+        final = _wait_terminal(pool, job_id)
+        assert final["status"] == "COMPLETED"
+        assert not cache_dir.exists()
+        assert pool.public_state()["metrics"].get("avg_seconds") is not None

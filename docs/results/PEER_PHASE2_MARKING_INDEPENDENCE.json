@@ -1,0 +1,103 @@
+{
+  "generated_at": "2026-11-01T18:40:57Z",
+  "model": "gemini-3.6-flash",
+  "blueprint": {
+    "questions": [
+      {
+        "question_number": "1",
+        "max_marks": 3
+      },
+      {
+        "question_number": "2",
+        "max_marks": 2
+      },
+      {
+        "question_number": "3",
+        "max_marks": 2
+      }
+    ]
+  },
+  "normalisation": "json.dumps(result, sort_keys=True, ensure_ascii=True)",
+  "identical": true,
+  "distinct_hashes": [
+    "ff3bcadfdc2c3e46ac2446ac0aa671fbd6acace3322090acc061180af602b8bc"
+  ],
+  "totals": [
+    "(6, 7)"
+  ],
+  "rows": [
+    {
+      "peer_state": "disabled",
+      "observed": "DISABLED: peer networking is switched off",
+      "sha256": "ff3bcadfdc2c3e46ac2446ac0aa671fbd6acace3322090acc061180af602b8bc",
+      "bytes": 1156,
+      "model": "gemini-3.6-flash",
+      "earned": 6,
+      "available": 7,
+      "percentage": 85.7143,
+      "missing_questions": [],
+      "questions": 3
+    },
+    {
+      "peer_state": "running",
+      "observed": "RUNNING: peer service is running pid=7880",
+      "sha256": "ff3bcadfdc2c3e46ac2446ac0aa671fbd6acace3322090acc061180af602b8bc",
+      "bytes": 1156,
+      "model": "gemini-3.6-flash",
+      "earned": 6,
+      "available": 7,
+      "percentage": 85.7143,
+      "missing_questions": [],
+      "questions": 3
+    },
+    {
+      "peer_state": "stopped",
+      "observed": "STOPPED: peer service stopped",
+      "sha256": "ff3bcadfdc2c3e46ac2446ac0aa671fbd6acace3322090acc061180af602b8bc",
+      "bytes": 1156,
+      "model": "gemini-3.6-flash",
+      "earned": 6,
+      "available": 7,
+      "percentage": 85.7143,
+      "missing_questions": [],
+      "questions": 3
+    },
+    {
+      "peer_state": "terminated",
+      "observed": "child killed: UNHEALTHY: the peer process exited unexpectedly (code 1); restarting (1/3)",
+      "sha256": "ff3bcadfdc2c3e46ac2446ac0aa671fbd6acace3322090acc061180af602b8bc",
+      "bytes": 1156,
+      "model": "gemini-3.6-flash",
+      "earned": 6,
+      "available": 7,
+      "percentage": 85.7143,
+      "missing_questions": [],
+      "questions": 3
+    },
+    {
+      "peer_state": "credentials-unavailable",
+      "observed": "CREDENTIALS_UNAVAILABLE: this device has not been invited to a department yet",
+      "sha256": "ff3bcadfdc2c3e46ac2446ac0aa671fbd6acace3322090acc061180af602b8bc",
+      "bytes": 1156,
+      "model": "gemini-3.6-flash",
+      "earned": 6,
+      "available": 7,
+      "percentage": 85.7143,
+      "missing_questions": [],
+      "questions": 3
+    },
+    {
+      "peer_state": "ipc-unavailable",
+      "observed": "ping after child death: failed: IpcError: process_exited: the peer process exited before answering",
+      "sha256": "ff3bcadfdc2c3e46ac2446ac0aa671fbd6acace3322090acc061180af602b8bc",
+      "bytes": 1156,
+      "model": "gemini-3.6-flash",
+      "earned": 6,
+      "available": 7,
+      "percentage": 85.7143,
+      "missing_questions": [],
+      "questions": 3
+    }
+  ],
+  "failure": null
+}
