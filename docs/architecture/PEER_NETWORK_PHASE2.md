@@ -244,19 +244,156 @@ directory and a read-only permission failure both surface as actionable errors,
 the probe reports the mode it actually got, and the supervisor refuses an
 unprotected store while an explicit per-instance opt-out still starts.
 
+
+### The desktop surface
+
+The page is a view over the backend supervisor, not a second state machine. Two
+routes, both refusing any caller that is not on this machine:
+
+* `GET /api/peer/status` returns the stored preference and the observed state side
+  by side. It constructs no supervisor, so opening the page cannot start a process.
+* `POST /api/peer/preference` records `enabled` and answers with a fresh
+  observation plus `confirmed`, computed from that observation. An enable that
+  ended in `CREDENTIALS_UNAVAILABLE` or `UNHEALTHY` comes back unconfirmed with its
+  real reason, and the preference stays on so the next launch retries. A second
+  enable does not spawn a second child, and a failed switch write starts nothing.
+
+`PeerPageTests` (8 tests) pins what makes the page honest: off on first run because
+the backend says so, loading performs one GET and no POST, the running state
+appears only after the backend reports it, a refused start shows the backend reason
+instead of a success message, a refresh replaces a stale `RUNNING`, a 500 surfaces
+as an error without inventing a state, and the diagnostics carry no key material.
+The page deliberately does not use `CommandWithReload`, whose success text is
+written after the reload and would have overwritten a failed-start explanation.
+
+`test_peer_routes.py` (18 tests) covers the same contract on the backend: off by
+default with no supervisor constructed, a corrupt switch file reading as unknown
+and off, malformed bodies and non-loopback callers refused without touching the
+switch, a failed write starting nothing, and repeated enables and disables staying
+idempotent.
+
 ## 11. Not implemented here
 
 * **Networking.** No socket, no discovery, no session, no relay. Phases 3–4.
-* **Desktop surface.** The switch and status are backend-side (`control.describe()`,
-  `PeerService.status_dict()`); binding them to a desktop page/route is the next
-  step and is not done. No route was added, so nothing new is reachable over
-  HTTP.
-* **D1 offline export.** Approved in principle; deliberately not built yet —
-  an export is a root-key-equivalent and needs its own review.
-* **Renewal action.** D4's 90/365-day policy is enforced and a warning flag is
-  computed, but the "renew this device" flow is not implemented.
-* **Packaged-runtime measurement.** The resource numbers in §8 come from a
-  development interpreter.
+* **Desktop surface.** Implemented on `phase-2/desktop-peer-integration`:
+  `GET /api/peer/status` and `POST /api/peer/preference` in
+  `backend/app/api/peer_routes.py`, and the *Peer network* page
+  (`PeerViewModel` / `PeerView`). See the section above.
+
+## 11a. Final acceptance audit, 2026-11-01
+
+Statuses are the ones this repository uses: IMPLEMENTED means code exists,
+VERIFIED LOCALLY means a command was run here and passed, VERIFIED LIVE means a
+real backend and a real child process were exercised, VERIFIED IN CI means the
+check passed on the exact head SHA, NOT VERIFIED means it was not measured, and
+BLOCKED means something outside this work stopped it.
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Supervisor, state machine, switch, secure-store refusal | IMPLEMENTED | `peer/service.py`, `peer/control.py`, `test_peer_service.py` |
+| Loopback-only status and preference routes | IMPLEMENTED + VERIFIED LIVE | see below |
+| Desktop page, navigation, DTO, client calls | IMPLEMENTED | `PeerViewModel`, `PeerView`, PR #11 |
+| Desktop page driven in a running WPF window | **VERIFIED LIVE** | real window, real buttons: `On` + `RUNNING` with a live in-tree supervisor pid, then `DISABLED` + `STOPPED` with no orphan (see below) |
+| Marking independence, six states byte-identical | VERIFIED LOCALLY | harness re-run on the integrated tree: one hash, `ff3bcadfdc2c3e46...`, 1156 bytes, 6/7 marks, 3 questions |
+| Backend suite | VERIFIED LOCALLY | 2 657 passed, 2 skipped, 702 s, exit 0 |
+| Desktop suite | VERIFIED LOCALLY | 343 passed, 3 m 31 s |
+| Peer route tests | VERIFIED LOCALLY | 18 passed |
+| Peer page tests | VERIFIED LOCALLY | 8 passed |
+| Strict documentation links | VERIFIED LOCALLY | 101 files, 201 links, clean |
+| PR #9 four checks | VERIFIED IN CI | all success on `a0778687` |
+| PR #11 checks | VERIFIED IN CI | all four success on `9a420132` |
+| PR #8 Backend check | VERIFIED IN CI | success on attempt 3 on `2f9eb693` (48 min) |
+| PR #10 Backend check | FAILED IN CI, cause proven and fixed on PR #12 | same test on both attempts; not Phase 2 code (see below) |
+
+### What the live exercise actually showed
+
+A real `main.py --serve` backend in demo mode, a real supervisor, and a real
+child process, driven over HTTP exactly as the page drives them:
+
+* Opening the page (three `GET`s) wrote no peer file and spawned no peer child.
+* Enabling with no credentials returned `confirmed: false`,
+  `CREDENTIALS_UNAVAILABLE` and a stated reason, kept the preference ON, and
+  created no process.
+* Malformed bodies (`"yes"`, `1`, `null`, `{}`) were refused with 400.
+* Enabling with credentials reached `RUNNING` with a reported pid; the process
+  tree contained exactly one supervisor; a repeated enable kept the same pid.
+* Disabling answered `confirmed: true`, the child exited, and no orphan remained.
+  With the preference off the reported state is `DISABLED`, which is
+  `describe()`'s documented rule, not a claim the process is still stopping.
+* After a restart the preference was still ON and the page reported the observed
+  state (not a stale `RUNNING`) without starting anything.
+
+The apparent "two children" in an early run were one tree: the venv interpreter
+re-executes `-m app.peer.service_main`, so the grandchild shares the same
+supervised process. Counting processes recursively without checking the parent
+misreads this, which is why the check now reports parentage.
+
+### CI failures on PR #8 and PR #10, and why they are not Phase 2
+
+Both failed the same job step (`Run the suite`) on `windows-latest`:
+
+* PR #10 (`e0f3db92`): `test_retry_architecture.py::
+  test_successful_job_completes_with_zero_retries` — the per-job prepared-input
+  directory still existed at the instant the job was observed terminal. 1 failed,
+  2 638 passed, 44 min run.
+* PR #8 (`2f9eb693`): `test_worker_pool.py::
+  test_metrics_recorded_after_completion` — `avg_seconds` was still absent when
+  the terminal state was observed. 1 failed, 2 538 passed.
+
+Neither test touches the peer package, and PR #8 changes no backend code at all
+(documentation and one standalone script), so the failure cannot be attributed to
+Phase 2. Both are ordering assertions between "terminal status is visible" and
+"the worker's post-completion bookkeeping is visible", which invert under a
+loaded 40-minute run. Reruns were requested on both PRs; the outcome is recorded
+in the audit report rather than assumed here.
+
+### Desktop page driven in a real window, and the CI outcome (2026-11-01)
+
+The page is no longer "compiled only". It was driven in the real WPF window on
+this machine through UI Automation, against the app's own backend (loopback
+`:8642`) with real department credentials on disk:
+
+* Initial: `Stored preference Off`, `Observed state DISABLED`, credentials
+  present, no peer child.
+* **Enable** through the real button: `Stored preference On`,
+  `Observed state RUNNING`, "Peer service running", backend detail
+  "peer service is running", `service.pid` alive and inside the app's own process
+  tree. The venv interpreter re-execs the module, so that tree holds a shim and
+  the child — one supervisor, not two.
+* **Enable again** 3 s later: the same pid (`16716`), `restarts=0`, so no second
+  supervisor.
+* **Disable** through the real button: `DISABLED`, `service.state=STOPPED`, the
+  pid gone from the process tree, no orphan.
+* **Restart**: the window and every backend/peer process it owned were killed and
+  the app relaunched — the stored preference was still `On`, the reported state
+  was `STOPPED` (never a stale `RUNNING`), and no peer child existed until Enable
+  was pressed again. An earlier attempt that killed only the window left an
+  orphaned backend which the next window attached to; that is a bad probe, not a
+  product defect, and it is why the probe now kills the backend too.
+* Layout: 1600x1020 and 1280x800 — 64 text/button elements, no zero-sized element
+  and no horizontal overflow at either size. Content below the fold is the page's
+  own scroll region; the first "outside the window" readings were those elements,
+  not clipping.
+
+CI at close of audit: PR #11 `9a420132` has all four checks green, PR #8 passed
+its Backend job on the third attempt (`2f9eb693`, 48 min), and PR #9 is unchanged
+and green.
+
+PR #10's Backend job failed on **both** attempts on the same test. The cause is
+now proven rather than suspected: the pool committed the terminal row and only
+afterwards removed the prepared-input cache and recorded the duration, so a
+reader polling for a terminal row can see `COMPLETED` first. Slowing that
+post-commit step (`_record_scheme_audit`) made both PR #10's retry test and
+PR #8's metrics test fail 5/5 with the exact CI assertions. The ordering fix and
+a deterministic regression test live on their own branch as PR #12
+(`investigation/worker-pool-ci-races`); it contains no peer code, is not part of
+this phase, and PR #10 itself was left untouched.
+
+Marking independence was re-measured on `9a420132` after all of the above: the six
+states (`disabled`, `running`, `stopped`, `terminated`, `credentials-unavailable`,
+`ipc-unavailable`) produced one output hash,
+`ff3bcadfdc2c3e46ac2446ac0aa671fbd6acace3322090acc061180af602b8bc`, 1 156 bytes,
+6/7 marks and 3 questions — identical to the earlier measurement, harness exit 0.
 
 ## 12. Remaining limitations
 

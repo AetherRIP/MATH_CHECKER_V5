@@ -468,6 +468,8 @@ public sealed class MainViewModel : ObservableObject
         Add(new SettingsViewModel(_session) { Group = "Settings" });
         Add(new AiKeysViewModel(_session) { Group = "Settings" });
         Add(new PromptsViewModel(_session) { Group = "Settings" });
+        // Peer networking: a switch and the state it actually produced.
+        Add(new PeerViewModel(_session) { Group = "Settings" });
 
         Add(JsonPageViewModel.Storage(_session));
         Add(JsonPageViewModel.Privacy(_session));
